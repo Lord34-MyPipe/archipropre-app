@@ -140,12 +140,17 @@ export interface Alerte {
   destinataire_id: string | null
 }
 
+export type AbsenceType = 'maladie' | 'absence_justifiee' | 'absence_injustifiee' | 'jour_ferie' | 'formation'
+export type CongeStatut = 'en_attente' | 'valide' | 'refuse'
+
 export interface Absence {
   id: string
   agent_id: string | null
   date_debut: string
   date_fin: string
   motif: string | null
+  type: AbsenceType
+  valide: boolean
   created_at: string
 }
 
@@ -156,6 +161,8 @@ export interface Conge {
   date_fin: string
   valide: boolean
   valide_par: string | null
+  statut: CongeStatut
+  motif: string | null
   created_at: string
 }
 

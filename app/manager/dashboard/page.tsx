@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import type { Profile, Intervention, Residence, Absence, Conge } from '@/lib/types'
+import InterventionsDuJourSection from '@/components/manager/InterventionsDuJourSection'
 
 type InterJoined = Intervention & { residences: Residence; profiles: Profile }
 
@@ -87,17 +88,6 @@ export default async function ManagerDashboard() {
     disponibles: inters.filter(i => i.disponible_apres_fin).length,
   }
 
-  const STATUT_COULEUR: Record<string, string> = {
-    planifiee:    'bg-blue-100 text-blue-700',
-    en_cours:     'bg-amber-100 text-amber-700',
-    terminee:     'bg-green-100 text-green-700',
-    non_demarree: 'bg-red-100 text-red-700',
-    disponible:   'bg-purple-100 text-purple-700',
-  }
-  const STATUT_LABEL: Record<string, string> = {
-    planifiee: 'Planifiée', en_cours: 'En cours',
-    terminee: 'Terminée', non_demarree: 'En retard', disponible: 'Disponible',
-  }
   const TYPE_LABELS: Record<string, string> = {
     maladie: 'Arrêt maladie', absence_justifiee: 'Absence justifiée',
     absence_injustifiee: 'Absence injustifiée', jour_ferie: 'Jour férié',
@@ -222,38 +212,10 @@ export default async function ManagerDashboard() {
         )}
 
         {/* Interventions du jour */}
-        <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h2 className="font-semibold text-slate-800">Interventions du jour</h2>
-            <Link href="/manager/planning" className="text-sm text-[#1A5FA8] font-medium">Voir planning →</Link>
-          </div>
-          {!inters.length ? (
-            <div className="px-5 py-8 text-center text-slate-400">
-              <p className="text-3xl mb-2">📅</p>
-              <p>Aucune intervention planifiée aujourd'hui.</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-50">
-              {inters.map(i => (
-                <div key={i.id} className="px-5 py-4 flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-xl bg-[#EFF6FF] flex items-center justify-center shrink-0">
-                    <span className="text-lg">🏢</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-slate-800 text-sm truncate">{i.residences?.nom}</p>
-                    <p className="text-xs text-slate-500 truncate">
-                      {i.profiles?.prenom} {i.profiles?.nom}
-                      {i.heure_debut_prevue ? ` · ${i.heure_debut_prevue.slice(0,5)}` : ''}
-                    </p>
-                  </div>
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 ${STATUT_COULEUR[i.statut] ?? 'bg-slate-100 text-slate-600'}`}>
-                    {STATUT_LABEL[i.statut] ?? i.statut}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <InterventionsDuJourSection
+          initialInters={inters as Parameters<typeof InterventionsDuJourSection>[0]['initialInters']}
+          absentIds={[...absentsAujourdhuiIds]}
+        />
 
         {/* Équipe avec badges absence */}
         <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">

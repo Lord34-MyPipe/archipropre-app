@@ -5,6 +5,8 @@ import Link from 'next/link'
 import type { Residence } from '@/lib/types'
 import { createClient } from '@/lib/supabase'
 import { downloadQRCodePDF } from '@/lib/qr-pdf'
+import AgentAttitreModal from '@/components/manager/AgentAttitreModal'
+import PlanifierInterventionModal from '@/components/manager/PlanifierInterventionModal'
 
 const TYPE_LABEL: Record<string, string> = {
   syndic:              'Syndic',
@@ -63,14 +65,26 @@ const SliderIcon = () => (
 export default function ResidenceCard({ residence: initial }: { residence: Residence }) {
   const [token, setToken]               = useState(initial.qr_code_token)
   const [actif, setActif]               = useState(initial.actif)
+  const [agentPrefereId, setAgentPrefereId] = useState(initial.agent_prefere_id)
+  const [agentExcluIds, setAgentExcluIds]   = useState<string[]>(initial.agent_exclu_ids ?? [])
   const [menuOpen, setMenuOpen]         = useState(false)
   const [showToken, setShowToken]       = useState(false)
-  const [showRegenModal, setShowRegenModal] = useState(false)
+  const [showRegenModal, setShowRegenModal]       = useState(false)
+  const [showAttitreModal, setShowAttitreModal]   = useState(false)
+  const [showPlanifierModal, setShowPlanifierModal] = useState(false)
   const [regenLoading, setRegenLoading] = useState(false)
   const [regenError, setRegenError]     = useState('')
   const [toggling, setToggling]         = useState(false)
   const [qrLoading, setQrLoading]       = useState(false)
+  const [toast, setToast]               = useState('')
+  const toastRef                        = useRef<ReturnType<typeof setTimeout> | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  function showCardToast(msg: string) {
+    setToast(msg)
+    if (toastRef.current) clearTimeout(toastRef.current)
+    toastRef.current = setTimeout(() => setToast(''), 2800)
+  }
 
   useEffect(() => {
     if (!menuOpen) return
@@ -181,6 +195,26 @@ export default function ResidenceCard({ residence: initial }: { residence: Resid
             {menuOpen && (
               <div className="absolute right-0 bottom-full mb-2 w-52 bg-white rounded-2xl shadow-xl border border-slate-100 py-1.5 z-20">
                 <button
+                  onClick={() => { setShowAttitreModal(true); setMenuOpen(false) }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#1A5FA8] hover:bg-blue-50 transition-colors">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/>
+                  </svg>
+                  Affecter un agent attitré
+                </button>
+
+                <button
+                  onClick={() => { setShowPlanifierModal(true); setMenuOpen(false) }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[#0BBFBF] hover:bg-teal-50 transition-colors">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"/>
+                  </svg>
+                  Planifier une intervention
+                </button>
+
+                <div className="border-t border-slate-100 my-1"/>
+
+                <button
                   onClick={() => { setShowRegenModal(true); setMenuOpen(false) }}
                   className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors">
                   <RegenIcon/>
@@ -231,6 +265,39 @@ export default function ResidenceCard({ residence: initial }: { residence: Resid
           </div>
         )}
       </div>
+
+      {/* Toast carte */}
+      {toast && (
+        <div className="fixed bottom-28 md:bottom-8 left-1/2 -translate-x-1/2 z-50 bg-[#0A2E5A] text-white px-5 py-3 rounded-2xl shadow-xl text-sm font-medium pointer-events-none">
+          ✓ {toast}
+        </div>
+      )}
+
+      {/* Modal agent attitré */}
+      {showAttitreModal && (
+        <AgentAttitreModal
+          residence={{ ...initial, agent_prefere_id: agentPrefereId, agent_exclu_ids: agentExcluIds }}
+          onClose={() => setShowAttitreModal(false)}
+          onSaved={(id, excluIds) => {
+            setAgentPrefereId(id)
+            setAgentExcluIds(excluIds)
+            setShowAttitreModal(false)
+            showCardToast('Agent attitré mis à jour')
+          }}
+        />
+      )}
+
+      {/* Modal planifier intervention */}
+      {showPlanifierModal && (
+        <PlanifierInterventionModal
+          residence={{ ...initial, agent_prefere_id: agentPrefereId, agent_exclu_ids: agentExcluIds }}
+          onClose={() => setShowPlanifierModal(false)}
+          onCreated={(count) => {
+            setShowPlanifierModal(false)
+            showCardToast(`${count} intervention${count > 1 ? 's' : ''} planifiée${count > 1 ? 's' : ''} ✓`)
+          }}
+        />
+      )}
 
       {/* Modal confirmation régénération */}
       {showRegenModal && (

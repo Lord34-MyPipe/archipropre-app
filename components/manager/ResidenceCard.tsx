@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import Link from 'next/link'
 import type { Residence } from '@/lib/types'
 import { createClient } from '@/lib/supabase'
 import { downloadQRCodePDF } from '@/lib/qr-pdf'
@@ -200,6 +201,16 @@ export default function ResidenceCard({ residence: initial }: { residence: Resid
                 </button>
 
                 <div className="border-t border-slate-100 my-1"/>
+
+                <Link
+                  href={`/manager/residences/${initial.id}/taches`}
+                  onClick={() => setMenuOpen(false)}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50 transition-colors">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                  </svg>
+                  Gérer les tâches
+                </Link>
 
                 <button
                   onClick={() => { setShowToken(s => !s); setMenuOpen(false) }}

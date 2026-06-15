@@ -46,6 +46,7 @@ export interface ZoneResidence {
   residence_id: string
   nom: string
   ordre: number
+  couleur: string | null
   created_at: string
 }
 
@@ -62,6 +63,8 @@ export interface TacheTemplate {
   heure_fin: string | null
   contrainte_externe: string | null
   tache_liee_id: string | null
+  semaine_du_mois: number[] | null
+  mois_de_annee: number[] | null
   created_at: string
 }
 

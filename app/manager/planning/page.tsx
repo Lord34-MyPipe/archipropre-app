@@ -1,11 +1,27 @@
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
+
+const STATUT_BG: Record<string, string> = {
+  planifiee:    'bg-blue-100 text-blue-700 border border-blue-200',
+  en_cours:     'bg-amber-100 text-amber-700 border border-amber-200',
+  terminee:     'bg-green-100 text-green-700 border border-green-200',
+  non_demarree: 'bg-red-100 text-red-700 border border-red-200',
+}
+const STATUT_LABEL: Record<string, string> = {
+  planifiee: 'Planifiée', en_cours: 'En cours', terminee: 'Terminée', non_demarree: 'En retard',
+}
+const RECURRENCE_LABEL: Record<string, string> = {
+  hebdo: '↻', bihebdo: '↻↻', mensuelle: '📅', ponctuelle: '',
+}
+const JOURS = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim']
 
 export default async function ManagerPlanning() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  // Semaine courante (lundi → dimanche)
   const lundi = new Date()
   lundi.setDate(lundi.getDate() - ((lundi.getDay() + 6) % 7))
   const semaine = Array.from({ length: 7 }, (_, i) => {
@@ -13,91 +29,319 @@ export default async function ManagerPlanning() {
     d.setDate(lundi.getDate() + i)
     return d
   })
-
-  const { data: agents } = await supabase
-    .from('profiles').select('id,nom,prenom').eq('manager_id', user.id).eq('actif', true)
-
-  const agentIds = (agents ?? []).map(a => a.id)
   const debut = semaine[0].toISOString().split('T')[0]
   const fin   = semaine[6].toISOString().split('T')[0]
 
-  const { data: inters } = await supabase
-    .from('interventions')
-    .select('*, residences(nom)')
-    .in('agent_id', agentIds.length ? agentIds : ['00000000-0000-0000-0000-000000000000'])
-    .gte('date_prevue', debut)
-    .lte('date_prevue', fin)
+  const { data: agents } = await supabase
+    .from('profiles').select('id,nom,prenom')
+    .eq('manager_id', user.id).eq('actif', true).order('nom')
 
-  const JOURS = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim']
-  const STATUT_BG: Record<string,string> = {
-    planifiee:'bg-blue-100 text-blue-700', en_cours:'bg-amber-100 text-amber-700',
-    terminee:'bg-green-100 text-green-700', non_demarree:'bg-red-100 text-red-700',
-  }
+  const agentIds = (agents ?? []).map(a => a.id)
+  const ids = agentIds.length ? agentIds : ['00000000-0000-0000-0000-000000000000']
+
+  // Planning IDs publiés de ce manager
+  const { data: mgPlannings } = await supabase
+    .from('plannings').select('id').eq('manager_id', user.id).eq('statut', 'publie')
+  const planningIds = (mgPlannings ?? []).map(p => p.id)
+
+  // Interventions réelles (scannées / en cours / terminées)
+  const [{ data: intersRaw }, planifieesResult] = await Promise.all([
+    supabase.from('interventions')
+      .select('id, agent_id, date_prevue, heure_debut_prevue, statut, residences(nom)')
+      .in('agent_id', ids)
+      .gte('date_prevue', debut).lte('date_prevue', fin)
+      .order('heure_debut_prevue'),
+
+    planningIds.length > 0
+      ? supabase.from('interventions_planifiees')
+          .select('id, agent_id, date, heure_debut, heure_fin, recurrence, residence_id, residences(nom)')
+          .in('planning_id', planningIds)
+          .in('agent_id', ids)
+          .gte('date', debut).lte('date', fin)
+          .order('heure_debut')
+      : Promise.resolve({ data: [] as unknown as null, error: null }),
+  ])
+
+  const inters = intersRaw ?? []
+
+  // Déduplication interventions_planifiees (plusieurs générations possible)
+  const seen = new Set<string>()
+  const planifiees = (planifieesResult.data ?? []).filter(p => {
+    const key = `${p.agent_id}|${p.date}|${p.residence_id}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+
+  // Masquer les planifiées si une intervention réelle existe déjà pour (agent, date, residence)
+  const realKeys = new Set(inters.map(i => `${i.agent_id}|${i.date_prevue}|${(i as { residence_id?: string }).residence_id ?? ''}`))
+  const planifieesFiltered = planifiees.filter(p => !realKeys.has(`${p.agent_id}|${p.date}|${p.residence_id}`))
+
+  const totalReal     = inters.length
+  const totalPlanifie = planifieesFiltered.length
+  const totalSemaine  = totalReal + totalPlanifie
 
   return (
     <div className="min-h-screen bg-slate-100">
+      {/* Header */}
       <div className="bg-[#0A2E5A] text-white px-6 py-6 md:px-8">
-        <h1 className="text-2xl font-bold">Planning de la semaine</h1>
-        <p className="text-blue-300 text-sm mt-1">
-          {semaine[0].toLocaleDateString('fr-FR',{day:'numeric',month:'long'})} –{' '}
-          {semaine[6].toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})}
-        </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Planning de la semaine</h1>
+            <p className="text-blue-300 text-sm mt-1">
+              {semaine[0].toLocaleDateString('fr-FR',{day:'numeric',month:'long'})} –{' '}
+              {semaine[6].toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})}
+            </p>
+          </div>
+          <div className="text-right shrink-0">
+            <p className="text-3xl font-bold">{totalSemaine}</p>
+            <p className="text-blue-300 text-xs">interventions</p>
+          </div>
+        </div>
+
+        {/* Légende */}
+        <div className="flex gap-3 mt-4 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-sm bg-blue-400"/>
+            <span className="text-xs text-blue-200">Planifiée ({totalReal})</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-sm bg-[#0BBFBF]"/>
+            <span className="text-xs text-blue-200">Planning généré ({totalPlanifie})</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-sm bg-green-400"/>
+            <span className="text-xs text-blue-200">Terminée</span>
+          </div>
+        </div>
       </div>
 
-      <div className="p-4 md:p-8 pb-24 md:pb-8">
-        {/* Grille semaine */}
-        <div className="bg-white rounded-2xl border border-slate-100 overflow-x-auto">
-          <table className="w-full min-w-[640px]">
-            <thead>
-              <tr className="border-b border-slate-100">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 w-32">Agent</th>
-                {semaine.map((d, i) => {
-                  const isToday = d.toISOString().split('T')[0] === new Date().toISOString().split('T')[0]
-                  return (
-                    <th key={i} className={`px-2 py-3 text-center text-xs font-semibold w-24 ${isToday ? 'text-[#1A5FA8]' : 'text-slate-500'}`}>
-                      <div>{JOURS[i]}</div>
-                      <div className={`text-base font-bold mt-0.5 ${isToday ? 'w-7 h-7 rounded-full bg-[#1A5FA8] text-white flex items-center justify-center mx-auto' : 'text-slate-800'}`}>
-                        {d.getDate()}
-                      </div>
-                    </th>
-                  )
-                })}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {(agents ?? []).map(agent => (
-                <tr key={agent.id}>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-[#1A5FA8] flex items-center justify-center text-white text-xs font-bold shrink-0">
-                        {agent.prenom[0]}{agent.nom[0]}
-                      </div>
-                      <span className="text-sm font-medium text-slate-700 truncate">{agent.prenom}</span>
-                    </div>
-                  </td>
-                  {semaine.map((d, j) => {
+      <div className="p-4 md:p-8 pb-24 md:pb-8 space-y-4">
+
+        {totalSemaine === 0 && (
+          <div className="bg-white rounded-2xl border border-slate-100 p-10 text-center">
+            <p className="text-4xl mb-3">📅</p>
+            <p className="text-slate-600 font-medium">Aucune intervention cette semaine</p>
+            <p className="text-slate-400 text-sm mt-1">
+              Allez dans une résidence → ⚙️ → Créer un contrat → Générer le planning
+            </p>
+            <Link href="/manager/residences"
+              className="inline-block mt-4 px-4 py-2 rounded-xl text-sm font-semibold text-white"
+              style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}>
+              Gérer les résidences →
+            </Link>
+          </div>
+        )}
+
+        {/* Grille hebdomadaire */}
+        {totalSemaine > 0 && (
+          <div className="bg-white rounded-2xl border border-slate-100 overflow-x-auto">
+            <table className="w-full min-w-[640px]">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 w-32 sticky left-0 bg-white">
+                    Agent
+                  </th>
+                  {semaine.map((d, i) => {
                     const dateStr = d.toISOString().split('T')[0]
-                    const dayInters = (inters ?? []).filter(i => i.agent_id === agent.id && i.date_prevue === dateStr)
+                    const isToday = dateStr === new Date().toISOString().split('T')[0]
                     return (
-                      <td key={j} className="px-1 py-2 align-top">
-                        <div className="space-y-1">
-                          {dayInters.map(i => (
-                            <div key={i.id} className={`px-1.5 py-1 rounded-lg text-[10px] font-medium truncate ${STATUT_BG[i.statut] ?? 'bg-slate-100 text-slate-600'}`}>
-                              {(i as { residences?: { nom?: string } }).residences?.nom ?? '—'}
-                            </div>
-                          ))}
+                      <th key={i} className={`px-2 py-3 text-center text-xs font-semibold w-24 ${isToday ? 'text-[#1A5FA8]' : 'text-slate-500'}`}>
+                        <div>{JOURS[i]}</div>
+                        <div className={`text-base font-bold mt-0.5 ${
+                          isToday
+                            ? 'w-7 h-7 rounded-full bg-[#1A5FA8] text-white flex items-center justify-center mx-auto'
+                            : 'text-slate-800'
+                        }`}>
+                          {d.getDate()}
                         </div>
-                      </td>
+                      </th>
                     )
                   })}
                 </tr>
-              ))}
-              {!agents?.length && (
-                <tr><td colSpan={8} className="px-5 py-8 text-center text-slate-400 text-sm">Aucun agent dans votre équipe.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {(agents ?? []).map(agent => {
+                  const hasAnything = semaine.some(d => {
+                    const ds = d.toISOString().split('T')[0]
+                    return inters.some(i => i.agent_id === agent.id && i.date_prevue === ds)
+                        || planifieesFiltered.some(p => p.agent_id === agent.id && p.date === ds)
+                  })
+                  if (!hasAnything) return null
+
+                  return (
+                    <tr key={agent.id}>
+                      <td className="px-4 py-3 sticky left-0 bg-white border-r border-slate-50">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-[#1A5FA8] flex items-center justify-center text-white text-xs font-bold shrink-0">
+                            {agent.prenom[0]}{agent.nom[0]}
+                          </div>
+                          <span className="text-sm font-medium text-slate-700 truncate">
+                            {agent.prenom}
+                          </span>
+                        </div>
+                      </td>
+                      {semaine.map((d, j) => {
+                        const dateStr = d.toISOString().split('T')[0]
+                        const dayInters    = inters.filter(i => i.agent_id === agent.id && i.date_prevue === dateStr)
+                        const dayPlanifie  = planifieesFiltered.filter(p => p.agent_id === agent.id && p.date === dateStr)
+                        return (
+                          <td key={j} className="px-1 py-2 align-top min-w-[80px]">
+                            <div className="space-y-1">
+                              {/* Interventions réelles */}
+                              {dayInters.map(i => (
+                                <div key={i.id}
+                                  className={`px-1.5 py-1.5 rounded-lg text-[10px] font-medium leading-tight ${STATUT_BG[i.statut] ?? 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                                  <div className="truncate font-semibold">
+                                    {(i as { residences?: { nom?: string } }).residences?.nom ?? '—'}
+                                  </div>
+                                  {i.heure_debut_prevue && (
+                                    <div className="text-[9px] opacity-70 mt-0.5">
+                                      {i.heure_debut_prevue.slice(0,5)}
+                                    </div>
+                                  )}
+                                  <div className="text-[9px] opacity-60 mt-0.5">
+                                    {STATUT_LABEL[i.statut] ?? i.statut}
+                                  </div>
+                                </div>
+                              ))}
+                              {/* Interventions planifiées (planning généré) */}
+                              {dayPlanifie.map(p => (
+                                <div key={p.id}
+                                  className="px-1.5 py-1.5 rounded-lg text-[10px] font-medium leading-tight bg-[#0BBFBF]/10 text-[#0A5F5F] border border-[#0BBFBF]/30">
+                                  <div className="truncate font-semibold">
+                                    {(p as { residences?: { nom?: string } }).residences?.nom ?? '—'}
+                                  </div>
+                                  {p.heure_debut && (
+                                    <div className="text-[9px] opacity-70 mt-0.5">
+                                      {String(p.heure_debut).slice(0,5)}
+                                    </div>
+                                  )}
+                                  <div className="text-[9px] opacity-60 mt-0.5 flex items-center gap-0.5">
+                                    <span>📅</span>
+                                    <span>{RECURRENCE_LABEL[p.recurrence] ?? ''} Planifié</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  )
+                })}
+                {/* Agents sans intervention cette semaine — ligne vide */}
+                {(agents ?? []).filter(agent =>
+                  !semaine.some(d => {
+                    const ds = d.toISOString().split('T')[0]
+                    return inters.some(i => i.agent_id === agent.id && i.date_prevue === ds)
+                        || planifieesFiltered.some(p => p.agent_id === agent.id && p.date === ds)
+                  })
+                ).map(agent => (
+                  <tr key={`empty-${agent.id}`}>
+                    <td className="px-4 py-3 sticky left-0 bg-white border-r border-slate-50">
+                      <div className="flex items-center gap-2 opacity-40">
+                        <div className="w-7 h-7 rounded-full bg-slate-300 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                          {agent.prenom[0]}{agent.nom[0]}
+                        </div>
+                        <span className="text-sm font-medium text-slate-500 truncate">{agent.prenom}</span>
+                      </div>
+                    </td>
+                    {semaine.map((_, j) => (
+                      <td key={j} className="px-1 py-3">
+                        <div className="h-4 flex items-center justify-center">
+                          <div className="w-1 h-1 rounded-full bg-slate-200"/>
+                        </div>
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+
+                {!agents?.length && (
+                  <tr>
+                    <td colSpan={8} className="px-5 py-8 text-center text-slate-400 text-sm">
+                      Aucun agent dans votre équipe.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Liste détaillée */}
+        {totalSemaine > 0 && (
+          <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100">
+              <h2 className="font-semibold text-slate-800">Détail de la semaine</h2>
+            </div>
+            <div className="divide-y divide-slate-50">
+              {semaine.map(d => {
+                const dateStr = d.toISOString().split('T')[0]
+                const dayInters   = inters.filter(i => i.date_prevue === dateStr)
+                const dayPlanifie = planifieesFiltered.filter(p => p.date === dateStr)
+                if (!dayInters.length && !dayPlanifie.length) return null
+                return (
+                  <div key={dateStr}>
+                    <div className="px-5 py-2.5 bg-slate-50 flex items-center gap-2">
+                      <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                        {d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}
+                      </p>
+                      <span className="px-2 py-0.5 bg-white border border-slate-200 rounded-full text-xs text-slate-500 font-medium">
+                        {dayInters.length + dayPlanifie.length} intervention{dayInters.length + dayPlanifie.length > 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    {dayInters.map(i => {
+                      const agent = (agents ?? []).find(a => a.id === i.agent_id)
+                      return (
+                        <div key={i.id} className="px-5 py-3 flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-[#1A5FA8] flex items-center justify-center text-white text-xs font-bold shrink-0">
+                            {agent ? agent.prenom[0] + agent.nom[0] : '?'}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-slate-800 truncate">
+                              {(i as { residences?: { nom?: string } }).residences?.nom ?? '—'}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {agent ? `${agent.prenom} ${agent.nom}` : ''}
+                              {i.heure_debut_prevue ? ` · ${i.heure_debut_prevue.slice(0,5)}` : ''}
+                            </p>
+                          </div>
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 ${STATUT_BG[i.statut] ?? 'bg-slate-100 text-slate-600'}`}>
+                            {STATUT_LABEL[i.statut] ?? i.statut}
+                          </span>
+                        </div>
+                      )
+                    })}
+                    {dayPlanifie.map(p => {
+                      const agent = (agents ?? []).find(a => a.id === p.agent_id)
+                      return (
+                        <div key={p.id} className="px-5 py-3 flex items-center gap-3 bg-[#0BBFBF]/5">
+                          <div className="w-8 h-8 rounded-full bg-[#0BBFBF] flex items-center justify-center text-white text-xs font-bold shrink-0">
+                            {agent ? agent.prenom[0] + agent.nom[0] : '📅'}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-slate-800 truncate">
+                              {(p as { residences?: { nom?: string } }).residences?.nom ?? '—'}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {agent ? `${agent.prenom} ${agent.nom}` : ''}
+                              {p.heure_debut ? ` · ${String(p.heure_debut).slice(0,5)}` : ''}
+                              {` · ${RECURRENCE_LABEL[p.recurrence] ?? ''} ${p.recurrence ?? ''}`}
+                            </p>
+                          </div>
+                          <span className="px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 bg-[#0BBFBF]/20 text-[#0A6060] border border-[#0BBFBF]/30">
+                            📅 Planifié
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -147,6 +147,13 @@ export async function POST(req: NextRequest) {
   })
 
   console.log('[generer] joursHebdo:', [...joursHebdo], '| joursContrainteSeul:', [...joursContrainteSeul])
+  console.log('[generer] taches raw:', taches.map(t => ({
+    libelle: t.libelle,
+    frequence_type: t.frequence_type,
+    jours_semaine: t.jours_semaine,
+    heure_debut: t.heure_debut,
+    heure_fin: t.heure_fin,
+  })))
 
   // Parcourir les dates
   type InterventionGenerated = {
@@ -186,6 +193,9 @@ export async function POST(req: NextRequest) {
           hDebutFinal  = ctTask?.heure_debut ?? heureDebut
           hFinFinal    = ctTask?.heure_fin   ?? heureFin
           typePrincipal = 'contrainte_horaire'
+          console.log(`[generer] ${dateStr} (${dayName}) !isHebdoDay — ctTask:`, ctTask
+            ? { libelle: ctTask.libelle, heure_debut: ctTask.heure_debut, heure_fin: ctTask.heure_fin }
+            : 'INTROUVABLE', '→ hDebutFinal:', hDebutFinal, 'hFinFinal:', hFinFinal)
         } else {
           // Jour hebdo : horaires du contrat (ou de la tâche si tout est contrainte_horaire)
           const hasNonCH = matching.some(t => t.frequence_type !== 'contrainte_horaire')
@@ -201,6 +211,9 @@ export async function POST(req: NextRequest) {
             : types.includes('semestriel')  ? 'semestriel'
             : types.includes('annuel')      ? 'annuel'
             : 'contrainte_horaire'
+          console.log(`[generer] ${dateStr} (${dayName}) isHebdoDay — hasNonCH:`, hasNonCH,
+            '→ hDebutFinal:', hDebutFinal, 'hFinFinal:', hFinFinal,
+            '| matching:', matching.map(t => ({ libelle: t.libelle, type: t.frequence_type, hd: t.heure_debut, hf: t.heure_fin })))
         }
 
         generated.push({

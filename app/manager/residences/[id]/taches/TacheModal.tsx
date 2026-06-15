@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import type { ZoneResidence, TacheTemplate, FrequenceType } from '@/lib/types'
 
 /* ── Constantes ──────────────────────────────── */
@@ -13,6 +13,15 @@ const JOUR_COURTS: Record<string,string> = {
 const MOIS_NOMS = ['Janvier','Février','Mars','Avril','Mai','Juin',
                    'Juillet','Août','Septembre','Octobre','Novembre','Décembre']
 const MOIS_COURTS = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc']
+
+const DUREE_PRESETS = [
+  { label: '2min',  value: 2 },
+  { label: '5min',  value: 5 },
+  { label: '10min', value: 10 },
+  { label: '15min', value: 15 },
+  { label: '30min', value: 30 },
+  { label: '1h',    value: 60 },
+]
 
 const TRIMESTRE_MOIS: Record<number, number[]> = {
   0: [1,4,7,10],
@@ -51,6 +60,7 @@ interface FormState {
   heureFin: string
   contrainteExterne: string
   tacheLieeId: string
+  dureeMinutes: number
 }
 
 function defaultForm(initialZoneId = '', tache?: TacheTemplate | null): FormState {
@@ -59,7 +69,7 @@ function defaultForm(initialZoneId = '', tache?: TacheTemplate | null): FormStat
     libelle: '', frequenceType: 'hebdo',
     joursSemaine: [], jourSemaineMensuel: 'lundi',
     semaineDuMois: 1, trimestreOffset: 0, semestreOffset: 0, moisAnnuel: 1,
-    heureDebut: '', heureFin: '', contrainteExterne: '', tacheLieeId: '',
+    heureDebut: '', heureFin: '', contrainteExterne: '', tacheLieeId: '', dureeMinutes: 0,
   }
 
   // Reverse-engineer from tache
@@ -99,6 +109,7 @@ function defaultForm(initialZoneId = '', tache?: TacheTemplate | null): FormStat
     heureFin:   tache.heure_fin ?? '',
     contrainteExterne: tache.contrainte_externe ?? '',
     tacheLieeId: tache.tache_liee_id ?? '',
+    dureeMinutes: tache.duree_minutes ?? 0,
   }
 }
 
@@ -132,6 +143,7 @@ function buildPayload(f: FormState, residenceId: string) {
     heureFin:           f.frequenceType === 'contrainte_horaire' ? f.heureFin   : null,
     contrainteExterne:  f.frequenceType === 'contrainte_horaire' ? f.contrainteExterne : null,
     tacheLieeId:        f.tacheLieeId || null,
+    dureeMinutes:       f.dureeMinutes || 0,
   }
 }
 
@@ -473,6 +485,39 @@ export default function TacheModal({
               <p className="text-sm text-[#0A2E5A]">→ {summary}</p>
             </div>
           )}
+
+          {/* Durée estimée */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Durée estimée</label>
+            <div className="flex flex-wrap gap-2 items-center">
+              {DUREE_PRESETS.map(p => (
+                <button key={p.value} type="button"
+                  onClick={() => setForm(f => ({ ...f, dureeMinutes: p.value }))}
+                  className={`px-3 py-1.5 rounded-xl text-sm font-semibold transition-all ${
+                    form.dureeMinutes === p.value
+                      ? 'bg-[#0A2E5A] text-white'
+                      : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="number" min="1" max="480"
+                  value={form.dureeMinutes > 0 && !DUREE_PRESETS.some(p => p.value === form.dureeMinutes) ? form.dureeMinutes : ''}
+                  onChange={e => setForm(f => ({ ...f, dureeMinutes: parseInt(e.target.value) || 0 }))}
+                  placeholder="min"
+                  className="w-16 px-2.5 py-1.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#0BBFBF]"
+                />
+                {form.dureeMinutes > 0 && (
+                  <span className="text-xs text-[#0BBFBF] font-semibold">
+                    {form.dureeMinutes < 60 ? `${form.dureeMinutes}min` : `${Math.floor(form.dureeMinutes/60)}h${form.dureeMinutes%60>0?String(form.dureeMinutes%60).padStart(2,'0'):''}`}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
 
           {/* Tâche liée */}
           {taches.length > 0 && (

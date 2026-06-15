@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import type { Residence, ZoneResidence, TacheTemplate } from '@/lib/types'
 import TacheModal from './TacheModal'
@@ -76,6 +76,25 @@ function ZoneRenameInput({ initial, onSave, onCancel }: { initial: string; onSav
       <button onClick={onCancel} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs">✕</button>
     </div>
   )
+}
+
+/* ── Durée helpers ────────────────────────────── */
+
+const DUREE_PRESETS = [
+  { label: '2min',  value: 2 },
+  { label: '5min',  value: 5 },
+  { label: '10min', value: 10 },
+  { label: '15min', value: 15 },
+  { label: '30min', value: 30 },
+  { label: '1h',    value: 60 },
+]
+
+function formatDuree(minutes: number): string {
+  if (minutes <= 0) return '—'
+  if (minutes < 60) return `${minutes}min`
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, '0')}`
 }
 
 /* ── Props ───────────────────────────────────── */
@@ -169,13 +188,36 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
   }
 
   function onTacheSaved(tache: TacheTemplate, isNew: boolean) {
-    if (isNew) {
-      setTaches(ts => [...ts, tache])
-    } else {
-      setTaches(ts => ts.map(t => t.id === tache.id ? tache : t))
-    }
+    setTaches(ts => isNew ? [...ts, tache] : ts.map(t => t.id === tache.id ? tache : t))
     closeModal()
     showToast(isNew ? 'Tâche ajoutée' : 'Tâche modifiée')
+  }
+
+  /* ── Durée auto-save ── */
+
+  async function handleDurationChange(tacheId: string, minutes: number) {
+    // Optimistic update
+    setTaches(ts => ts.map(t => t.id === tacheId ? { ...t, duree_minutes: minutes } : t))
+    const res = await fetch('/api/taches-template', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: tacheId, dureeMinutes: minutes }),
+    })
+    if (!res.ok) {
+      showToast('Erreur enregistrement durée', 'error')
+      return
+    }
+    showToast('✓ Durée enregistrée')
+    // Recalcule et met à jour duree_estimee_min sur la résidence
+    setTaches(prev => {
+      const total = prev.reduce((s, t) => s + (t.id === tacheId ? minutes : (t.duree_minutes ?? 0)), 0)
+      fetch('/api/residences/duree', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ residenceId: residence.id, dureeEstimeeMin: total }),
+      }).catch(() => null)
+      return prev
+    })
   }
 
   function onZoneCreated(zone: ZoneResidence) {
@@ -220,6 +262,19 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
     taches.filter(t => (zoneId === null ? !t.zone_id : t.zone_id === zoneId))
 
   const unzonedTaches = tachesByZone(null)
+
+  /* ── Totaux durée ── */
+
+  const dureTotaux = useMemo(() => {
+    const total = taches.reduce((s, t) => s + (t.duree_minutes ?? 0), 0)
+    const byFreq: Record<string, number> = {}
+    taches.forEach(t => {
+      const ft = t.frequence_type
+      byFreq[ft] = (byFreq[ft] ?? 0) + (t.duree_minutes ?? 0)
+    })
+    const incomplete = taches.some(t => !t.duree_minutes)
+    return { total, byFreq, incomplete }
+  }, [taches])
 
   /* ── Render ── */
 
@@ -309,12 +364,23 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
                         onSave={nom => handleRenameZone(zone.id, nom)}
                         onCancel={() => setRenaming(null)}
                       />
-                    ) : (
-                      <>
-                        <h2 className="font-semibold text-slate-800 flex-1">{zone.nom}</h2>
-                        <span className="text-xs text-slate-400">{zoneTaches.length} tâche{zoneTaches.length > 1 ? 's' : ''}</span>
-                      </>
-                    )}
+                    ) : (() => {
+                      const zTotal = zoneTaches.reduce((s, t) => s + (t.duree_minutes ?? 0), 0)
+                      const zIncomplete = zoneTaches.some(t => !t.duree_minutes)
+                      return (
+                        <>
+                          <h2 className="font-semibold text-slate-800 flex-1">{zone.nom}</h2>
+                          <span className="text-xs text-slate-400 shrink-0">
+                            {zoneTaches.length} tâche{zoneTaches.length > 1 ? 's' : ''}
+                          </span>
+                          {zTotal > 0 && (
+                            <span className={`text-xs font-semibold shrink-0 flex items-center gap-1 ${zIncomplete ? 'text-amber-500' : 'text-[#0BBFBF]'}`}>
+                              ⏱ {zIncomplete ? '~' : ''}{formatDuree(zTotal)}{zIncomplete ? ' (incomplet)' : ''}
+                            </span>
+                          )}
+                        </>
+                      )
+                    })()}
 
                     {renamingZone !== zone.id && (
                       <div className="flex gap-1 shrink-0" onClick={e => e.stopPropagation()}>
@@ -346,7 +412,7 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
                           <button onClick={() => openModal(zone.id)} className="text-[#1A5FA8] hover:underline font-medium">+ Ajouter</button>
                         </div>
                       ) : (
-                        zoneTaches.map(t => <TacheRow key={t.id} tache={t} onEdit={() => openEdit(t)} onDelete={() => setConfirmDelete({ type: 'tache', id: t.id, label: t.libelle })}/>)
+                        zoneTaches.map(t => <TacheRow key={t.id} tache={t} onEdit={() => openEdit(t)} onDelete={() => setConfirmDelete({ type: 'tache', id: t.id, label: t.libelle })} onDurationChange={handleDurationChange}/>)
                       )}
                     </div>
                   )}
@@ -361,7 +427,7 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
                   <span className="text-slate-400 text-sm italic flex-1">Sans zone ({unzonedTaches.length})</span>
                 </div>
                 <div className="border-t border-slate-100 divide-y divide-slate-50">
-                  {unzonedTaches.map(t => <TacheRow key={t.id} tache={t} onEdit={() => openEdit(t)} onDelete={() => setConfirmDelete({ type: 'tache', id: t.id, label: t.libelle })}/>)}
+                  {unzonedTaches.map(t => <TacheRow key={t.id} tache={t} onEdit={() => openEdit(t)} onDelete={() => setConfirmDelete({ type: 'tache', id: t.id, label: t.libelle })} onDurationChange={handleDurationChange}/>)}
                 </div>
               </div>
             )}
@@ -440,6 +506,30 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
         )}
       </div>
 
+      {/* ── Bandeau durée totale ── */}
+      {taches.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#0A2E5A] text-white px-5 py-3 shadow-2xl">
+          <div className="max-w-4xl mx-auto flex flex-col md:flex-row md:items-center gap-1 md:gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-[#0BBFBF] text-lg">⏱</span>
+              <span className="font-bold text-base">
+                {dureTotaux.incomplete ? '~' : ''}{formatDuree(dureTotaux.total)}
+                {dureTotaux.incomplete && <span className="text-amber-400 text-xs font-normal ml-2">(certaines tâches sans durée)</span>}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-3 text-xs text-blue-200">
+              {Object.entries(dureTotaux.byFreq)
+                .filter(([, v]) => v > 0)
+                .map(([ft, v]) => (
+                  <span key={ft}>
+                    {FREQ_BADGE[ft]?.label ?? ft}: <span className="text-white font-semibold">{formatDuree(v)}</span>
+                  </span>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal tâche */}
       {modal.open && (
         <TacheModal
@@ -494,28 +584,92 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
 
 /* ── TacheRow ─────────────────────────────────── */
 
-function TacheRow({ tache: t, onEdit, onDelete }: { tache: TacheTemplate; onEdit: () => void; onDelete: () => void }) {
+function TacheRow({
+  tache: t, onEdit, onDelete, onDurationChange,
+}: {
+  tache: TacheTemplate
+  onEdit: () => void
+  onDelete: () => void
+  onDurationChange: (id: string, minutes: number) => void
+}) {
   const badge = FREQ_BADGE[t.frequence_type]
+  const [showCustom, setShowCustom] = useState(false)
+  const [customVal, setCustomVal]   = useState('')
+  const current = t.duree_minutes ?? 0
+  const isPreset = DUREE_PRESETS.some(p => p.value === current)
+
+  function commitCustom() {
+    const n = parseInt(customVal, 10)
+    if (!isNaN(n) && n > 0) onDurationChange(t.id, n)
+    setShowCustom(false)
+    setCustomVal('')
+  }
+
   return (
-    <div className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50 transition-colors">
-      <div className="flex-1 min-w-0">
-        <p className="text-sm text-slate-800 font-medium truncate">{t.libelle}</p>
-        <p className="text-[11px] text-slate-400 mt-0.5">{freqSummary(t)}</p>
+    <div className="px-5 py-3 hover:bg-slate-50 transition-colors">
+      <div className="flex items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-slate-800 font-medium truncate">{t.libelle}</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">{freqSummary(t)}</p>
+        </div>
+        <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${badge?.bg ?? 'bg-slate-100 text-slate-600'}`}>
+          {badge?.label ?? t.frequence_type}
+        </span>
+        <div className="flex gap-1 shrink-0">
+          <button onClick={onEdit}
+            className="w-7 h-7 rounded-lg bg-blue-50 text-blue-500 flex items-center justify-center hover:bg-blue-100 transition-colors"
+            title="Modifier">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/></svg>
+          </button>
+          <button onClick={onDelete}
+            className="w-7 h-7 rounded-lg bg-slate-100 text-slate-400 flex items-center justify-center hover:bg-red-100 hover:text-red-500 transition-colors"
+            title="Supprimer">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+          </button>
+        </div>
       </div>
-      <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${badge?.bg ?? 'bg-slate-100 text-slate-600'}`}>
-        {badge?.label ?? t.frequence_type}
-      </span>
-      <div className="flex gap-1 shrink-0">
-        <button onClick={onEdit}
-          className="w-7 h-7 rounded-lg bg-blue-50 text-blue-500 flex items-center justify-center hover:bg-blue-100 transition-colors"
-          title="Modifier">
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/></svg>
-        </button>
-        <button onClick={onDelete}
-          className="w-7 h-7 rounded-lg bg-slate-100 text-slate-400 flex items-center justify-center hover:bg-red-100 hover:text-red-500 transition-colors"
-          title="Supprimer">
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
-        </button>
+
+      {/* Pastilles durée */}
+      <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+        {DUREE_PRESETS.map(p => (
+          <button
+            key={p.value}
+            onClick={() => onDurationChange(t.id, p.value)}
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
+              current === p.value
+                ? 'bg-[#0A2E5A] text-white'
+                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+        {/* Valeur perso non-preset */}
+        {current > 0 && !isPreset && (
+          <span className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#0A2E5A] text-white">
+            {formatDuree(current)}
+          </span>
+        )}
+        {showCustom ? (
+          <div className="flex items-center gap-1">
+            <input
+              autoFocus type="number" min="1" max="480" value={customVal}
+              onChange={e => setCustomVal(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') commitCustom(); if (e.key === 'Escape') setShowCustom(false) }}
+              className="w-16 px-2 py-1 rounded-lg border border-[#0BBFBF] text-[11px] focus:outline-none focus:ring-1 focus:ring-[#0BBFBF]"
+              placeholder="min"
+            />
+            <button onClick={commitCustom} className="px-2 py-1 bg-[#0BBFBF] text-white rounded-lg text-[11px] font-semibold">✓</button>
+            <button onClick={() => setShowCustom(false)} className="px-2 py-1 bg-slate-100 text-slate-500 rounded-lg text-[11px]">✕</button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowCustom(true)}
+            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 text-slate-500 hover:bg-slate-200"
+          >
+            +
+          </button>
+        )}
       </div>
     </div>
   )

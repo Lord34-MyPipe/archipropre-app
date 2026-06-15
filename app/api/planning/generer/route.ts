@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
 
   // Ownership
   const { data: res } = await admin.from('residences')
-    .select('id, nom, agent_prefere_id')
+    .select('id, nom, agent_prefere_id, duree_estimee_min')
     .eq('id', residenceId).eq('manager_id', managerId).single()
   if (!res) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
 
@@ -79,8 +79,16 @@ export async function POST(req: NextRequest) {
     .order('created_at', { ascending: false }).limit(1).maybeSingle()
 
   const heureDebut     = contrat?.heure_debut_min ?? '08:00'
-  const heureFin       = contrat?.heure_fin_max   ?? '12:00'
   const joursInterdits: string[] = contrat?.jours_interdits ?? []
+
+  // Calcul heure_fin depuis duree_estimee_min si disponible, sinon depuis le contrat
+  const dureeMin = (res as unknown as { duree_estimee_min?: number }).duree_estimee_min ?? 0
+  let heureFin = contrat?.heure_fin_max ?? '12:00'
+  if (dureeMin > 0) {
+    const [h, m] = heureDebut.split(':').map(Number)
+    const totalMin = h * 60 + m + dureeMin
+    heureFin = `${String(Math.floor(totalMin / 60)).padStart(2, '0')}:${String(totalMin % 60).padStart(2, '0')}`
+  }
 
   // Tâches template (toutes sauf sur_passage)
   const { data: rawTaches } = await admin.from('taches_template')

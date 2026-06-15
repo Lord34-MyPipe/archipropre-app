@@ -85,6 +85,7 @@ export async function PATCH(req: NextRequest) {
   if (fields.heureFin       !== undefined) update.heure_fin          = fields.heureFin || null
   if (fields.contrainteExterne !== undefined) update.contrainte_externe = fields.contrainteExterne || null
   if (fields.tacheLieeId    !== undefined) update.tache_liee_id      = fields.tacheLieeId || null
+  if (fields.dureeMinutes   !== undefined) update.duree_minutes       = fields.dureeMinutes ?? 0
 
   const { error } = await admin.from('taches_template').update(update).eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })

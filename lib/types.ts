@@ -65,6 +65,7 @@ export interface TacheTemplate {
   tache_liee_id: string | null
   semaine_du_mois: number[] | null
   mois_de_annee: number[] | null
+  duree_minutes: number
   created_at: string
 }
 

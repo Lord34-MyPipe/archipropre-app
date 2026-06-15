@@ -92,10 +92,9 @@ const DUREE_PRESETS = [
 
 function formatDuree(minutes: number): string {
   if (minutes <= 0) return '—'
-  if (minutes < 60) return `${minutes}min`
   const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, '0')}`
+  const m = Math.round(minutes % 60)
+  return h > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${m}min`
 }
 
 /* ── Props ───────────────────────────────────── */
@@ -266,17 +265,41 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
 
   const unzonedTaches = tachesByZone(null)
 
-  /* ── Totaux durée ── */
+  /* ── Totaux durée (base annuelle) ── */
 
   const dureTotaux = useMemo(() => {
-    const total = taches.reduce((s, t) => s + (t.duree_minutes ?? 0), 0)
-    const byFreq: Record<string, number> = {}
+    let annuel = 0
+    let incompleteCount = 0
+
     taches.forEach(t => {
+      const d = t.duree_minutes ?? 0
+      if (!d) { incompleteCount++; return }
       const ft = t.frequence_type
-      byFreq[ft] = (byFreq[ft] ?? 0) + (t.duree_minutes ?? 0)
+      const nJours = Math.max((t.jours_semaine ?? []).length, 1)
+
+      switch (ft) {
+        case 'hebdo':
+        case 'contrainte_horaire':
+          annuel += d * 52 * nJours; break
+        case 'mensuel':
+          annuel += d * 12 * Math.max(t.frequence_valeur || 1, 1); break
+        case 'trimestriel':
+          annuel += d * 4; break
+        case 'semestriel':
+          annuel += d * 2; break
+        case 'annuel':
+          annuel += d; break
+        // sur_passage: non comptabilisé
+      }
     })
-    const incomplete = taches.some(t => !t.duree_minutes)
-    return { total, byFreq, incomplete }
+
+    return {
+      annuel,
+      mois: annuel / 12,
+      semaine: annuel / 52,
+      incomplete: incompleteCount > 0,
+      incompleteCount,
+    }
   }, [taches])
 
   /* ── Render ── */
@@ -511,57 +534,59 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
 
       {/* ── Bandeau durée + rentabilité ── */}
       {taches.length > 0 && (() => {
-        // Calcul rentabilité
-        let rentabilite: { heuresMois: number; coutReel: number; marge: number; pct: number } | null = null
-        if (parametres && contrat?.montant_mensuel && contrat.nb_interventions_mois && dureTotaux.total > 0) {
-          const heuresMois = (contrat.nb_interventions_mois * dureTotaux.total) / 60
+        // Rentabilité
+        let rent: { heuresMois: number; tauxVendu: number; coutReel: number; marge: number; pct: number } | null = null
+        if (parametres && contrat?.montant_mensuel && dureTotaux.mois > 0) {
+          const heuresMois = dureTotaux.mois / 60
           const coutReel   = parametres.taux_horaire_agent * heuresMois + parametres.frais_generaux_mois
           const marge      = contrat.montant_mensuel - coutReel
           const pct        = (marge / contrat.montant_mensuel) * 100
-          rentabilite = { heuresMois, coutReel, marge, pct }
+          const tauxVendu  = contrat.montant_mensuel / heuresMois
+          rent = { heuresMois, tauxVendu, coutReel, marge, pct }
         }
-        const margeColor = rentabilite
-          ? rentabilite.pct >= 40 ? '#4ade80'
-          : rentabilite.pct >= 30 ? '#60a5fa'
-          : rentabilite.pct >= 20 ? '#fb923c'
-          : '#f87171'
+        const mc = rent
+          ? rent.pct >= 40 ? '#4ade80' : rent.pct >= 30 ? '#60a5fa' : rent.pct >= 20 ? '#fb923c' : '#f87171'
           : null
 
         return (
           <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#0A2E5A] text-white shadow-2xl">
-            {/* Ligne durée */}
-            <div className="px-5 py-2.5 flex flex-col md:flex-row md:items-center gap-1 md:gap-4 border-b border-white/10">
-              <div className="flex items-center gap-2">
-                <span className="text-[#0BBFBF]">⏱</span>
-                <span className="font-bold">
-                  {dureTotaux.incomplete ? '~' : ''}{formatDuree(dureTotaux.total)}
-                  {dureTotaux.incomplete && <span className="text-amber-400 text-xs font-normal ml-2">(certaines tâches sans durée)</span>}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-3 text-xs text-blue-200">
-                {Object.entries(dureTotaux.byFreq)
-                  .filter(([, v]) => v > 0)
-                  .map(([ft, v]) => (
-                    <span key={ft}>
-                      {FREQ_BADGE[ft]?.label ?? ft}: <span className="text-white font-semibold">{formatDuree(v)}</span>
-                    </span>
-                  ))}
-              </div>
+            {/* Ligne 1 : volumes temps */}
+            <div className="px-5 py-2 border-b border-white/10 flex flex-wrap items-center gap-1 md:gap-6 text-sm">
+              <span className="text-[#0BBFBF] font-semibold">⏱</span>
+              <span className="text-blue-300">Par an :</span>
+              <span className="font-bold">{dureTotaux.incomplete ? '~' : ''}{formatDuree(dureTotaux.annuel)}</span>
+              <span className="text-white/20 hidden md:inline">|</span>
+              <span className="text-blue-300">Par mois :</span>
+              <span className="font-bold">{dureTotaux.incomplete ? '~' : ''}{formatDuree(dureTotaux.mois)}</span>
+              <span className="text-white/20 hidden md:inline">|</span>
+              <span className="text-blue-300">Par semaine :</span>
+              <span className="font-bold">{dureTotaux.incomplete ? '~' : ''}{formatDuree(dureTotaux.semaine)}</span>
+              {dureTotaux.incomplete && (
+                <span className="text-amber-400 text-xs ml-2">⚠️ {dureTotaux.incompleteCount} tâche{dureTotaux.incompleteCount > 1 ? 's' : ''} sans durée — total incomplet</span>
+              )}
             </div>
-            {/* Ligne rentabilité */}
-            <div className="px-5 py-2 flex flex-wrap items-center gap-4 text-xs">
-              {rentabilite && contrat ? (
+            {/* Ligne 2 : rentabilité */}
+            <div className="px-5 py-2 flex flex-wrap items-center gap-1 md:gap-5 text-xs">
+              {rent && contrat ? (
                 <>
-                  <span className="text-blue-300">💰 Contrat : <span className="text-white font-semibold">{contrat.montant_mensuel?.toLocaleString('fr-FR')} €/mois</span></span>
-                  <span className="text-blue-300">📊 Coût réel : <span className="text-white font-semibold">{rentabilite.coutReel.toFixed(0)} €</span></span>
-                  <span style={{ color: margeColor ?? 'white' }} className="font-bold">
-                    Marge : {rentabilite.marge >= 0 ? '+' : ''}{rentabilite.marge.toFixed(0)} € ({rentabilite.pct.toFixed(1)} %)
+                  <span className="text-blue-300">💰 Contrat :</span>
+                  <span className="font-semibold">{contrat.montant_mensuel?.toLocaleString('fr-FR')} €/mois → {((contrat.montant_mensuel ?? 0) * 12).toLocaleString('fr-FR')} €/an</span>
+                  <span className="text-white/20 hidden md:inline">|</span>
+                  <span className="text-blue-300">Taux vendu :</span>
+                  <span className="font-semibold">{rent.tauxVendu.toFixed(2)} €/h</span>
+                  <span className="text-white/20 hidden md:inline">|</span>
+                  <span className="text-blue-300">Coût réel :</span>
+                  <span className="font-semibold">{rent.coutReel.toFixed(0)} €/mois</span>
+                  <span className="text-white/20 hidden md:inline">|</span>
+                  <span className="text-blue-300">Marge :</span>
+                  <span className="font-bold" style={{ color: mc ?? 'white' }}>
+                    {rent.pct.toFixed(1)} % ({rent.marge >= 0 ? '+' : ''}{rent.marge.toFixed(0)} €)
                   </span>
                 </>
               ) : contrat && !parametres ? (
                 <span className="text-amber-400">⚙️ Taux horaire non configuré — demandez au directeur</span>
               ) : !contrat ? (
-                <span className="text-blue-300/60">Aucun contrat actif pour cette résidence</span>
+                <span className="text-blue-300/50">Aucun contrat actif pour cette résidence</span>
               ) : (
                 <span className="text-amber-400">⏱ Renseignez les durées de tâches pour calculer la rentabilité</span>
               )}

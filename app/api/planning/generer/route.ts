@@ -11,6 +11,10 @@ async function getManagerId(): Promise<string | null> {
 
 const DAY_NAMES = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi']
 
+/** Normalise "18:00:00" → "18:00", garde null si null */
+const normalizeTime = (t: string | null | undefined): string | null =>
+  t ? t.substring(0, 5) : null
+
 interface TacheRow {
   id: string
   libelle: string
@@ -87,8 +91,8 @@ export async function POST(req: NextRequest) {
     .eq('residence_id', residenceId).eq('actif', true)
     .order('created_at', { ascending: false }).limit(1).maybeSingle()
 
-  const heureDebut: string    = contrat?.heure_debut_min ?? '08:00'
-  const heureFinContrat: string = contrat?.heure_fin_max ?? '12:00'
+  const heureDebut: string    = normalizeTime(contrat?.heure_debut_min) ?? '08:00'
+  const heureFinContrat: string = normalizeTime(contrat?.heure_fin_max) ?? '12:00'
   const joursInterdits: string[] = contrat?.jours_interdits ?? []
   const dureeEstimeeFallback: number =
     (res as unknown as { duree_estimee_min?: number }).duree_estimee_min ?? 0
@@ -125,8 +129,8 @@ export async function POST(req: NextRequest) {
     jours_semaine: t.jours_semaine ?? [],
     semaine_du_mois: t.semaine_du_mois,
     mois_de_annee: t.mois_de_annee,
-    heure_debut: t.heure_debut ? String(t.heure_debut).slice(0, 5) : null,
-    heure_fin:   t.heure_fin   ? String(t.heure_fin).slice(0, 5)   : null,
+    heure_debut: normalizeTime(t.heure_debut),
+    heure_fin:   normalizeTime(t.heure_fin),
     duree_minutes: t.duree_minutes ?? null,
     zone_nom: Array.isArray(t.zones_residence)
       ? (t.zones_residence[0]?.nom ?? null)

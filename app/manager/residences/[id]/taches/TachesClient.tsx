@@ -535,53 +535,85 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
 
       {/* ── Bandeau durée + rentabilité ── */}
       {taches.length > 0 && (() => {
-        // Rentabilité
-        let rent: { heuresMois: number; tauxVendu: number; coutReel: number; marge: number; pct: number } | null = null
-        if (parametres && contrat?.montant_mensuel && dureTotaux.mois > 0) {
-          const heuresMois = dureTotaux.mois / 60
-          const coutReel   = parametres.taux_horaire_agent * heuresMois + parametres.frais_generaux_mois
-          const marge      = contrat.montant_mensuel - coutReel
-          const pct        = (marge / contrat.montant_mensuel) * 100
-          const tauxVendu  = contrat.montant_mensuel / heuresMois
-          rent = { heuresMois, tauxVendu, coutReel, marge, pct }
+        const taux = parametres?.taux_horaire_agent ?? 0
+        const ca   = contrat?.montant_mensuel ?? 0
+        const caHebdo = ca * 12 / 52
+        const caAnn   = ca * 12
+
+        // Estimé — formule : minutes / 60 * taux
+        const hmois = dureTotaux.mois / 60
+        const hsem  = dureTotaux.semaine / 60
+        const hann  = dureTotaux.annuel / 60
+        const coutEstimeMois = hmois * taux
+        const coutEstimeSem  = hsem  * taux
+        const coutEstimeAnn  = hann  * taux
+        const margeEstimeMois = ca      - coutEstimeMois
+        const margeEstimeSem  = caHebdo - coutEstimeSem
+        const margeEstimeAnn  = caAnn   - coutEstimeAnn
+        const pctEstime = ca > 0 && taux > 0 ? (margeEstimeMois / ca) * 100 : null
+        const hasEstime = ca > 0 && taux > 0 && dureTotaux.annuel > 0
+
+        // Réel 30j
+        let reel: {
+          hrMois: number; hrSem: number
+          coutMois: number; coutSem: number
+          margeMois: number; margeSem: number
+          pct: number; ecartPct: number | null
+        } | null = null
+        if (statsReel && taux > 0 && ca > 0) {
+          const hrMois = statsReel.totalMin / 60
+          const hrSem  = hrMois * 12 / 52
+          const crMois = hrMois * taux
+          const crSem  = hrSem  * taux
+          const mrMois = ca      - crMois
+          const mrSem  = caHebdo - crSem
+          const prct   = (mrMois / ca) * 100
+          const ecartPct = hmois > 0 ? ((hrMois - hmois) / hmois) * 100 : null
+          reel = { hrMois, hrSem, coutMois: crMois, coutSem: crSem, margeMois: mrMois, margeSem: mrSem, pct: prct, ecartPct }
         }
-        const mc = rent
-          ? rent.pct >= 40 ? '#4ade80' : rent.pct >= 30 ? '#60a5fa' : rent.pct >= 20 ? '#fb923c' : '#f87171'
+
+        const mc = pctEstime !== null
+          ? pctEstime >= 40 ? '#4ade80' : pctEstime >= 30 ? '#60a5fa' : pctEstime >= 20 ? '#fb923c' : '#f87171'
+          : null
+        const mr = reel !== null
+          ? reel.pct >= 40 ? '#4ade80' : reel.pct >= 30 ? '#60a5fa' : reel.pct >= 20 ? '#fb923c' : '#f87171'
           : null
 
+        const fmt = (n: number) => Math.round(n).toLocaleString('fr-FR')
+        const sgn = (n: number) => (n >= 0 ? '+' : '') + fmt(n)
+
         return (
-          <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#0A2E5A] text-white shadow-2xl">
+          <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#0A2E5A] text-white shadow-2xl text-xs">
             {/* Ligne 1 : volumes temps */}
-            <div className="px-5 py-2 border-b border-white/10 flex flex-wrap items-center gap-1 md:gap-6 text-sm">
+            <div className="px-5 py-2 border-b border-white/10 flex flex-wrap items-center gap-1 md:gap-5">
               <span className="text-[#0BBFBF] font-semibold">⏱</span>
               <span className="text-blue-300">Par an :</span>
               <span className="font-bold">{dureTotaux.incomplete ? '~' : ''}{formatDuree(dureTotaux.annuel)}</span>
-              <span className="text-white/20 hidden md:inline">|</span>
+              <span className="text-white/20">|</span>
               <span className="text-blue-300">Par mois :</span>
               <span className="font-bold">{dureTotaux.incomplete ? '~' : ''}{formatDuree(dureTotaux.mois)}</span>
-              <span className="text-white/20 hidden md:inline">|</span>
+              <span className="text-white/20">|</span>
               <span className="text-blue-300">Par semaine :</span>
               <span className="font-bold">{dureTotaux.incomplete ? '~' : ''}{formatDuree(dureTotaux.semaine)}</span>
               {dureTotaux.incomplete && (
-                <span className="text-amber-400 text-xs ml-2">⚠️ {dureTotaux.incompleteCount} tâche{dureTotaux.incompleteCount > 1 ? 's' : ''} sans durée — total incomplet</span>
+                <span className="text-amber-400 ml-2">⚠️ {dureTotaux.incompleteCount} tâche{dureTotaux.incompleteCount > 1 ? 's' : ''} sans durée</span>
               )}
             </div>
-            {/* Ligne 2 : rentabilité estimée */}
-            <div className="px-5 py-2 flex flex-wrap items-center gap-1 md:gap-5 text-xs border-b border-white/10">
-              {rent && contrat ? (
+            {/* Ligne 2 : estimé */}
+            <div className="px-5 py-2 border-b border-white/10 flex flex-wrap items-center gap-1 md:gap-5">
+              {hasEstime ? (
                 <>
-                  <span className="text-blue-300">💰 Contrat :</span>
-                  <span className="font-semibold">{contrat.montant_mensuel?.toLocaleString('fr-FR')} €/mois → {((contrat.montant_mensuel ?? 0) * 12).toLocaleString('fr-FR')} €/an</span>
-                  <span className="text-white/20 hidden md:inline">|</span>
-                  <span className="text-blue-300">Taux vendu :</span>
-                  <span className="font-semibold">{rent.tauxVendu.toFixed(2)} €/h</span>
-                  <span className="text-white/20 hidden md:inline">|</span>
+                  <span className="text-[#0BBFBF]">💰</span>
+                  <span className="text-blue-300">CA :</span>
+                  <span className="font-semibold">{fmt(ca)} €/mois → {fmt(caAnn)} €/an</span>
+                  <span className="text-white/20">|</span>
                   <span className="text-blue-300">Coût estimé :</span>
-                  <span className="font-semibold">{rent.coutReel.toFixed(0)} €/mois</span>
-                  <span className="text-white/20 hidden md:inline">|</span>
+                  <span className="font-semibold">{fmt(coutEstimeMois)} €/mois · {fmt(coutEstimeSem)} €/sem · {fmt(coutEstimeAnn)} €/an</span>
+                  <span className="text-white/20">|</span>
                   <span className="text-blue-300">Marge estimée :</span>
                   <span className="font-bold" style={{ color: mc ?? 'white' }}>
-                    {rent.pct.toFixed(1)} %
+                    {sgn(margeEstimeMois)} €/mois · {sgn(margeEstimeSem)} €/sem · {sgn(margeEstimeAnn)} €/an
+                    {pctEstime !== null ? ` (${pctEstime.toFixed(1)} %)` : ''}
                   </span>
                 </>
               ) : contrat && !parametres ? (
@@ -592,49 +624,35 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
                 <span className="text-amber-400">⏱ Renseignez les durées de tâches pour calculer la rentabilité</span>
               )}
             </div>
-            {/* Ligne 3 : coût réel 30j */}
-            {(() => {
-              if (!statsReel || !parametres || !contrat?.montant_mensuel) {
-                return (
-                  <div className="px-5 py-2 flex items-center gap-2 text-xs text-blue-300/60">
-                    <span>📊</span>
-                    <span>Réel (30j) : aucune donnée — en attente des premières interventions</span>
-                  </div>
-                )
-              }
-              const heuresReel30j = statsReel.totalMin / 60
-              const coutReel30j   = parametres.taux_horaire_agent * heuresReel30j + parametres.frais_generaux_mois
-              const margeReel     = contrat.montant_mensuel - coutReel30j
-              const pctReel       = (margeReel / contrat.montant_mensuel) * 100
-              const heuresEstime  = dureTotaux.mois / 60
-              const ecartPct      = heuresEstime > 0
-                ? ((heuresReel30j - heuresEstime) / heuresEstime) * 100
-                : null
-              const crReel = pctReel >= 40 ? '#4ade80' : pctReel >= 30 ? '#60a5fa' : pctReel >= 20 ? '#fb923c' : '#f87171'
-
-              return (
-                <div className="px-5 py-2 flex flex-wrap items-center gap-1 md:gap-5 text-xs">
+            {/* Ligne 3 : réel 30j */}
+            <div className="px-5 py-2 flex flex-wrap items-center gap-1 md:gap-5">
+              {reel ? (
+                <>
                   <span className="text-[#0BBFBF]">📊</span>
-                  <span className="text-blue-300">Réel ({statsReel.count} interv. 30j) :</span>
-                  <span className="font-semibold">{formatDuree(statsReel.totalMin / statsReel.count)}/intervention</span>
-                  <span className="text-white/20 hidden md:inline">|</span>
+                  <span className="text-blue-300">Temps réel ({statsReel!.count} interv. 30j) :</span>
+                  <span className="font-semibold">{formatDuree(reel.hrMois * 60)}/mois · {formatDuree(reel.hrSem * 60)}/sem</span>
+                  <span className="text-white/20">|</span>
                   <span className="text-blue-300">Coût réel :</span>
-                  <span className="font-semibold">{coutReel30j.toFixed(0)} €/mois</span>
-                  <span className="text-white/20 hidden md:inline">|</span>
+                  <span className="font-semibold">{fmt(reel.coutMois)} €/mois · {fmt(reel.coutSem)} €/sem</span>
+                  <span className="text-white/20">|</span>
                   <span className="text-blue-300">Marge réelle :</span>
-                  <span className="font-bold" style={{ color: crReel }}>{pctReel.toFixed(1)} %</span>
-                  {ecartPct !== null && (
+                  <span className="font-bold" style={{ color: mr ?? 'white' }}>
+                    {sgn(reel.margeMois)} €/mois · {sgn(reel.margeSem)} €/sem ({reel.pct.toFixed(1)} %)
+                  </span>
+                  {reel.ecartPct !== null && (
                     <>
-                      <span className="text-white/20 hidden md:inline">|</span>
-                      <span className={`font-semibold ${Math.abs(ecartPct) > 10 ? (ecartPct > 0 ? 'text-red-400' : 'text-green-400') : 'text-blue-200'}`}>
-                        {ecartPct > 10 ? '⚠️ Sous-chiffré ou agent lent' : ecartPct < -10 ? '✅ Agent efficace' : ''}
-                        {' '}Écart : {ecartPct > 0 ? '+' : ''}{ecartPct.toFixed(1)} % vs estimé
+                      <span className="text-white/20">|</span>
+                      <span className={`font-semibold ${Math.abs(reel.ecartPct) > 10 ? (reel.ecartPct > 0 ? 'text-red-400' : 'text-green-400') : 'text-blue-300'}`}>
+                        Écart : {reel.ecartPct > 0 ? '+' : ''}{reel.ecartPct.toFixed(1)} % vs estimé
+                        {reel.ecartPct > 10 ? ' ⚠️' : reel.ecartPct < -10 ? ' ✅' : ''}
                       </span>
                     </>
                   )}
-                </div>
-              )
-            })()}
+                </>
+              ) : (
+                <span className="text-blue-300/50">📊 Réel : en attente des premières interventions</span>
+              )}
+            </div>
           </div>
         )
       })()}

@@ -55,8 +55,9 @@ export default function PlanningPreviewModal({
   const [removed, setRemoved]         = useState<Set<string>>(new Set())
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [absenceDates, setAbsenceDates] = useState<Set<string>>(new Set())
-  const [validating, setValidating]   = useState(false)
-  const [error, setError]             = useState('')
+  const [validating, setValidating]     = useState(false)
+  const [error, setError]               = useState('')
+  const [conflictCount, setConflictCount] = useState<number | null>(null)
   const [currentMonth, setCurrentMonth] = useState(() => {
     const d = new Date(genDebut + 'T00:00')
     return { year: d.getFullYear(), month: d.getMonth() }
@@ -136,20 +137,29 @@ export default function PlanningPreviewModal({
 
   const selectedInter = selectedDate ? interByDate.get(selectedDate) : null
 
-  async function handleValidate() {
+  async function handleValidate(forceRegenerate = false) {
     setValidating(true)
     setError('')
+    if (!forceRegenerate) setConflictCount(null)
+
     const res = await fetch('/api/planning/valider', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         residenceId: residence.id,
-        dateDebut: genDebut,
+        dateDebut:   genDebut,
+        dateFin:     genFin,
         interventions: activeInters,
+        forceRegenerate,
       }),
     })
     const json = await res.json()
     setValidating(false)
+
+    if (res.status === 409 && json.error === 'PLANNING_EXISTS') {
+      setConflictCount(json.existingCount ?? 0)
+      return
+    }
     if (!res.ok) { setError(json.error ?? 'Erreur inconnue'); return }
     onValidated(json.count, json.planningId)
   }
@@ -362,31 +372,62 @@ export default function PlanningPreviewModal({
         {error && (
           <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{error}</div>
         )}
-        <div className="flex gap-3">
-          <button
-            onClick={onClose}
-            className="py-3 px-5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50"
-          >
-            Ajuster
-          </button>
-          <button
-            onClick={handleValidate}
-            disabled={validating || activeInters.length === 0}
-            className="flex-1 py-3 rounded-xl text-white text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
-            style={{ background: activeInters.length > 0
-              ? 'linear-gradient(135deg,#0A2E5A,#1A5FA8)'
-              : undefined }}
-          >
-            {validating ? (
-              <>
-                <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"/>
-                Publication…
-              </>
-            ) : (
-              `Valider et publier (${activeInters.length} interventions)`
-            )}
-          </button>
-        </div>
+
+        {/* Avertissement planning existant */}
+        {conflictCount !== null && (
+          <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-3">
+            <p className="text-amber-800 text-sm font-semibold">
+              ⚠️ Un planning existe déjà pour cette résidence sur cette période
+            </p>
+            <p className="text-amber-700 text-sm">
+              {conflictCount} intervention{conflictCount > 1 ? 's' : ''} déjà planifiée{conflictCount > 1 ? 's' : ''}.
+              Voulez-vous remplacer l'existant ?
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConflictCount(null)}
+                className="flex-1 py-2 rounded-lg border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-100"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={() => handleValidate(true)}
+                disabled={validating}
+                className="flex-1 py-2 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 disabled:opacity-60"
+              >
+                {validating ? 'Remplacement…' : '🔄 Oui, remplacer'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {conflictCount === null && (
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="py-3 px-5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50"
+            >
+              Ajuster
+            </button>
+            <button
+              onClick={() => handleValidate(false)}
+              disabled={validating || activeInters.length === 0}
+              className="flex-1 py-3 rounded-xl text-white text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+              style={{ background: activeInters.length > 0
+                ? 'linear-gradient(135deg,#0A2E5A,#1A5FA8)'
+                : undefined }}
+            >
+              {validating ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"/>
+                  Publication…
+                </>
+              ) : (
+                `Valider et publier (${activeInters.length} interventions)`
+              )}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

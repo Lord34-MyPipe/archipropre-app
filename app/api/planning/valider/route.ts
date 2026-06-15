@@ -10,11 +10,12 @@ async function getManagerId(): Promise<string | null> {
 }
 
 // POST — valider et publier le planning généré
+// Body: { residenceId, dateDebut, dateFin, interventions[], forceRegenerate? }
 export async function POST(req: NextRequest) {
   const managerId = await getManagerId()
   if (!managerId) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
-  const { residenceId, dateDebut, interventions } = await req.json()
+  const { residenceId, dateDebut, dateFin, interventions, forceRegenerate } = await req.json()
   if (!residenceId || !dateDebut || !Array.isArray(interventions) || interventions.length === 0)
     return NextResponse.json({ error: 'Champs manquants' }, { status: 400 })
 
@@ -25,10 +26,66 @@ export async function POST(req: NextRequest) {
     .select('id').eq('id', residenceId).eq('manager_id', managerId).single()
   if (!res) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
 
-  // Créer le planning
+  // Calcul de la date de fin réelle (dernière date des interventions ou dateFin fourni)
+  const lastDate: string = dateFin
+    ?? interventions.reduce((max: string, i: { date: string }) => i.date > max ? i.date : max, dateDebut)
+
+  // Récupérer les planning_ids de ce manager
+  const { data: mgPlannings } = await admin.from('plannings')
+    .select('id').eq('manager_id', managerId).eq('statut', 'publie')
+  const planningIds = (mgPlannings ?? []).map(p => p.id)
+
+  if (planningIds.length > 0) {
+    // Vérifier si un planning existe déjà pour cette résidence sur cette période
+    const { data: existing, count } = await admin.from('interventions_planifiees')
+      .select('id, planning_id', { count: 'exact' })
+      .eq('residence_id', residenceId)
+      .in('planning_id', planningIds)
+      .gte('date', dateDebut)
+      .lte('date', lastDate)
+      .limit(1)
+
+    if ((count ?? 0) > 0 && !forceRegenerate) {
+      // Compter le total exact pour le message
+      const { count: totalCount } = await admin.from('interventions_planifiees')
+        .select('id', { count: 'exact', head: true })
+        .eq('residence_id', residenceId)
+        .in('planning_id', planningIds)
+        .gte('date', dateDebut)
+        .lte('date', lastDate)
+
+      return NextResponse.json({
+        error: 'PLANNING_EXISTS',
+        existingCount: totalCount ?? 0,
+        message: `Un planning de ${totalCount} interventions existe déjà pour cette résidence sur cette période.`,
+      }, { status: 409 })
+    }
+
+    if ((count ?? 0) > 0 && forceRegenerate) {
+      // Supprimer les anciennes interventions planifiées pour cette résidence × période
+      await admin.from('interventions_planifiees')
+        .delete()
+        .eq('residence_id', residenceId)
+        .in('planning_id', planningIds)
+        .gte('date', dateDebut)
+        .lte('date', lastDate)
+
+      // Supprimer les plannings devenus orphelins
+      const { data: remaining } = await admin.from('interventions_planifiees')
+        .select('planning_id')
+        .in('planning_id', planningIds)
+      const stillUsed = new Set((remaining ?? []).map(r => r.planning_id))
+      const orphans = planningIds.filter(id => !stillUsed.has(id))
+      if (orphans.length > 0) {
+        await admin.from('plannings').delete().in('id', orphans)
+      }
+    }
+  }
+
+  // Créer le nouveau planning
   const { data: planning, error: pErr } = await admin.from('plannings').insert({
-    semaine: dateDebut,
-    statut:  'publie',
+    semaine:    dateDebut,
+    statut:     'publie',
     manager_id: managerId,
   }).select().single()
 
@@ -51,7 +108,6 @@ export async function POST(req: NextRequest) {
 
   const { error: iErr } = await admin.from('interventions_planifiees').insert(rows)
   if (iErr) {
-    // Annuler le planning créé
     await admin.from('plannings').delete().eq('id', planning.id)
     return NextResponse.json({ error: iErr.message }, { status: 400 })
   }

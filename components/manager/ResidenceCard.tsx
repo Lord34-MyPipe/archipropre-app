@@ -11,6 +11,14 @@ const TYPE_LABEL: Record<string, string> = {
   societe: 'Société', magasin: 'Magasin', particulier: 'Particulier',
 }
 
+function googleMapsUrl(adresse: string) {
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(adresse + ', Montpellier')}`
+}
+
+function wazeUrl(adresse: string) {
+  return `https://waze.com/ul?q=${encodeURIComponent(adresse + ', Montpellier')}&navigate=yes`
+}
+
 export default function ResidenceCard({ residence: initial }: { residence: Residence }) {
   const [token, setToken] = useState(initial.qr_code_token)
   const [actif, setActif] = useState(initial.actif)
@@ -68,7 +76,19 @@ export default function ResidenceCard({ residence: initial }: { residence: Resid
         <p className="text-xs text-slate-500 font-mono break-all select-all">{token}</p>
       </div>
 
-      {/* Actions */}
+      {/* Navigation */}
+      <div className="flex gap-2">
+        <a href={googleMapsUrl(initial.adresse)} target="_blank" rel="noopener noreferrer"
+          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-[#1A5FA8] text-white text-xs rounded-xl font-medium hover:bg-[#0A2E5A] transition-colors">
+          <span>🗺️</span> Google Maps
+        </a>
+        <a href={wazeUrl(initial.adresse)} target="_blank" rel="noopener noreferrer"
+          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-[#05C8F7] text-white text-xs rounded-xl font-medium hover:bg-[#04a8d0] transition-colors">
+          <span>🚗</span> Waze
+        </a>
+      </div>
+
+      {/* Actions QR */}
       <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-slate-100">
         <QRCodeButton nom={initial.nom} adresse={initial.adresse} token={token} />
         <RegenerateQRButton

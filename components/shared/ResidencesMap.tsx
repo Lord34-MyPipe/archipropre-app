@@ -110,18 +110,43 @@ export default function ResidencesMap({
     return makeIcon(color, !r.actif)
   }
 
-  function itineraireUrl(r: ResidenceMapItem) {
-    if (r.lat && r.lng) return `https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}`
-    return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(r.adresse + ', Montpellier')}`
+  function googleMapsUrl(r: ResidenceMapItem) {
+    const dest = r.lat && r.lng
+      ? `${r.lat},${r.lng}`
+      : encodeURIComponent(`${r.adresse}, Montpellier`)
+    return `https://www.google.com/maps/dir/?api=1&destination=${dest}`
+  }
+
+  function wazeUrl(r: ResidenceMapItem) {
+    const q = r.lat && r.lng
+      ? `${r.lat},${r.lng}`
+      : encodeURIComponent(`${r.adresse}, Montpellier`)
+    return `https://waze.com/ul?q=${q}&navigate=yes`
+  }
+
+  const TYPE_BADGE_COLORS: Record<string, string> = {
+    syndic: 'bg-blue-100 text-blue-700',
+    profession_liberale: 'bg-green-100 text-green-700',
+    societe: 'bg-orange-100 text-orange-700',
+    magasin: 'bg-purple-100 text-purple-700',
+    particulier: 'bg-slate-100 text-slate-600',
   }
 
   const markerElements = positioned.map(r => (
     <Marker key={r.id} position={[r.lat!, r.lng!]} icon={getIcon(r)}>
-      <Popup maxWidth={260}>
-        <div className="text-sm">
-          <p className="font-semibold text-slate-800 mb-1 leading-snug">{r.nom}</p>
+      <Popup maxWidth={270}>
+        <div className="text-sm min-w-[220px]">
+          <p className="font-semibold text-slate-800 mb-0.5 leading-snug">{r.nom}</p>
           <p className="text-slate-500 text-xs mb-2 leading-snug">{r.adresse}</p>
 
+          {/* Badge type client */}
+          {r.type_client && (
+            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium mb-2 ${TYPE_BADGE_COLORS[r.type_client] ?? 'bg-slate-100 text-slate-600'}`}>
+              {TYPE_LABELS[r.type_client]}
+            </span>
+          )}
+
+          {/* Infos mode agent */}
           {mode === 'agent' && (
             <div className="mb-2">
               {r.interventionStatut ? (
@@ -140,32 +165,32 @@ export default function ResidencesMap({
             </div>
           )}
 
-          {mode !== 'agent' && (
+          {/* Infos mode manager/directeur */}
+          {mode !== 'agent' && (r.agentNom || r.managerNom || !r.actif) && (
             <div className="mb-2 space-y-0.5 text-xs text-slate-600">
-              {r.type_client && (
-                <p>Type : <span className="font-medium">{TYPE_LABELS[r.type_client] ?? r.type_client}</span></p>
-              )}
-              {r.agentNom && (
-                <p>Agent : <span className="font-medium">{r.agentNom}</span></p>
-              )}
+              {r.agentNom && <p>Agent : <span className="font-medium">{r.agentNom}</span></p>}
               {mode === 'directeur' && r.managerNom && (
                 <p>Manager : <span className="font-medium">{r.managerNom}</span></p>
               )}
               {!r.actif && (
-                <span className="inline-block mt-1 px-2 py-0.5 bg-slate-100 text-slate-400 text-xs rounded-full">
+                <span className="inline-block mt-0.5 px-2 py-0.5 bg-slate-100 text-slate-400 text-xs rounded-full">
                   En sommeil
                 </span>
               )}
             </div>
           )}
 
-          <a href={itineraireUrl(r)} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1A5FA8] text-white text-xs rounded-lg font-medium mt-1">
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 6.75V15m6-6v8.25m.503 3.498l4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 00-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0z"/>
-            </svg>
-            Itinéraire
-          </a>
+          {/* Boutons navigation */}
+          <div className="flex gap-2 mt-2 pt-2 border-t border-slate-100">
+            <a href={googleMapsUrl(r)} target="_blank" rel="noopener noreferrer"
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-[#1A5FA8] text-white text-xs rounded-lg font-medium hover:bg-[#0A2E5A] transition-colors">
+              <span>🗺️</span> Google Maps
+            </a>
+            <a href={wazeUrl(r)} target="_blank" rel="noopener noreferrer"
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-[#05C8F7] text-white text-xs rounded-lg font-medium hover:bg-[#04a8d0] transition-colors">
+              <span>🚗</span> Waze
+            </a>
+          </div>
         </div>
       </Popup>
     </Marker>

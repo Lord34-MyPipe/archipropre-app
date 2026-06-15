@@ -20,7 +20,15 @@ interface TacheRow {
   mois_de_annee: number[] | null
   heure_debut: string | null
   heure_fin: string | null
+  duree_minutes: number | null
   zone_nom: string | null
+}
+
+/** Ajoute `minutes` à une heure "HH:MM" et retourne "HH:MM" */
+function addMinutes(heure: string, minutes: number): string {
+  const [h, m] = heure.split(':').map(Number)
+  const total = h * 60 + m + minutes
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
 }
 
 function tacheAppliesOn(t: TacheRow, date: Date): boolean {
@@ -44,7 +52,7 @@ function tacheAppliesOn(t: TacheRow, date: Date): boolean {
         (t.mois_de_annee ?? []).includes(month)
       )
     default:
-      return false // 'sur_passage' ignoré
+      return false
   }
 }
 
@@ -79,17 +87,11 @@ export async function POST(req: NextRequest) {
     .eq('residence_id', residenceId).eq('actif', true)
     .order('created_at', { ascending: false }).limit(1).maybeSingle()
 
-  const heureDebut     = contrat?.heure_debut_min ?? '08:00'
+  const heureDebut: string    = contrat?.heure_debut_min ?? '08:00'
+  const heureFinContrat: string = contrat?.heure_fin_max ?? '12:00'
   const joursInterdits: string[] = contrat?.jours_interdits ?? []
-
-  // Calcul heure_fin depuis duree_estimee_min si disponible, sinon depuis le contrat
-  const dureeMin = (res as unknown as { duree_estimee_min?: number }).duree_estimee_min ?? 0
-  let heureFin = contrat?.heure_fin_max ?? '12:00'
-  if (dureeMin > 0) {
-    const [h, m] = heureDebut.split(':').map(Number)
-    const totalMin = h * 60 + m + dureeMin
-    heureFin = `${String(Math.floor(totalMin / 60)).padStart(2, '0')}:${String(totalMin % 60).padStart(2, '0')}`
-  }
+  const dureeEstimeeFallback: number =
+    (res as unknown as { duree_estimee_min?: number }).duree_estimee_min ?? 0
 
   // Interventions réelles déjà existantes sur la période (en_cours ou terminee)
   const { data: existingInters } = await admin.from('interventions')
@@ -105,7 +107,7 @@ export async function POST(req: NextRequest) {
 
   // Tâches template (toutes sauf sur_passage)
   const { data: rawTaches } = await admin.from('taches_template')
-    .select('id, libelle, frequence_type, jours_semaine, semaine_du_mois, mois_de_annee, heure_debut, heure_fin, zones_residence(nom)')
+    .select('id, libelle, frequence_type, jours_semaine, semaine_du_mois, mois_de_annee, heure_debut, heure_fin, duree_minutes, zones_residence(nom)')
     .eq('residence_id', residenceId)
     .neq('frequence_type', 'sur_passage')
     .order('ordre')
@@ -114,6 +116,7 @@ export async function POST(req: NextRequest) {
     id: string; libelle: string; frequence_type: string;
     jours_semaine: string[]; semaine_du_mois: number[] | null;
     mois_de_annee: number[] | null; heure_debut: string | null; heure_fin: string | null;
+    duree_minutes: number | null;
     zones_residence: { nom: string }[] | { nom: string } | null
   }) => ({
     id: t.id,
@@ -124,6 +127,7 @@ export async function POST(req: NextRequest) {
     mois_de_annee: t.mois_de_annee,
     heure_debut: t.heure_debut ? String(t.heure_debut).slice(0, 5) : null,
     heure_fin:   t.heure_fin   ? String(t.heure_fin).slice(0, 5)   : null,
+    duree_minutes: t.duree_minutes ?? null,
     zone_nom: Array.isArray(t.zones_residence)
       ? (t.zones_residence[0]?.nom ?? null)
       : ((t.zones_residence as { nom: string } | null)?.nom ?? null),
@@ -138,22 +142,12 @@ export async function POST(req: NextRequest) {
   })
 
   // Jours contrainte seule = jours couverts UNIQUEMENT par des tâches contrainte_horaire
-  // (pas de tâche hebdo ce jour-là → créneau horaire propre à la tâche)
   const joursContrainteSeul = new Set<string>()
   taches.forEach(t => {
     if (t.frequence_type === 'contrainte_horaire') {
       ;(t.jours_semaine ?? []).forEach(d => { if (!joursHebdo.has(d)) joursContrainteSeul.add(d) })
     }
   })
-
-  console.log('[generer] joursHebdo:', [...joursHebdo], '| joursContrainteSeul:', [...joursContrainteSeul])
-  console.log('[generer] taches raw:', taches.map(t => ({
-    libelle: t.libelle,
-    frequence_type: t.frequence_type,
-    jours_semaine: t.jours_semaine,
-    heure_debut: t.heure_debut,
-    heure_fin: t.heure_fin,
-  })))
 
   // Parcourir les dates
   type InterventionGenerated = {
@@ -183,37 +177,38 @@ export async function POST(req: NextRequest) {
       if (matching.length > 0) {
         const types = matching.map(t => t.frequence_type)
 
+        // Heure de début : heures de la tâche contrainte ou heures du contrat
         let hDebutFinal: string
-        let hFinFinal: string
         let typePrincipal: string
 
         if (!isHebdoDay) {
-          // Jour purement contrainte_horaire : on utilise les heures de la tâche
+          // Jour purement contrainte_horaire
           const ctTask = matching.find(t => t.frequence_type === 'contrainte_horaire' && t.heure_debut)
           hDebutFinal  = ctTask?.heure_debut ?? heureDebut
-          hFinFinal    = ctTask?.heure_fin   ?? heureFin
           typePrincipal = 'contrainte_horaire'
-          console.log(`[generer] ${dateStr} (${dayName}) !isHebdoDay — ctTask:`, ctTask
-            ? { libelle: ctTask.libelle, heure_debut: ctTask.heure_debut, heure_fin: ctTask.heure_fin }
-            : 'INTROUVABLE', '→ hDebutFinal:', hDebutFinal, 'hFinFinal:', hFinFinal)
         } else {
-          // Jour hebdo : horaires du contrat (ou de la tâche si tout est contrainte_horaire)
+          // Jour hebdo (ou mix)
           const hasNonCH = matching.some(t => t.frequence_type !== 'contrainte_horaire')
           hDebutFinal = hasNonCH
             ? heureDebut
             : (matching.find(t => t.heure_debut)?.heure_debut ?? heureDebut)
-          hFinFinal = hasNonCH
-            ? heureFin
-            : (matching.find(t => t.heure_fin)?.heure_fin ?? heureFin)
-          typePrincipal = types.includes('hebdo')       ? 'hebdo'
-            : types.includes('mensuel')     ? 'mensuel'
-            : types.includes('trimestriel') ? 'trimestriel'
-            : types.includes('semestriel')  ? 'semestriel'
-            : types.includes('annuel')      ? 'annuel'
+          typePrincipal = types.includes('hebdo')        ? 'hebdo'
+            : types.includes('mensuel')      ? 'mensuel'
+            : types.includes('trimestriel')  ? 'trimestriel'
+            : types.includes('semestriel')   ? 'semestriel'
+            : types.includes('annuel')       ? 'annuel'
             : 'contrainte_horaire'
-          console.log(`[generer] ${dateStr} (${dayName}) isHebdoDay — hasNonCH:`, hasNonCH,
-            '→ hDebutFinal:', hDebutFinal, 'hFinFinal:', hFinFinal,
-            '| matching:', matching.map(t => ({ libelle: t.libelle, type: t.frequence_type, hd: t.heure_debut, hf: t.heure_fin })))
+        }
+
+        // Heure de fin : hDebutFinal + somme des durées des tâches du jour
+        const dureeTotale = matching.reduce((sum, t) => sum + (t.duree_minutes ?? 0), 0)
+        let hFinFinal: string
+        if (dureeTotale > 0) {
+          hFinFinal = addMinutes(hDebutFinal, dureeTotale)
+        } else if (dureeEstimeeFallback > 0) {
+          hFinFinal = addMinutes(hDebutFinal, dureeEstimeeFallback)
+        } else {
+          hFinFinal = heureFinContrat
         }
 
         generated.push({

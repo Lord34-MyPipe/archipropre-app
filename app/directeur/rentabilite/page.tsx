@@ -1,17 +1,6 @@
 import { createClient, createAdminClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 
-interface ResidenceRow {
-  id: string
-  nom: string
-  manager_id: string | null
-  duree_estimee_min: number
-}
-interface ContratRow {
-  residence_id: string
-  montant_mensuel: number | null
-  nb_interventions_mois: number
-}
 interface Params {
   taux_horaire_agent: number
   cout_km: number
@@ -30,10 +19,43 @@ function margeBadge(pct: number): string {
   if (pct >= 20) return 'bg-orange-100 text-orange-700'
   return 'bg-red-100 text-red-700'
 }
-function formatH(min: number): string {
-  if (min <= 0) return '—'
-  const h = Math.floor(min / 60); const m = min % 60
-  return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2,'0')}`
+function formatH(minF: number): string {
+  if (minF <= 0) return '—'
+  const h = Math.floor(minF / 60)
+  const m = Math.round(minF % 60)
+  return h > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${m}min`
+}
+
+// Même formule que TachesClient — base annuelle / 12
+function heuresMoisFromTaches(
+  taches: { frequence_type: string; jours_semaine: string[] | null; duree_minutes: number | null; frequence_valeur: number | null }[]
+): number | null {
+  let annuelMin = 0
+  let hasDuree = false
+
+  for (const t of taches) {
+    const d = t.duree_minutes ?? 0
+    if (!d) continue
+    hasDuree = true
+    const nJours = Math.max((t.jours_semaine ?? []).length, 1)
+
+    switch (t.frequence_type) {
+      case 'hebdo':
+      case 'contrainte_horaire':
+        annuelMin += d * 52 * nJours; break
+      case 'mensuel':
+        annuelMin += d * 12 * Math.max(t.frequence_valeur ?? 1, 1); break
+      case 'trimestriel':
+        annuelMin += d * 4; break
+      case 'semestriel':
+        annuelMin += d * 2; break
+      case 'annuel':
+        annuelMin += d; break
+    }
+  }
+
+  if (!hasDuree) return null
+  return annuelMin / 12 / 60 // → heures/mois
 }
 
 export default async function DirecteurRentabilite() {
@@ -48,38 +70,49 @@ export default async function DirecteurRentabilite() {
     { data: contratsRaw },
     { data: paramsRaw },
     { data: managers },
+    { data: tachesRaw },
   ] = await Promise.all([
-    admin.from('residences').select('id,nom,manager_id,duree_estimee_min').eq('actif', true).order('nom'),
+    admin.from('residences').select('id,nom,manager_id').eq('actif', true).order('nom'),
     admin.from('contrats_residences').select('residence_id,montant_mensuel,nb_interventions_mois').eq('actif', true),
     admin.from('parametres_societe').select('*').limit(1).maybeSingle(),
-    supabase.from('profiles').select('id,nom,prenom').eq('role','manager').eq('actif',true),
+    supabase.from('profiles').select('id,nom,prenom').eq('role', 'manager').eq('actif', true),
+    admin.from('taches_template').select('residence_id,frequence_type,jours_semaine,duree_minutes,frequence_valeur'),
   ])
 
   const params: Params = paramsRaw ?? { taux_horaire_agent: 22, cout_km: 0.45, frais_generaux_mois: 0 }
-  const contratMap = new Map<string, ContratRow>((contratsRaw ?? []).map(c => [c.residence_id, c as ContratRow]))
-  const managerMap = new Map((managers ?? []).map(m => [m.id, `${m.prenom} ${m.nom}`]))
 
-  const residences = (residencesRaw ?? []) as ResidenceRow[]
+  // Grouper les tâches par résidence
+  const tachesParResidence = new Map<string, typeof tachesRaw>()
+  for (const t of (tachesRaw ?? [])) {
+    const list = tachesParResidence.get(t.residence_id) ?? []
+    list.push(t)
+    tachesParResidence.set(t.residence_id, list)
+  }
+
+  const contratMap = new Map((contratsRaw ?? []).map(c => [c.residence_id, c]))
+  const managerMap = new Map((managers ?? []).map(m => [m.id, `${m.prenom} ${m.nom}`]))
+  const residences = residencesRaw ?? []
 
   const rows = residences.map(r => {
-    const contrat = contratMap.get(r.id)
-    if (!contrat?.montant_mensuel || !contrat.nb_interventions_mois || !r.duree_estimee_min) {
-      return { r, contrat, heuresMois: null, coutReel: null, marge: null, pct: null }
+    const contrat   = contratMap.get(r.id) ?? null
+    const taches    = tachesParResidence.get(r.id) ?? []
+    const heuresMois = heuresMoisFromTaches(taches)
+
+    if (!contrat?.montant_mensuel || heuresMois === null) {
+      return { r, contrat, heuresMois, coutReel: null, marge: null, pct: null }
     }
-    const heuresMois = (contrat.nb_interventions_mois * r.duree_estimee_min) / 60
-    const coutReel   = params.taux_horaire_agent * heuresMois + params.frais_generaux_mois
-    const marge      = contrat.montant_mensuel - coutReel
-    const pct        = (marge / contrat.montant_mensuel) * 100
+
+    const coutReel = params.taux_horaire_agent * heuresMois + params.frais_generaux_mois
+    const marge    = contrat.montant_mensuel - coutReel
+    const pct      = (marge / contrat.montant_mensuel) * 100
     return { r, contrat, heuresMois, coutReel, marge, pct }
   })
 
-  const withData = rows.filter(x => x.pct !== null)
-  const avgPct = withData.length
-    ? withData.reduce((s, x) => s + (x.pct ?? 0), 0) / withData.length
-    : null
-  const totalCA = withData.reduce((s, x) => s + (x.contrat?.montant_mensuel ?? 0), 0)
-  const totalCout = withData.reduce((s, x) => s + (x.coutReel ?? 0), 0)
-  const totalMarge = totalCA - totalCout
+  const withData    = rows.filter(x => x.pct !== null)
+  const avgPct      = withData.length ? withData.reduce((s, x) => s + (x.pct ?? 0), 0) / withData.length : null
+  const totalCA     = withData.reduce((s, x) => s + (x.contrat?.montant_mensuel ?? 0), 0)
+  const totalCout   = withData.reduce((s, x) => s + (x.coutReel ?? 0), 0)
+  const totalMarge  = totalCA - totalCout
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -122,7 +155,8 @@ export default async function DirecteurRentabilite() {
       {/* Warning si pas de params */}
       {!paramsRaw && (
         <div className="mx-6 mt-4 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-amber-800 text-sm flex items-center gap-2">
-          ⚠️ Taux horaire non configuré — <a href="/directeur/parametres" className="underline">configurer les paramètres</a>
+          ⚠️ Taux horaire non configuré —{' '}
+          <a href="/directeur/parametres" className="underline">configurer les paramètres</a>
         </div>
       )}
 
@@ -143,7 +177,7 @@ export default async function DirecteurRentabilite() {
                 </span>
               ) : (
                 <span className="shrink-0 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-400">
-                  Données manquantes
+                  {!contrat ? 'Pas de contrat' : 'Durées non renseignées'}
                 </span>
               )}
             </div>
@@ -155,12 +189,12 @@ export default async function DirecteurRentabilite() {
                   <p className="font-bold text-slate-700">{contrat.montant_mensuel?.toLocaleString('fr-FR')} €</p>
                 </div>
                 <div>
-                  <p className="text-slate-400">Interventions/mois</p>
-                  <p className="font-bold text-slate-700">{contrat.nb_interventions_mois} × {formatH(r.duree_estimee_min)}</p>
+                  <p className="text-slate-400">Heures/mois (tâches réelles)</p>
+                  <p className="font-bold text-slate-700">{formatH(heuresMois * 60)}</p>
                 </div>
                 <div>
-                  <p className="text-slate-400">Heures/mois</p>
-                  <p className="font-bold text-slate-700">{heuresMois.toFixed(1)} h</p>
+                  <p className="text-slate-400">Taux vendu</p>
+                  <p className="font-bold text-slate-700">{((contrat.montant_mensuel ?? 0) / heuresMois).toFixed(2)} €/h</p>
                 </div>
                 <div>
                   <p className="text-slate-400">Coût réel</p>
@@ -175,7 +209,9 @@ export default async function DirecteurRentabilite() {
               </div>
             ) : (
               <p className="mt-2 text-[11px] text-slate-400">
-                {!contrat ? 'Pas de contrat actif' : !r.duree_estimee_min ? 'Durées de tâches non renseignées' : ''}
+                {!contrat
+                  ? 'Aucun contrat actif pour cette résidence'
+                  : 'Durées de tâches non renseignées — rendez-vous dans les tâches template'}
               </p>
             )}
           </div>

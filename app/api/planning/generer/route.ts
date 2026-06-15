@@ -19,6 +19,7 @@ interface TacheRow {
   semaine_du_mois: number[] | null
   mois_de_annee: number[] | null
   heure_debut: string | null
+  heure_fin: string | null
   zone_nom: string | null
 }
 
@@ -92,7 +93,7 @@ export async function POST(req: NextRequest) {
 
   // Tâches template (toutes sauf sur_passage)
   const { data: rawTaches } = await admin.from('taches_template')
-    .select('id, libelle, frequence_type, jours_semaine, semaine_du_mois, mois_de_annee, heure_debut, zones_residence(nom)')
+    .select('id, libelle, frequence_type, jours_semaine, semaine_du_mois, mois_de_annee, heure_debut, heure_fin, zones_residence(nom)')
     .eq('residence_id', residenceId)
     .neq('frequence_type', 'sur_passage')
     .order('ordre')
@@ -100,7 +101,7 @@ export async function POST(req: NextRequest) {
   const taches: TacheRow[] = (rawTaches ?? []).map((t: {
     id: string; libelle: string; frequence_type: string;
     jours_semaine: string[]; semaine_du_mois: number[] | null;
-    mois_de_annee: number[] | null; heure_debut: string | null;
+    mois_de_annee: number[] | null; heure_debut: string | null; heure_fin: string | null;
     zones_residence: { nom: string }[] | { nom: string } | null
   }) => ({
     id: t.id,
@@ -109,22 +110,31 @@ export async function POST(req: NextRequest) {
     jours_semaine: t.jours_semaine ?? [],
     semaine_du_mois: t.semaine_du_mois,
     mois_de_annee: t.mois_de_annee,
-    heure_debut: t.heure_debut,
+    heure_debut: t.heure_debut ? String(t.heure_debut).slice(0, 5) : null,
+    heure_fin:   t.heure_fin   ? String(t.heure_fin).slice(0, 5)   : null,
     zone_nom: Array.isArray(t.zones_residence)
       ? (t.zones_residence[0]?.nom ?? null)
       : ((t.zones_residence as { nom: string } | null)?.nom ?? null),
   }))
 
-  // Jours actifs = uniquement les jours des tâches HEBDO
-  // Les tâches contrainte_horaire ne créent PAS de jour d'intervention — elles se greffent si le jour existe déjà
-  // Les tâches mensuel/trim/sem/annuel idem : elles s'ajoutent aux jours hebdo existants
+  // Jours hebdo = jours définis par des tâches HEBDO uniquement (anchor days)
   const joursHebdo = new Set<string>()
   taches.forEach(t => {
     if (t.frequence_type === 'hebdo') {
       ;(t.jours_semaine ?? []).forEach(d => joursHebdo.add(d))
     }
   })
-  console.log('[generer] joursHebdo détectés depuis taches_template:', [...joursHebdo])
+
+  // Jours contrainte seule = jours couverts UNIQUEMENT par des tâches contrainte_horaire
+  // (pas de tâche hebdo ce jour-là → créneau horaire propre à la tâche)
+  const joursContrainteSeul = new Set<string>()
+  taches.forEach(t => {
+    if (t.frequence_type === 'contrainte_horaire') {
+      ;(t.jours_semaine ?? []).forEach(d => { if (!joursHebdo.has(d)) joursContrainteSeul.add(d) })
+    }
+  })
+
+  console.log('[generer] joursHebdo:', [...joursHebdo], '| joursContrainteSeul:', [...joursContrainteSeul])
 
   // Parcourir les dates
   type InterventionGenerated = {
@@ -142,30 +152,44 @@ export async function POST(req: NextRequest) {
 
   while (current <= end) {
     const dayName = DAY_NAMES[current.getDay()]
+    const isHebdoDay      = joursHebdo.has(dayName)
+    const isContrainteDay = joursContrainteSeul.has(dayName)
 
-    // Intervention uniquement les jours couverts par des tâches hebdo (pas tous les jours)
-    if (joursHebdo.has(dayName) && !joursInterdits.includes(dayName)) {
+    if ((isHebdoDay || isContrainteDay) && !joursInterdits.includes(dayName)) {
       const matching = taches.filter(t => tacheAppliesOn(t, current))
 
       if (matching.length > 0) {
         const types = matching.map(t => t.frequence_type)
-        const typePrincipal = types.includes('hebdo')       ? 'hebdo'
-          : types.includes('mensuel')     ? 'mensuel'
-          : types.includes('trimestriel') ? 'trimestriel'
-          : types.includes('semestriel')  ? 'semestriel'
-          : types.includes('annuel')      ? 'annuel'
-          : 'contrainte_horaire'
 
-        // Heure de début : si contrainte_horaire uniquement, prendre l'heure de la tâche
-        const hDebutFinal = matching.some(t => t.frequence_type !== 'contrainte_horaire')
-          ? heureDebut
-          : (matching.find(t => t.heure_debut)?.heure_debut ?? heureDebut)
+        let hDebutFinal: string
+        let hFinFinal: string
+        let typePrincipal: string
+
+        if (!isHebdoDay) {
+          // Jour purement contrainte_horaire : on utilise les heures de la tâche
+          const ctTask = matching.find(t => t.frequence_type === 'contrainte_horaire' && t.heure_debut)
+          hDebutFinal  = ctTask?.heure_debut ?? heureDebut
+          hFinFinal    = ctTask?.heure_fin   ?? heureFin
+          typePrincipal = 'contrainte_horaire'
+        } else {
+          // Jour hebdo : horaires du contrat (ou de la tâche si tout est contrainte)
+          hDebutFinal = matching.some(t => t.frequence_type !== 'contrainte_horaire')
+            ? heureDebut
+            : (matching.find(t => t.heure_debut)?.heure_debut ?? heureDebut)
+          hFinFinal    = heureFin
+          typePrincipal = types.includes('hebdo')       ? 'hebdo'
+            : types.includes('mensuel')     ? 'mensuel'
+            : types.includes('trimestriel') ? 'trimestriel'
+            : types.includes('semestriel')  ? 'semestriel'
+            : types.includes('annuel')      ? 'annuel'
+            : 'contrainte_horaire'
+        }
 
         generated.push({
           date:    current.toISOString().split('T')[0],
           dayName,
           heureDebut: hDebutFinal,
-          heureFin,
+          heureFin:   hFinFinal,
           agentId: res.agent_prefere_id ?? null,
           agentNom,
           taches: matching.map(t => ({

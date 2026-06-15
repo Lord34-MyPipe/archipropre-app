@@ -12,7 +12,7 @@ const STATUT_LABEL: Record<string, string> = {
   planifiee: 'Planifiée', en_cours: 'En cours', terminee: 'Terminée', non_demarree: 'En retard',
 }
 const RECURRENCE_LABEL: Record<string, string> = {
-  hebdo: '↻', bihebdo: '↻↻', mensuelle: '📅', ponctuelle: '',
+  hebdo: '↻', bihebdo: '↻↻', mensuelle: '📅', ponctuelle: '', contrainte_horaire: '🕐',
 }
 const JOURS = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim']
 
@@ -144,6 +144,10 @@ export default async function ManagerPlanning() {
             <span className="text-xs text-blue-200">Planning généré ({totalPlanifie})</span>
           </div>
           <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-sm bg-amber-400"/>
+            <span className="text-xs text-blue-200">🕐 Horaire fixe</span>
+          </div>
+          <div className="flex items-center gap-1.5">
             <div className="w-3 h-3 rounded-sm bg-green-400"/>
             <span className="text-xs text-blue-200">Terminée</span>
           </div>
@@ -266,27 +270,31 @@ export default async function ManagerPlanning() {
                                 </div>
                               ))}
                               {/* Interventions planifiées (planning généré) */}
-                              {dayPlanifie.map(p => (
-                                <div key={p.id}
-                                  className={`px-1.5 py-1.5 rounded-lg text-[10px] font-medium leading-tight ${
-                                    isOnLeave
-                                      ? 'bg-red-50 text-red-800 border border-red-300'
-                                      : 'bg-[#0BBFBF]/10 text-[#0A5F5F] border border-[#0BBFBF]/30'
-                                  }`}>
-                                  <div className="truncate font-semibold">
-                                    {(p as { residences?: { nom?: string } }).residences?.nom ?? '—'}
-                                  </div>
-                                  {p.heure_debut && (
-                                    <div className="text-[9px] opacity-70 mt-0.5">
-                                      {String(p.heure_debut).slice(0,5)}
+                              {dayPlanifie.map(p => {
+                                const isCH = p.recurrence === 'contrainte_horaire'
+                                const cellCls = isOnLeave
+                                  ? 'bg-red-50 text-red-800 border border-red-300'
+                                  : isCH
+                                    ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                                    : 'bg-[#0BBFBF]/10 text-[#0A5F5F] border border-[#0BBFBF]/30'
+                                return (
+                                  <div key={p.id} className={`px-1.5 py-1.5 rounded-lg text-[10px] font-medium leading-tight ${cellCls}`}>
+                                    <div className="truncate font-semibold">
+                                      {(p as { residences?: { nom?: string } }).residences?.nom ?? '—'}
                                     </div>
-                                  )}
-                                  <div className="text-[9px] opacity-60 mt-0.5 flex items-center gap-0.5">
-                                    {isOnLeave ? <span>⚠️</span> : <span>📅</span>}
-                                    <span>{isOnLeave ? 'Conflit congé' : `${RECURRENCE_LABEL[p.recurrence] ?? ''} Planifié`}</span>
+                                    {p.heure_debut && (
+                                      <div className="text-[9px] opacity-80 mt-0.5">
+                                        {String(p.heure_debut).slice(0,5)}
+                                        {p.heure_fin ? ` → ${String(p.heure_fin).slice(0,5)}` : ''}
+                                      </div>
+                                    )}
+                                    <div className="text-[9px] opacity-60 mt-0.5 flex items-center gap-0.5">
+                                      {isOnLeave ? <span>⚠️</span> : <span>{isCH ? '🕐' : '📅'}</span>}
+                                      <span>{isOnLeave ? 'Conflit congé' : isCH ? 'Horaire fixe' : 'Planifié'}</span>
+                                    </div>
                                   </div>
-                                </div>
-                              ))}
+                                )
+                              })}
                             </div>
                           </td>
                         )
@@ -393,11 +401,17 @@ export default async function ManagerPlanning() {
                       )
                     })}
                     {dayPlanifie.map(p => {
-                      const agent = (agents ?? []).find(a => a.id === p.agent_id)
+                      const agent  = (agents ?? []).find(a => a.id === p.agent_id)
+                      const isCH   = p.recurrence === 'contrainte_horaire'
+                      const rowBg  = isCH ? 'bg-amber-50' : 'bg-[#0BBFBF]/5'
+                      const avatarBg = isCH ? 'bg-amber-400' : 'bg-[#0BBFBF]'
+                      const badgeCls = isCH
+                        ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                        : 'bg-[#0BBFBF]/20 text-[#0A6060] border border-[#0BBFBF]/30'
                       return (
-                        <div key={p.id} className="px-5 py-3 flex items-center gap-3 bg-[#0BBFBF]/5">
-                          <div className="w-8 h-8 rounded-full bg-[#0BBFBF] flex items-center justify-center text-white text-xs font-bold shrink-0">
-                            {agent ? agent.prenom[0] + agent.nom[0] : '📅'}
+                        <div key={p.id} className={`px-5 py-3 flex items-center gap-3 ${rowBg}`}>
+                          <div className={`w-8 h-8 rounded-full ${avatarBg} flex items-center justify-center text-white text-xs font-bold shrink-0`}>
+                            {agent ? agent.prenom[0] + agent.nom[0] : (isCH ? '🕐' : '📅')}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-slate-800 truncate">
@@ -406,11 +420,11 @@ export default async function ManagerPlanning() {
                             <p className="text-xs text-slate-500">
                               {agent ? `${agent.prenom} ${agent.nom}` : ''}
                               {p.heure_debut ? ` · ${String(p.heure_debut).slice(0,5)}` : ''}
-                              {` · ${RECURRENCE_LABEL[p.recurrence] ?? ''} ${p.recurrence ?? ''}`}
+                              {p.heure_fin   ? ` → ${String(p.heure_fin).slice(0,5)}`   : ''}
                             </p>
                           </div>
-                          <span className="px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 bg-[#0BBFBF]/20 text-[#0A6060] border border-[#0BBFBF]/30">
-                            📅 Planifié
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 ${badgeCls}`}>
+                            {isCH ? '🕐 Horaire fixe' : '📅 Planifié'}
                           </span>
                         </div>
                       )

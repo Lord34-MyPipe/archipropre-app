@@ -103,7 +103,9 @@ export async function POST(req: NextRequest) {
     date:         i.date,
     heure_debut:  i.heureDebut ?? null,
     heure_fin:    i.heureFin   ?? null,
-    recurrence:   i.typePrincipal === 'hebdo' ? 'hebdo' : 'ponctuelle',
+    recurrence:   i.typePrincipal === 'hebdo'              ? 'hebdo'
+               : i.typePrincipal === 'contrainte_horaire' ? 'contrainte_horaire'
+               : 'ponctuelle',
   }))
 
   const { error: iErr } = await admin.from('interventions_planifiees').insert(rows)

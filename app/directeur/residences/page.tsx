@@ -1,48 +1,48 @@
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import type { Residence } from '@/lib/types'
+import DirecteurResidencesClient from '@/components/directeur/DirecteurResidencesClient'
+import type { ResidenceMapItem } from '@/components/shared/ResidencesMap'
 
 export default async function DirecteurResidences() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: residences } = await supabase
-    .from('residences').select('*').eq('actif', true).order('nom') as { data: Residence[] | null }
+  const [r1, r2, r3, r4] = await Promise.all([
+    supabase.from('residences').select('*').order('nom'),
+    supabase.from('profiles').select('id, nom, prenom').eq('role', 'manager').eq('actif', true),
+    supabase.from('profiles').select('id, nom, prenom').eq('role', 'agent').eq('actif', true),
+    supabase.from('contrats_residence').select('residence_id').eq('actif', true),
+  ])
+
+  const residences = r1.data as Residence[] | null
+  const managers = r2.data as { id: string; nom: string; prenom: string }[] | null
+  const agents   = r3.data as { id: string; nom: string; prenom: string }[] | null
+  const contrats = r4.data as { residence_id: string }[] | null
+
+  const agentMap   = new Map((agents ?? []).map(a => [a.id, `${a.prenom} ${a.nom}`]))
+  const managerMap = new Map((managers ?? []).map(m => [m.id, `${m.prenom} ${m.nom}`]))
+  const contratsSet = new Set((contrats ?? []).map(c => c.residence_id))
+
+  const residencesWithMeta: ResidenceMapItem[] = (residences ?? []).map(r => ({
+    ...r,
+    agentNom:   r.agent_prefere_id ? (agentMap.get(r.agent_prefere_id)  ?? null) : null,
+    managerNom: r.manager_id        ? (managerMap.get(r.manager_id)       ?? null) : null,
+    managerId:  r.manager_id,
+    hasContrat: contratsSet.has(r.id),
+  }))
 
   return (
     <div className="min-h-screen bg-slate-100">
       <div className="bg-[#0A2E5A] text-white px-8 py-8">
         <h1 className="text-3xl font-bold">Toutes les résidences</h1>
-        <p className="text-blue-300 text-sm mt-1">{residences?.length ?? 0} résidences actives</p>
+        <p className="text-blue-300 text-sm mt-1">{residencesWithMeta.length} résidences au total</p>
       </div>
-      <div className="px-8 py-8">
-        <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-100">
-              <tr>
-                {['Nom','Adresse','Type','Exigeant','Véhicule'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {(residences ?? []).map(r => (
-                <tr key={r.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-slate-800 text-sm">{r.nom}</td>
-                  <td className="px-4 py-3 text-sm text-slate-500">{r.adresse}</td>
-                  <td className="px-4 py-3 text-sm text-slate-500 capitalize">{r.type_client?.replace('_',' ') ?? '—'}</td>
-                  <td className="px-4 py-3">{r.client_exigeant ? <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full">Oui</span> : <span className="text-slate-300 text-sm">—</span>}</td>
-                  <td className="px-4 py-3">{r.vehicule_requis ? <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">Requis</span> : <span className="text-slate-300 text-sm">—</span>}</td>
-                </tr>
-              ))}
-              {!residences?.length && (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-400 text-sm">Aucune résidence.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <DirecteurResidencesClient
+        residences={residencesWithMeta}
+        managers={managers ?? []}
+      />
     </div>
   )
 }

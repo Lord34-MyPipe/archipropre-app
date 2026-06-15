@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
-import type { Residence, ZoneResidence, TacheTemplate } from '@/lib/types'
+import type { Residence, ZoneResidence, TacheTemplate, ContratResidence } from '@/lib/types'
 import TacheModal from './TacheModal'
+import type { ParametresSociete } from './page'
 
 /* ── Constantes ──────────────────────────────── */
 
@@ -103,11 +104,13 @@ interface Props {
   residence: Residence
   zones: ZoneResidence[]
   taches: TacheTemplate[]
+  contrat?: ContratResidence | null
+  parametres?: ParametresSociete | null
 }
 
 /* ── Composant principal ─────────────────────── */
 
-export default function TachesClient({ residence, zones: initialZones, taches: initialTaches }: Props) {
+export default function TachesClient({ residence, zones: initialZones, taches: initialTaches, contrat, parametres }: Props) {
   const [zones, setZones]         = useState<ZoneResidence[]>(initialZones)
   const [taches, setTaches]       = useState<TacheTemplate[]>(initialTaches)
   const [view, setView]           = useState<'zone' | 'day'>('zone')
@@ -506,29 +509,66 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
         )}
       </div>
 
-      {/* ── Bandeau durée totale ── */}
-      {taches.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#0A2E5A] text-white px-5 py-3 shadow-2xl">
-          <div className="max-w-4xl mx-auto flex flex-col md:flex-row md:items-center gap-1 md:gap-4">
-            <div className="flex items-center gap-2">
-              <span className="text-[#0BBFBF] text-lg">⏱</span>
-              <span className="font-bold text-base">
-                {dureTotaux.incomplete ? '~' : ''}{formatDuree(dureTotaux.total)}
-                {dureTotaux.incomplete && <span className="text-amber-400 text-xs font-normal ml-2">(certaines tâches sans durée)</span>}
-              </span>
+      {/* ── Bandeau durée + rentabilité ── */}
+      {taches.length > 0 && (() => {
+        // Calcul rentabilité
+        let rentabilite: { heuresMois: number; coutReel: number; marge: number; pct: number } | null = null
+        if (parametres && contrat?.montant_mensuel && contrat.nb_interventions_mois && dureTotaux.total > 0) {
+          const heuresMois = (contrat.nb_interventions_mois * dureTotaux.total) / 60
+          const coutReel   = parametres.taux_horaire_agent * heuresMois + parametres.frais_generaux_mois
+          const marge      = contrat.montant_mensuel - coutReel
+          const pct        = (marge / contrat.montant_mensuel) * 100
+          rentabilite = { heuresMois, coutReel, marge, pct }
+        }
+        const margeColor = rentabilite
+          ? rentabilite.pct >= 40 ? '#4ade80'
+          : rentabilite.pct >= 30 ? '#60a5fa'
+          : rentabilite.pct >= 20 ? '#fb923c'
+          : '#f87171'
+          : null
+
+        return (
+          <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#0A2E5A] text-white shadow-2xl">
+            {/* Ligne durée */}
+            <div className="px-5 py-2.5 flex flex-col md:flex-row md:items-center gap-1 md:gap-4 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <span className="text-[#0BBFBF]">⏱</span>
+                <span className="font-bold">
+                  {dureTotaux.incomplete ? '~' : ''}{formatDuree(dureTotaux.total)}
+                  {dureTotaux.incomplete && <span className="text-amber-400 text-xs font-normal ml-2">(certaines tâches sans durée)</span>}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-3 text-xs text-blue-200">
+                {Object.entries(dureTotaux.byFreq)
+                  .filter(([, v]) => v > 0)
+                  .map(([ft, v]) => (
+                    <span key={ft}>
+                      {FREQ_BADGE[ft]?.label ?? ft}: <span className="text-white font-semibold">{formatDuree(v)}</span>
+                    </span>
+                  ))}
+              </div>
             </div>
-            <div className="flex flex-wrap gap-3 text-xs text-blue-200">
-              {Object.entries(dureTotaux.byFreq)
-                .filter(([, v]) => v > 0)
-                .map(([ft, v]) => (
-                  <span key={ft}>
-                    {FREQ_BADGE[ft]?.label ?? ft}: <span className="text-white font-semibold">{formatDuree(v)}</span>
+            {/* Ligne rentabilité */}
+            <div className="px-5 py-2 flex flex-wrap items-center gap-4 text-xs">
+              {rentabilite && contrat ? (
+                <>
+                  <span className="text-blue-300">💰 Contrat : <span className="text-white font-semibold">{contrat.montant_mensuel?.toLocaleString('fr-FR')} €/mois</span></span>
+                  <span className="text-blue-300">📊 Coût réel : <span className="text-white font-semibold">{rentabilite.coutReel.toFixed(0)} €</span></span>
+                  <span style={{ color: margeColor ?? 'white' }} className="font-bold">
+                    Marge : {rentabilite.marge >= 0 ? '+' : ''}{rentabilite.marge.toFixed(0)} € ({rentabilite.pct.toFixed(1)} %)
                   </span>
-                ))}
+                </>
+              ) : contrat && !parametres ? (
+                <span className="text-amber-400">⚙️ Taux horaire non configuré — demandez au directeur</span>
+              ) : !contrat ? (
+                <span className="text-blue-300/60">Aucun contrat actif pour cette résidence</span>
+              ) : (
+                <span className="text-amber-400">⏱ Renseignez les durées de tâches pour calculer la rentabilité</span>
+              )}
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* Modal tâche */}
       {modal.open && (

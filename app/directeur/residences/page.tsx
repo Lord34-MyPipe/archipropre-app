@@ -13,7 +13,7 @@ export default async function DirecteurResidences() {
     supabase.from('residences').select('*').order('nom'),
     supabase.from('profiles').select('id, nom, prenom').eq('role', 'manager').eq('actif', true),
     supabase.from('profiles').select('id, nom, prenom').eq('role', 'agent').eq('actif', true),
-    supabase.from('contrats_residence').select('residence_id').eq('actif', true),
+    supabase.from('contrats_residences').select('residence_id').eq('actif', true),
   ])
 
   const residences = r1.data as Residence[] | null

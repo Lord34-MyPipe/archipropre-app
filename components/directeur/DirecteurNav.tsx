@@ -5,11 +5,12 @@ import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 
 const items = [
-  { href: '/directeur/dashboard',  label: 'Vue d\'ensemble', emoji: '📊' },
-  { href: '/directeur/analytics',  label: 'Analytique',      emoji: '📈' },
-  { href: '/directeur/residences', label: 'Résidences',      emoji: '🏢' },
-  { href: '/directeur/equipes',    label: 'Équipes',         emoji: '👥' },
-  { href: '/directeur/rapports',   label: 'Rapports',        emoji: '📄' },
+  { href: '/directeur/dashboard',   label: 'Tableau de bord', emoji: '📊' },
+  { href: '/directeur/planning',    label: 'Planning',         emoji: '📅' },
+  { href: '/directeur/residences',  label: 'Résidences',       emoji: '🏢' },
+  { href: '/directeur/agents',      label: 'Agents',           emoji: '👷' },
+  { href: '/directeur/rentabilite', label: 'Rentabilité',      emoji: '💰' },
+  { href: '/directeur/parametres',  label: 'Paramètres',       emoji: '⚙️' },
 ]
 
 export default function DirecteurNav() {

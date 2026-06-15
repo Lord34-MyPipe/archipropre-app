@@ -64,15 +64,52 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ error: 'tableType invalide' }, { status: 400 })
 }
 
-// PATCH — valider/refuser un congé
+// PATCH — modifier complètement une absence/congé, ou juste valider/refuser un congé
 export async function PATCH(req: NextRequest) {
   const manager = await getManagerUser()
   if (!manager) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
-  const { id, statut } = await req.json()
-  if (!id || !statut) return NextResponse.json({ error: 'Champs manquants' }, { status: 400 })
+  const body = await req.json()
+  const { id, statut, tableType, dateDebut, dateFin, type, motif } = body
+  if (!id) return NextResponse.json({ error: 'Champs manquants' }, { status: 400 })
 
   const admin = await createAdminClient()
+
+  // Mise à jour complète (mode édition)
+  if (dateDebut && dateFin && tableType) {
+    const table = tableType === 'absence' ? 'absences' : 'conges'
+    const { data: row } = await admin.from(table).select('agent_id').eq('id', id).single()
+    if (!row) return NextResponse.json({ error: 'Introuvable' }, { status: 404 })
+
+    const ok = await verifyAgentBelongsToManager(row.agent_id, manager.id)
+    if (!ok) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
+
+    if (tableType === 'absence') {
+      const { error } = await admin.from('absences').update({
+        date_debut: dateDebut,
+        date_fin:   dateFin,
+        type:       type ?? 'maladie',
+        motif:      motif ?? null,
+      }).eq('id', id)
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    } else {
+      const newStatut = statut ?? 'en_attente'
+      const { error } = await admin.from('conges').update({
+        date_debut: dateDebut,
+        date_fin:   dateFin,
+        motif:      motif ?? null,
+        statut:     newStatut,
+        valide:     newStatut === 'valide',
+        valide_par: newStatut === 'valide' ? manager.id : null,
+      }).eq('id', id)
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+    return NextResponse.json({ ok: true })
+  }
+
+  // Mise à jour statut seul (valider / refuser un congé)
+  if (!statut) return NextResponse.json({ error: 'Champs manquants' }, { status: 400 })
+
   const { data: conge } = await admin.from('conges').select('agent_id').eq('id', id).single()
   if (!conge) return NextResponse.json({ error: 'Introuvable' }, { status: 404 })
 

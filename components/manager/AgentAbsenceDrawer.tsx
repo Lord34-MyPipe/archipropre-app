@@ -43,7 +43,6 @@ function daysInMonth(y: number, m: number): number {
   return new Date(y, m + 1, 0).getDate()
 }
 
-// Décalage lundi = 0
 function firstDow(y: number, m: number): number {
   return (new Date(y, m, 1).getDay() + 6) % 7
 }
@@ -89,8 +88,14 @@ export default function AgentAbsenceDrawer({ agent, onClose }: Props) {
   const [fDebut, setFDebut]     = useState('')
   const [fFin, setFFin]         = useState('')
   const [fMotif, setFMotif]     = useState('')
+  const [fStatut, setFStatut]   = useState<'en_attente' | 'valide' | 'refuse'>('en_attente')
   const [fSaving, setFSaving]   = useState(false)
   const [fError, setFError]     = useState('')
+
+  // Mode édition
+  const [editingId, setEditingId]       = useState<string | null>(null)
+  const [editingTable, setEditingTable] = useState<'absence' | 'conge' | null>(null)
+  const isEditing = editingId !== null
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -102,14 +107,12 @@ export default function AgentAbsenceDrawer({ agent, onClose }: Props) {
     setAbsences((abs ?? []) as Absence[])
     setConges((cgs ?? []) as Conge[])
 
-    // Calcul des jours occupés (absences validées + congés)
     const occupiedRanges = [
       ...(abs ?? []).filter((a: Absence) => a.valide).map((a: Absence) => ({ debut: a.date_debut, fin: a.date_fin })),
       ...(cgs ?? []).filter((c: Conge) => c.statut !== 'refuse').map((c: Conge) => ({ debut: c.date_debut, fin: c.date_fin })),
     ]
 
     if (occupiedRanges.length > 0) {
-      // Fetch interventions affectées (futures uniquement)
       const today = new Date().toISOString().split('T')[0]
       const { data: inters } = await supabase
         .from('interventions')
@@ -121,12 +124,58 @@ export default function AgentAbsenceDrawer({ agent, onClose }: Props) {
         occupiedRanges.some(r => i.date_prevue >= r.debut && i.date_prevue <= r.fin)
       )
       setAffectees(affected as unknown as { id: string; date_prevue: string; residences: { nom: string } | null }[])
+    } else {
+      setAffectees([])
     }
 
     setLoading(false)
   }, [agent.id])
 
   useEffect(() => { load() }, [load])
+
+  // ── Ouverture du modal ──
+
+  function openCreate() {
+    setEditingId(null)
+    setEditingTable(null)
+    setFType('conge')
+    setFDebut('')
+    setFFin('')
+    setFMotif('')
+    setFStatut('en_attente')
+    setFError('')
+    setShowForm(true)
+  }
+
+  function openEdit(tableType: 'absence' | 'conge', entry: Absence | Conge) {
+    setEditingId(entry.id)
+    setEditingTable(tableType)
+    if (tableType === 'conge') {
+      setFType('conge')
+      setFStatut((entry as Conge).statut ?? 'en_attente')
+    } else {
+      setFType((entry as Absence).type as EntryType)
+    }
+    setFDebut(entry.date_debut)
+    setFFin(entry.date_fin)
+    setFMotif(entry.motif ?? '')
+    setFError('')
+    setShowForm(true)
+  }
+
+  function closeForm() {
+    setShowForm(false)
+    setEditingId(null)
+    setEditingTable(null)
+    setFType('conge')
+    setFDebut('')
+    setFFin('')
+    setFMotif('')
+    setFStatut('en_attente')
+    setFError('')
+  }
+
+  // ── Actions API ──
 
   async function handleCreate(valideImmediat: boolean) {
     if (!fDebut || !fFin) { setFError('Dates obligatoires'); return }
@@ -140,11 +189,11 @@ export default function AgentAbsenceDrawer({ agent, onClose }: Props) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         tableType,
-        agentId:       agent.id,
-        dateDebut:     fDebut,
-        dateFin:       fFin,
-        type:          tableType === 'absence' ? fType as AbsenceType : undefined,
-        motif:         fMotif || null,
+        agentId:        agent.id,
+        dateDebut:      fDebut,
+        dateFin:        fFin,
+        type:           tableType === 'absence' ? fType as AbsenceType : undefined,
+        motif:          fMotif || null,
         valideImmediat: tableType === 'conge' ? valideImmediat : undefined,
       }),
     })
@@ -153,8 +202,34 @@ export default function AgentAbsenceDrawer({ agent, onClose }: Props) {
     if (!res.ok) { setFError(data.error ?? 'Erreur'); return }
 
     if (fType === 'maladie') setIaAlert(true)
-    setShowForm(false)
-    setFType('conge'); setFDebut(''); setFFin(''); setFMotif('')
+    closeForm()
+    load()
+  }
+
+  async function handleUpdate() {
+    if (!fDebut || !fFin) { setFError('Dates obligatoires'); return }
+    if (fFin < fDebut) { setFError('La date de fin doit être après le début'); return }
+    setFSaving(true)
+    setFError('')
+
+    const res = await fetch('/api/absences', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id:        editingId,
+        tableType: editingTable,
+        dateDebut: fDebut,
+        dateFin:   fFin,
+        type:      editingTable === 'absence' ? fType as AbsenceType : undefined,
+        motif:     fMotif || null,
+        statut:    editingTable === 'conge' ? fStatut : undefined,
+      }),
+    })
+    const data = await res.json()
+    setFSaving(false)
+    if (!res.ok) { setFError(data.error ?? 'Erreur'); return }
+
+    closeForm()
     load()
   }
 
@@ -202,6 +277,17 @@ export default function AgentAbsenceDrawer({ agent, onClose }: Props) {
     conge_attente: 'bg-slate-300 text-slate-600',
     libre:         'bg-green-100 text-green-700',
   }
+
+  const TrashIcon = () => (
+    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/>
+    </svg>
+  )
+  const EditIcon = () => (
+    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/>
+    </svg>
+  )
 
   return (
     <>
@@ -304,7 +390,7 @@ export default function AgentAbsenceDrawer({ agent, onClose }: Props) {
 
           {/* Bouton déclarer */}
           <div className="px-5 py-4">
-            <button onClick={() => setShowForm(true)}
+            <button onClick={openCreate}
               className="w-full py-3 rounded-2xl text-white font-semibold text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
               style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}>
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -357,11 +443,13 @@ export default function AgentAbsenceDrawer({ agent, onClose }: Props) {
                                   className="w-7 h-7 rounded-lg bg-red-100 text-red-600 flex items-center justify-center hover:bg-red-200 transition-colors text-xs font-bold" title="Refuser">✕</button>
                               </>
                             )}
+                            <button onClick={() => openEdit('conge', c)}
+                              className="w-7 h-7 rounded-lg bg-blue-50 text-blue-500 flex items-center justify-center hover:bg-blue-100 transition-colors" title="Modifier">
+                              <EditIcon/>
+                            </button>
                             <button onClick={() => handleDelete('conge', c.id)}
-                              className="w-7 h-7 rounded-lg bg-slate-100 text-slate-400 flex items-center justify-center hover:bg-red-100 hover:text-red-500 transition-colors">
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/>
-                              </svg>
+                              className="w-7 h-7 rounded-lg bg-slate-100 text-slate-400 flex items-center justify-center hover:bg-red-100 hover:text-red-500 transition-colors" title="Supprimer">
+                              <TrashIcon/>
                             </button>
                           </div>
                         </div>
@@ -394,12 +482,16 @@ export default function AgentAbsenceDrawer({ agent, onClose }: Props) {
                             </p>
                             {a.motif && <p className="text-xs text-slate-400 mt-0.5 italic">{a.motif}</p>}
                           </div>
-                          <button onClick={() => handleDelete('absence', a.id)}
-                            className="w-7 h-7 rounded-lg bg-slate-100 text-slate-400 flex items-center justify-center hover:bg-red-100 hover:text-red-500 transition-colors shrink-0">
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/>
-                            </svg>
-                          </button>
+                          <div className="flex gap-1 shrink-0">
+                            <button onClick={() => openEdit('absence', a)}
+                              className="w-7 h-7 rounded-lg bg-blue-50 text-blue-500 flex items-center justify-center hover:bg-blue-100 transition-colors" title="Modifier">
+                              <EditIcon/>
+                            </button>
+                            <button onClick={() => handleDelete('absence', a.id)}
+                              className="w-7 h-7 rounded-lg bg-slate-100 text-slate-400 flex items-center justify-center hover:bg-red-100 hover:text-red-500 transition-colors" title="Supprimer">
+                              <TrashIcon/>
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -451,30 +543,49 @@ export default function AgentAbsenceDrawer({ agent, onClose }: Props) {
         </div>
       </div>
 
-      {/* Modal formulaire déclaration */}
+      {/* Modal formulaire création / édition */}
       {showForm && (
         <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setShowForm(false)}/>
+          <div className="absolute inset-0 bg-black/50" onClick={closeForm}/>
           <div className="relative bg-white w-full md:max-w-sm md:rounded-3xl rounded-t-3xl p-6 shadow-2xl">
-            <h3 className="font-bold text-slate-800 text-base mb-5">Déclarer une absence / congé</h3>
+            <h3 className="font-bold text-slate-800 text-base mb-5">
+              {isEditing ? 'Modifier' : 'Déclarer une absence / congé'}
+            </h3>
 
             {fError && (
               <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{fError}</div>
             )}
 
-            {/* Type */}
+            {/* Type — désactivé en édition car on ne change pas la catégorie */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Type</label>
               <select value={fType} onChange={e => setFType(e.target.value as EntryType)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0BBFBF] focus:border-transparent">
-                {Object.entries(TYPE_LABELS).map(([k, v]) => (
-                  <option key={k} value={k}>{v}</option>
-                ))}
+                disabled={isEditing && editingTable === 'conge'}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0BBFBF] focus:border-transparent disabled:bg-slate-50 disabled:text-slate-400">
+                {isEditing && editingTable === 'conge'
+                  ? <option value="conge">Congés payés</option>
+                  : Object.entries(TYPE_LABELS)
+                      .filter(([k]) => editingTable !== 'absence' || k !== 'conge')
+                      .map(([k, v]) => <option key={k} value={k}>{v}</option>)
+                }
               </select>
-              {fType === 'maladie' && (
+              {fType === 'maladie' && !isEditing && (
                 <p className="mt-1 text-xs text-amber-600">⚠️ Déclenchera le module de réorganisation planning</p>
               )}
             </div>
+
+            {/* Statut — uniquement en édition de congé */}
+            {isEditing && editingTable === 'conge' && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Statut</label>
+                <select value={fStatut} onChange={e => setFStatut(e.target.value as typeof fStatut)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0BBFBF] focus:border-transparent">
+                  <option value="en_attente">En attente</option>
+                  <option value="valide">Validé</option>
+                  <option value="refuse">Refusé</option>
+                </select>
+              </div>
+            )}
 
             {/* Dates */}
             <div className="grid grid-cols-2 gap-3 mb-4">
@@ -500,7 +611,13 @@ export default function AgentAbsenceDrawer({ agent, onClose }: Props) {
 
             {/* Boutons d'action */}
             <div className="flex flex-col gap-2">
-              {fType === 'conge' ? (
+              {isEditing ? (
+                <button onClick={handleUpdate} disabled={fSaving}
+                  className="w-full py-3 rounded-xl text-white font-semibold text-sm transition-all disabled:opacity-60"
+                  style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}>
+                  {fSaving ? 'Enregistrement…' : '💾 Enregistrer les modifications'}
+                </button>
+              ) : fType === 'conge' ? (
                 <>
                   <button onClick={() => handleCreate(false)} disabled={fSaving}
                     className="w-full py-3 rounded-xl border-2 border-[#1A5FA8] text-[#1A5FA8] font-semibold text-sm hover:bg-blue-50 transition-colors disabled:opacity-60">
@@ -519,7 +636,7 @@ export default function AgentAbsenceDrawer({ agent, onClose }: Props) {
                   {fSaving ? 'Enregistrement…' : '✅ Valider immédiatement'}
                 </button>
               )}
-              <button onClick={() => setShowForm(false)}
+              <button onClick={closeForm}
                 className="w-full py-3 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50">
                 Annuler
               </button>

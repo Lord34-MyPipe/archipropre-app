@@ -16,6 +16,9 @@ export default function InterventionPage() {
   const [uploading, setUploading] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [finalizing, setFinalizing] = useState(false)
+  const [showZones, setShowZones] = useState(false)
+  const [zonesDurees, setZonesDurees] = useState<Record<string, number>>({})
+  const [savingZones, setSavingZones] = useState(false)
 
   const load = useCallback(async () => {
     const supabase = createClient()
@@ -89,6 +92,23 @@ export default function InterventionPage() {
     }).eq('id', params.id)
 
     setFinalizing(false)
+    setShowZones(true)
+  }
+
+  async function handleSaveZones(skip = false) {
+    if (!skip) {
+      setSavingZones(true)
+      const supabase = createClient()
+      for (const [zone, minutes] of Object.entries(zonesDurees)) {
+        if (minutes > 0) {
+          await supabase.from('taches_intervention')
+            .update({ duree_reelle_minutes: minutes })
+            .eq('intervention_id', params.id)
+            .eq('zone_nom', zone)
+        }
+      }
+      setSavingZones(false)
+    }
     router.push(`/agent/rapport/${params.id}`)
   }
 
@@ -266,6 +286,65 @@ export default function InterventionPage() {
           <div className="w-full h-14 rounded-2xl bg-green-500 flex items-center justify-center gap-2 text-white font-bold">
             <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"/>
             Finalisation…
+          </div>
+        </div>
+      )}
+
+      {/* Écran saisie temps par zone */}
+      {showZones && (
+        <div className="fixed inset-0 z-50 bg-slate-50 overflow-y-auto">
+          <div className="px-5 pt-10 pb-5 sticky top-0 z-10"
+            style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}>
+            <p className="text-blue-200 text-xs mb-1 uppercase tracking-wider">Étape optionnelle</p>
+            <h1 className="text-xl font-bold text-white">Temps passé par zone</h1>
+            <p className="text-blue-200 text-sm mt-1">Ces données aident à calibrer les plannings futurs.</p>
+          </div>
+
+          <div className="px-5 py-6 space-y-6 pb-4">
+            {Object.keys(groupes).map(zone => {
+              const selected = zonesDurees[zone] ?? 0
+              return (
+                <div key={zone}>
+                  <p className="font-semibold text-slate-700 mb-3">{zone}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[15, 30, 45, 60, 90, 120].map(min => {
+                      const label = min < 60 ? `${min}min` : min === 60 ? '1h' : `${Math.floor(min/60)}h${min%60 > 0 ? String(min%60).padStart(2,'0') : ''}`
+                      const isSel = selected === min
+                      return (
+                        <button key={min}
+                          onClick={() => setZonesDurees(p => ({ ...p, [zone]: isSel ? 0 : min }))}
+                          className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-95 ${
+                            isSel
+                              ? 'bg-[#0A2E5A] text-white shadow-md'
+                              : 'bg-white text-slate-600 border border-slate-200'
+                          }`}>
+                          {label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {selected > 0 && (
+                    <p className="text-xs text-[#0BBFBF] mt-2 font-medium">
+                      ✓ {selected < 60 ? `${selected}min` : `${Math.floor(selected/60)}h${selected%60 > 0 ? String(selected%60).padStart(2,'0') : '00'}`} sélectionné
+                    </p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="px-5 pb-10 flex gap-3 sticky bottom-0 bg-slate-50 pt-3 border-t border-slate-100">
+            <button onClick={() => handleSaveZones(true)}
+              className="flex-1 py-3.5 rounded-2xl border border-slate-200 text-slate-600 font-medium text-sm active:opacity-70">
+              Passer
+            </button>
+            <button onClick={() => handleSaveZones(false)} disabled={savingZones}
+              className="flex-[2] py-3.5 rounded-2xl text-white font-bold text-sm shadow-lg active:scale-[0.98] transition-all disabled:opacity-60"
+              style={{ background: 'linear-gradient(135deg,#059669,#10b981)' }}>
+              {savingZones
+                ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"/>Enregistrement…</span>
+                : 'Enregistrer les temps'}
+            </button>
           </div>
         </div>
       )}

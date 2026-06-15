@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import type { Residence, ZoneResidence, TacheTemplate, ContratResidence } from '@/lib/types'
 import TacheModal from './TacheModal'
-import type { ParametresSociete } from './page'
+import type { ParametresSociete, StatsReel } from './page'
 
 /* ── Constantes ──────────────────────────────── */
 
@@ -105,11 +105,12 @@ interface Props {
   taches: TacheTemplate[]
   contrat?: ContratResidence | null
   parametres?: ParametresSociete | null
+  statsReel?: StatsReel | null
 }
 
 /* ── Composant principal ─────────────────────── */
 
-export default function TachesClient({ residence, zones: initialZones, taches: initialTaches, contrat, parametres }: Props) {
+export default function TachesClient({ residence, zones: initialZones, taches: initialTaches, contrat, parametres, statsReel }: Props) {
   const [zones, setZones]         = useState<ZoneResidence[]>(initialZones)
   const [taches, setTaches]       = useState<TacheTemplate[]>(initialTaches)
   const [view, setView]           = useState<'zone' | 'day'>('zone')
@@ -565,8 +566,8 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
                 <span className="text-amber-400 text-xs ml-2">⚠️ {dureTotaux.incompleteCount} tâche{dureTotaux.incompleteCount > 1 ? 's' : ''} sans durée — total incomplet</span>
               )}
             </div>
-            {/* Ligne 2 : rentabilité */}
-            <div className="px-5 py-2 flex flex-wrap items-center gap-1 md:gap-5 text-xs">
+            {/* Ligne 2 : rentabilité estimée */}
+            <div className="px-5 py-2 flex flex-wrap items-center gap-1 md:gap-5 text-xs border-b border-white/10">
               {rent && contrat ? (
                 <>
                   <span className="text-blue-300">💰 Contrat :</span>
@@ -575,12 +576,12 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
                   <span className="text-blue-300">Taux vendu :</span>
                   <span className="font-semibold">{rent.tauxVendu.toFixed(2)} €/h</span>
                   <span className="text-white/20 hidden md:inline">|</span>
-                  <span className="text-blue-300">Coût réel :</span>
+                  <span className="text-blue-300">Coût estimé :</span>
                   <span className="font-semibold">{rent.coutReel.toFixed(0)} €/mois</span>
                   <span className="text-white/20 hidden md:inline">|</span>
-                  <span className="text-blue-300">Marge :</span>
+                  <span className="text-blue-300">Marge estimée :</span>
                   <span className="font-bold" style={{ color: mc ?? 'white' }}>
-                    {rent.pct.toFixed(1)} % ({rent.marge >= 0 ? '+' : ''}{rent.marge.toFixed(0)} €)
+                    {rent.pct.toFixed(1)} %
                   </span>
                 </>
               ) : contrat && !parametres ? (
@@ -591,6 +592,49 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
                 <span className="text-amber-400">⏱ Renseignez les durées de tâches pour calculer la rentabilité</span>
               )}
             </div>
+            {/* Ligne 3 : coût réel 30j */}
+            {(() => {
+              if (!statsReel || !parametres || !contrat?.montant_mensuel) {
+                return (
+                  <div className="px-5 py-2 flex items-center gap-2 text-xs text-blue-300/60">
+                    <span>📊</span>
+                    <span>Réel (30j) : aucune donnée — en attente des premières interventions</span>
+                  </div>
+                )
+              }
+              const heuresReel30j = statsReel.totalMin / 60
+              const coutReel30j   = parametres.taux_horaire_agent * heuresReel30j + parametres.frais_generaux_mois
+              const margeReel     = contrat.montant_mensuel - coutReel30j
+              const pctReel       = (margeReel / contrat.montant_mensuel) * 100
+              const heuresEstime  = dureTotaux.mois / 60
+              const ecartPct      = heuresEstime > 0
+                ? ((heuresReel30j - heuresEstime) / heuresEstime) * 100
+                : null
+              const crReel = pctReel >= 40 ? '#4ade80' : pctReel >= 30 ? '#60a5fa' : pctReel >= 20 ? '#fb923c' : '#f87171'
+
+              return (
+                <div className="px-5 py-2 flex flex-wrap items-center gap-1 md:gap-5 text-xs">
+                  <span className="text-[#0BBFBF]">📊</span>
+                  <span className="text-blue-300">Réel ({statsReel.count} interv. 30j) :</span>
+                  <span className="font-semibold">{formatDuree(statsReel.totalMin / statsReel.count)}/intervention</span>
+                  <span className="text-white/20 hidden md:inline">|</span>
+                  <span className="text-blue-300">Coût réel :</span>
+                  <span className="font-semibold">{coutReel30j.toFixed(0)} €/mois</span>
+                  <span className="text-white/20 hidden md:inline">|</span>
+                  <span className="text-blue-300">Marge réelle :</span>
+                  <span className="font-bold" style={{ color: crReel }}>{pctReel.toFixed(1)} %</span>
+                  {ecartPct !== null && (
+                    <>
+                      <span className="text-white/20 hidden md:inline">|</span>
+                      <span className={`font-semibold ${Math.abs(ecartPct) > 10 ? (ecartPct > 0 ? 'text-red-400' : 'text-green-400') : 'text-blue-200'}`}>
+                        {ecartPct > 10 ? '⚠️ Sous-chiffré ou agent lent' : ecartPct < -10 ? '✅ Agent efficace' : ''}
+                        {' '}Écart : {ecartPct > 0 ? '+' : ''}{ecartPct.toFixed(1)} % vs estimé
+                      </span>
+                    </>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         )
       })()}

@@ -9,15 +9,6 @@ export default function LoginPage() {
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
 
-  // DEBUG TEMPORAIRE — à supprimer après vérification en prod
-  useEffect(() => {
-    console.log('[Archipropre] ENV check:', {
-      SUPABASE_URL:  process.env.NEXT_PUBLIC_SUPABASE_URL  ? '✅ définie' : '❌ MANQUANTE',
-      SUPABASE_ANON: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '✅ définie' : '❌ MANQUANTE',
-      APP_URL:       process.env.NEXT_PUBLIC_APP_URL ?? '⚠️ non définie',
-    })
-  }, [])
-
   // Si l'utilisateur est déjà connecté, le rediriger vers son dashboard
   useEffect(() => {
     const supabase = createClient()

@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
   const heureFin       = contrat?.heure_fin_max   ?? '12:00'
   const joursInterdits: string[] = contrat?.jours_interdits ?? []
 
-  // Tâches template
+  // Tâches template (toutes sauf sur_passage)
   const { data: rawTaches } = await admin.from('taches_template')
     .select('id, libelle, frequence_type, jours_semaine, semaine_du_mois, mois_de_annee, heure_debut, zones_residence(nom)')
     .eq('residence_id', residenceId)
@@ -107,6 +107,15 @@ export async function POST(req: NextRequest) {
       : ((t.zones_residence as { nom: string } | null)?.nom ?? null),
   }))
 
+  // Jours actifs = union des jours des tâches hebdo / contrainte_horaire
+  // (les tâches mensuelles/trim. etc. ne créent PAS leur propre jour, elles se greffent sur les jours hebdo)
+  const joursHebdo = new Set<string>()
+  taches.forEach(t => {
+    if (t.frequence_type === 'hebdo' || t.frequence_type === 'contrainte_horaire') {
+      ;(t.jours_semaine ?? []).forEach(d => joursHebdo.add(d))
+    }
+  })
+
   // Parcourir les dates
   type InterventionGenerated = {
     date: string; dayName: string
@@ -124,7 +133,8 @@ export async function POST(req: NextRequest) {
   while (current <= end) {
     const dayName = DAY_NAMES[current.getDay()]
 
-    if (!joursInterdits.includes(dayName)) {
+    // Intervention uniquement les jours couverts par des tâches hebdo (pas tous les jours)
+    if (joursHebdo.has(dayName) && !joursInterdits.includes(dayName)) {
       const matching = taches.filter(t => tacheAppliesOn(t, current))
 
       if (matching.length > 0) {

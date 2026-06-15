@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase'
 import type { Residence } from '@/lib/types'
 
 export interface GeneratedIntervention {
@@ -41,7 +40,6 @@ export default function ContratModal({ residence, onClose, onGenerated }: Props)
   const [dateFin, setDateFin]           = useState(in12Months())
   const [montant, setMontant]           = useState('')
   const [nbInters, setNbInters]         = useState('4')
-  const [joursObliges, setJoursObliges] = useState<string[]>([])
   const [joursInterdits, setJoursInterdits] = useState<string[]>([])
   const [heureMin, setHeureMin]         = useState('07:00')
   const [heureMax, setHeureMax]         = useState('18:00')
@@ -60,37 +58,26 @@ export default function ContratModal({ residence, onClose, onGenerated }: Props)
   const [genError, setGenError]   = useState('')
 
   useEffect(() => {
-    const supabase = createClient()
-    Promise.all([
-      fetch(`/api/contrats?residenceId=${residence.id}`).then(r => r.json()),
-      supabase.from('taches_template')
-        .select('jours_semaine')
-        .eq('residence_id', residence.id)
-        .eq('frequence_type', 'hebdo'),
-    ]).then(([contratJson, { data: taches }]) => {
-      const contrat = contratJson.data
-      if (contrat) {
-        setContratId(contrat.id)
-        setDateDebut(contrat.date_debut)
-        setDateFin(contrat.date_fin)
-        setMontant(contrat.montant_mensuel != null ? String(contrat.montant_mensuel) : '')
-        setNbInters(String(contrat.nb_interventions_mois))
-        setJoursObliges(contrat.jours_obliges ?? [])
-        setJoursInterdits(contrat.jours_interdits ?? [])
-        setHeureMin(contrat.heure_debut_min ?? '07:00')
-        setHeureMax(contrat.heure_fin_max ?? '18:00')
-        setNotes(contrat.notes_specifiques ?? '')
-        setGenDebut(contrat.date_debut)
-        setGenFin(contrat.date_fin)
-        setSaved(true)
-      } else if (taches && taches.length > 0) {
-        // Auto-cocher les jours détectés depuis les tâches hebdo
-        const days = new Set<string>()
-        taches.forEach(t => (t.jours_semaine ?? []).forEach((d: string) => days.add(d)))
-        setJoursObliges([...days].filter(d => JOURS.includes(d)))
-      }
-      setLoading(false)
-    })
+    fetch(`/api/contrats?residenceId=${residence.id}`)
+      .then(r => r.json())
+      .then(json => {
+        const contrat = json.data
+        if (contrat) {
+          setContratId(contrat.id)
+          setDateDebut(contrat.date_debut)
+          setDateFin(contrat.date_fin)
+          setMontant(contrat.montant_mensuel != null ? String(contrat.montant_mensuel) : '')
+          setNbInters(String(contrat.nb_interventions_mois))
+          setJoursInterdits(contrat.jours_interdits ?? [])
+          setHeureMin(contrat.heure_debut_min ?? '07:00')
+          setHeureMax(contrat.heure_fin_max ?? '18:00')
+          setNotes(contrat.notes_specifiques ?? '')
+          setGenDebut(contrat.date_debut)
+          setGenFin(contrat.date_fin)
+          setSaved(true)
+        }
+        setLoading(false)
+      })
   }, [residence.id])
 
   function toggleJour(jour: string, list: string[], setter: (v: string[]) => void) {
@@ -109,7 +96,7 @@ export default function ContratModal({ residence, onClose, onGenerated }: Props)
         dateDebut, dateFin,
         montantMensuel: montant || null,
         nbInterventionsMois: nbInters,
-        joursObliges, joursInterdits,
+        joursInterdits,
         heureDebutMin: heureMin,
         heureFinnMax: heureMax,
         notesSpecifiques: notes || null,
@@ -263,20 +250,11 @@ export default function ContratModal({ residence, onClose, onGenerated }: Props)
                 </div>
               </div>
 
-              {/* Jours obligatoires */}
-              <JourCheckboxes
-                label="Jours obligatoires (auto depuis tâches hebdo)"
-                value={joursObliges}
-                setter={setJoursObliges}
-                blocked={joursInterdits}
-              />
-
-              {/* Jours interdits */}
+              {/* Jours interdits (les jours d'intervention sont déduits des tâches template) */}
               <JourCheckboxes
                 label="Jours interdits (client)"
                 value={joursInterdits}
                 setter={setJoursInterdits}
-                blocked={joursObliges}
               />
 
               {/* Notes */}

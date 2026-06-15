@@ -115,14 +115,16 @@ export async function POST(req: NextRequest) {
       : ((t.zones_residence as { nom: string } | null)?.nom ?? null),
   }))
 
-  // Jours actifs = union des jours des tâches hebdo / contrainte_horaire
-  // (les tâches mensuelles/trim. etc. ne créent PAS leur propre jour, elles se greffent sur les jours hebdo)
+  // Jours actifs = uniquement les jours des tâches HEBDO
+  // Les tâches contrainte_horaire ne créent PAS de jour d'intervention — elles se greffent si le jour existe déjà
+  // Les tâches mensuel/trim/sem/annuel idem : elles s'ajoutent aux jours hebdo existants
   const joursHebdo = new Set<string>()
   taches.forEach(t => {
-    if (t.frequence_type === 'hebdo' || t.frequence_type === 'contrainte_horaire') {
+    if (t.frequence_type === 'hebdo') {
       ;(t.jours_semaine ?? []).forEach(d => joursHebdo.add(d))
     }
   })
+  console.log('[generer] joursHebdo détectés depuis taches_template:', [...joursHebdo])
 
   // Parcourir les dates
   type InterventionGenerated = {

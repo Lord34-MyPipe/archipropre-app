@@ -44,6 +44,40 @@ export default async function ManagerPlanning() {
     .from('plannings').select('id').eq('manager_id', user.id).eq('statut', 'publie')
   const planningIds = (mgPlannings ?? []).map(p => p.id)
 
+  // Congés et absences des agents pour la semaine
+  const [{ data: congesRaw }, { data: absencesRaw }] = await Promise.all([
+    supabase.from('conges')
+      .select('agent_id, date_debut, date_fin, statut, motif')
+      .in('agent_id', ids)
+      .lte('date_debut', fin).gte('date_fin', debut),
+    supabase.from('absences')
+      .select('agent_id, date_debut, date_fin, statut, motif')
+      .in('agent_id', ids)
+      .lte('date_debut', fin).gte('date_fin', debut),
+  ])
+
+  // Construit un Set "agentId|dateStr" pour les jours couverts par un congé ou absence validé
+  const congeKeys = new Set<string>()
+  const congeMotifs: Record<string, string> = {} // "agentId|dateStr" → motif
+  const allConges = [...(congesRaw ?? []), ...(absencesRaw ?? [])]
+  allConges.forEach(c => {
+    // Accepte : valide=true, statut approuve/accepte/validé, ou pas de statut de rejet
+    const statutStr = (c.statut ?? '').toLowerCase()
+    const isRejected = ['refuse','rejeté','rejete','annule','annulé'].some(s => statutStr.includes(s))
+    if (isRejected) return
+    // Parcourt chaque jour de la plage
+    const dStart = new Date(c.date_debut + 'T00:00:00')
+    const dEnd   = new Date(c.date_fin   + 'T00:00:00')
+    const cur = new Date(dStart)
+    while (cur <= dEnd) {
+      const ds = cur.toISOString().split('T')[0]
+      const key = `${c.agent_id}|${ds}`
+      congeKeys.add(key)
+      if (!congeMotifs[key]) congeMotifs[key] = c.motif ?? 'Congé'
+      cur.setDate(cur.getDate() + 1)
+    }
+  })
+
   // Interventions réelles (scannées / en cours / terminées)
   const [{ data: intersRaw }, planifieesResult] = await Promise.all([
     supabase.from('interventions')
@@ -112,6 +146,14 @@ export default async function ManagerPlanning() {
           <div className="flex items-center gap-1.5">
             <div className="w-3 h-3 rounded-sm bg-green-400"/>
             <span className="text-xs text-blue-200">Terminée</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-sm bg-orange-300"/>
+            <span className="text-xs text-blue-200">🏖️ Congé</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-sm bg-red-400"/>
+            <span className="text-xs text-blue-200">⚠️ Conflit congé</span>
           </div>
         </div>
       </div>
@@ -185,13 +227,31 @@ export default async function ManagerPlanning() {
                         const dateStr = d.toISOString().split('T')[0]
                         const dayInters    = inters.filter(i => i.agent_id === agent.id && i.date_prevue === dateStr)
                         const dayPlanifie  = planifieesFiltered.filter(p => p.agent_id === agent.id && p.date === dateStr)
+                        const isOnLeave    = congeKeys.has(`${agent.id}|${dateStr}`)
+                        const leaveLabel   = congeMotifs[`${agent.id}|${dateStr}`] ?? 'Congé'
+                        const hasConflict  = isOnLeave && (dayInters.length > 0 || dayPlanifie.length > 0)
                         return (
-                          <td key={j} className="px-1 py-2 align-top min-w-[80px]">
+                          <td key={j} className={`px-1 py-2 align-top min-w-[80px] ${isOnLeave ? 'bg-orange-50/60' : ''}`}>
                             <div className="space-y-1">
+                              {/* Badge congé */}
+                              {isOnLeave && (
+                                <div className={`px-1.5 py-1 rounded-lg text-[10px] font-semibold leading-tight flex items-center gap-1 ${
+                                  hasConflict
+                                    ? 'bg-red-100 text-red-700 border border-red-300'
+                                    : 'bg-orange-100 text-orange-700 border border-orange-200'
+                                }`}>
+                                  {hasConflict ? '⚠️' : '🏖️'}
+                                  <span className="truncate">{hasConflict ? 'Conflit congé' : leaveLabel}</span>
+                                </div>
+                              )}
                               {/* Interventions réelles */}
                               {dayInters.map(i => (
                                 <div key={i.id}
-                                  className={`px-1.5 py-1.5 rounded-lg text-[10px] font-medium leading-tight ${STATUT_BG[i.statut] ?? 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                                  className={`px-1.5 py-1.5 rounded-lg text-[10px] font-medium leading-tight ${
+                                    isOnLeave
+                                      ? 'bg-red-50 text-red-800 border border-red-300'
+                                      : (STATUT_BG[i.statut] ?? 'bg-slate-100 text-slate-600 border border-slate-200')
+                                  }`}>
                                   <div className="truncate font-semibold">
                                     {(i as { residences?: { nom?: string } }).residences?.nom ?? '—'}
                                   </div>
@@ -208,7 +268,11 @@ export default async function ManagerPlanning() {
                               {/* Interventions planifiées (planning généré) */}
                               {dayPlanifie.map(p => (
                                 <div key={p.id}
-                                  className="px-1.5 py-1.5 rounded-lg text-[10px] font-medium leading-tight bg-[#0BBFBF]/10 text-[#0A5F5F] border border-[#0BBFBF]/30">
+                                  className={`px-1.5 py-1.5 rounded-lg text-[10px] font-medium leading-tight ${
+                                    isOnLeave
+                                      ? 'bg-red-50 text-red-800 border border-red-300'
+                                      : 'bg-[#0BBFBF]/10 text-[#0A5F5F] border border-[#0BBFBF]/30'
+                                  }`}>
                                   <div className="truncate font-semibold">
                                     {(p as { residences?: { nom?: string } }).residences?.nom ?? '—'}
                                   </div>
@@ -218,8 +282,8 @@ export default async function ManagerPlanning() {
                                     </div>
                                   )}
                                   <div className="text-[9px] opacity-60 mt-0.5 flex items-center gap-0.5">
-                                    <span>📅</span>
-                                    <span>{RECURRENCE_LABEL[p.recurrence] ?? ''} Planifié</span>
+                                    {isOnLeave ? <span>⚠️</span> : <span>📅</span>}
+                                    <span>{isOnLeave ? 'Conflit congé' : `${RECURRENCE_LABEL[p.recurrence] ?? ''} Planifié`}</span>
                                   </div>
                                 </div>
                               ))}
@@ -278,18 +342,33 @@ export default async function ManagerPlanning() {
             <div className="divide-y divide-slate-50">
               {semaine.map(d => {
                 const dateStr = d.toISOString().split('T')[0]
-                const dayInters   = inters.filter(i => i.date_prevue === dateStr)
-                const dayPlanifie = planifieesFiltered.filter(p => p.date === dateStr)
-                if (!dayInters.length && !dayPlanifie.length) return null
+                const dayInters    = inters.filter(i => i.date_prevue === dateStr)
+                const dayPlanifie  = planifieesFiltered.filter(p => p.date === dateStr)
+                const agentsEnConge = (agents ?? []).filter(a => congeKeys.has(`${a.id}|${dateStr}`))
+                if (!dayInters.length && !dayPlanifie.length && !agentsEnConge.length) return null
                 return (
                   <div key={dateStr}>
-                    <div className="px-5 py-2.5 bg-slate-50 flex items-center gap-2">
+                    <div className="px-5 py-2.5 bg-slate-50 flex items-center gap-2 flex-wrap">
                       <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
                         {d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}
                       </p>
-                      <span className="px-2 py-0.5 bg-white border border-slate-200 rounded-full text-xs text-slate-500 font-medium">
-                        {dayInters.length + dayPlanifie.length} intervention{dayInters.length + dayPlanifie.length > 1 ? 's' : ''}
-                      </span>
+                      {(dayInters.length + dayPlanifie.length) > 0 && (
+                        <span className="px-2 py-0.5 bg-white border border-slate-200 rounded-full text-xs text-slate-500 font-medium">
+                          {dayInters.length + dayPlanifie.length} intervention{dayInters.length + dayPlanifie.length > 1 ? 's' : ''}
+                        </span>
+                      )}
+                      {agentsEnConge.map(a => (
+                        <span key={a.id} className={`px-2 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 ${
+                          congeKeys.has(`${a.id}|${dateStr}`) && (dayInters.some(i => i.agent_id === a.id) || dayPlanifie.some(p => p.agent_id === a.id))
+                            ? 'bg-red-100 text-red-700 border border-red-200'
+                            : 'bg-orange-100 text-orange-700 border border-orange-200'
+                        }`}>
+                          🏖️ {a.prenom} {a.nom}
+                          {(dayInters.some(i => i.agent_id === a.id) || dayPlanifie.some(p => p.agent_id === a.id)) && (
+                            <span className="text-red-600 font-bold"> ⚠️</span>
+                          )}
+                        </span>
+                      ))}
                     </div>
                     {dayInters.map(i => {
                       const agent = (agents ?? []).find(a => a.id === i.agent_id)

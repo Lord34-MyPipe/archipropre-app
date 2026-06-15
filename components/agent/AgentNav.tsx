@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase'
 
 const items = [
   {
@@ -28,10 +29,18 @@ const items = [
 ]
 
 export default function AgentNav() {
-  const path = usePathname()
+  const path   = usePathname()
+  const router = useRouter()
+
+  async function handleLogout() {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    router.push('/login')
+    router.refresh()
+  }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-white border-t border-slate-200 safe-area-inset-bottom">
+    <nav className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-white border-t border-slate-200">
       <div className="flex items-stretch">
         {items.map(item => {
           const active = path.startsWith(item.href)
@@ -45,6 +54,16 @@ export default function AgentNav() {
             </Link>
           )
         })}
+
+        {/* Déconnexion */}
+        <button onClick={handleLogout}
+          className="flex-1 flex flex-col items-center justify-center gap-1 py-3 text-slate-400 hover:text-red-500 transition-colors">
+          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+            <path strokeLinecap="round" strokeLinejoin="round"
+              d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9"/>
+          </svg>
+          <span className="text-[11px] font-medium">Quitter</span>
+        </button>
       </div>
     </nav>
   )

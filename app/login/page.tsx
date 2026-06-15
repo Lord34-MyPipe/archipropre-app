@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 
@@ -8,6 +8,21 @@ export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
+
+  // Si l'utilisateur est déjà connecté, le rediriger vers son dashboard
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return
+      const { data: profile } = await supabase
+        .from('profiles').select('role').eq('id', user.id).single()
+      const dest =
+        profile?.role === 'directeur' ? '/directeur/dashboard' :
+        profile?.role === 'manager'   ? '/manager/dashboard'   :
+        '/agent/dashboard'
+      router.replace(dest)
+    })
+  }, [router])
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
 

@@ -153,6 +153,15 @@ export async function POST(req: NextRequest) {
     }
   })
 
+  console.log('[generer] joursHebdo:', [...joursHebdo])
+  console.log('[generer] joursContrainteSeul:', [...joursContrainteSeul])
+  console.log('[generer] taches mardi:', taches
+    .filter(t => (t.jours_semaine ?? []).includes('mardi'))
+    .map(t => ({ libelle: t.libelle, frequence_type: t.frequence_type, jours_semaine: t.jours_semaine, heure_debut: t.heure_debut, duree_minutes: t.duree_minutes })))
+  console.log('[generer] taches lundi:', taches
+    .filter(t => (t.jours_semaine ?? []).includes('lundi'))
+    .map(t => ({ libelle: t.libelle, frequence_type: t.frequence_type, jours_semaine: t.jours_semaine, duree_minutes: t.duree_minutes })))
+
   // Parcourir les dates
   type InterventionGenerated = {
     date: string; dayName: string

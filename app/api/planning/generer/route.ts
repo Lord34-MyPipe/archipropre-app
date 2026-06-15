@@ -91,6 +91,18 @@ export async function POST(req: NextRequest) {
     heureFin = `${String(Math.floor(totalMin / 60)).padStart(2, '0')}:${String(totalMin % 60).padStart(2, '0')}`
   }
 
+  // Interventions réelles déjà existantes sur la période (en_cours ou terminee)
+  const { data: existingInters } = await admin.from('interventions')
+    .select('agent_id, date_prevue')
+    .eq('residence_id', residenceId)
+    .in('statut', ['en_cours', 'terminee'])
+    .gte('date_prevue', dateDebut)
+    .lte('date_prevue', dateFin)
+
+  const existingSet = new Set(
+    (existingInters ?? []).map(i => `${i.agent_id ?? ''}|${i.date_prevue}`)
+  )
+
   // Tâches template (toutes sauf sur_passage)
   const { data: rawTaches } = await admin.from('taches_template')
     .select('id, libelle, frequence_type, jours_semaine, semaine_du_mois, mois_de_annee, heure_debut, heure_fin, zones_residence(nom)')
@@ -155,7 +167,10 @@ export async function POST(req: NextRequest) {
     const isHebdoDay      = joursHebdo.has(dayName)
     const isContrainteDay = joursContrainteSeul.has(dayName)
 
-    if ((isHebdoDay || isContrainteDay) && !joursInterdits.includes(dayName)) {
+    const dateStr = current.toISOString().split('T')[0]
+    const existingKey = `${res.agent_prefere_id ?? ''}|${dateStr}`
+
+    if ((isHebdoDay || isContrainteDay) && !joursInterdits.includes(dayName) && !existingSet.has(existingKey)) {
       const matching = taches.filter(t => tacheAppliesOn(t, current))
 
       if (matching.length > 0) {
@@ -172,11 +187,14 @@ export async function POST(req: NextRequest) {
           hFinFinal    = ctTask?.heure_fin   ?? heureFin
           typePrincipal = 'contrainte_horaire'
         } else {
-          // Jour hebdo : horaires du contrat (ou de la tâche si tout est contrainte)
-          hDebutFinal = matching.some(t => t.frequence_type !== 'contrainte_horaire')
+          // Jour hebdo : horaires du contrat (ou de la tâche si tout est contrainte_horaire)
+          const hasNonCH = matching.some(t => t.frequence_type !== 'contrainte_horaire')
+          hDebutFinal = hasNonCH
             ? heureDebut
             : (matching.find(t => t.heure_debut)?.heure_debut ?? heureDebut)
-          hFinFinal    = heureFin
+          hFinFinal = hasNonCH
+            ? heureFin
+            : (matching.find(t => t.heure_fin)?.heure_fin ?? heureFin)
           typePrincipal = types.includes('hebdo')       ? 'hebdo'
             : types.includes('mensuel')     ? 'mensuel'
             : types.includes('trimestriel') ? 'trimestriel'
@@ -186,7 +204,7 @@ export async function POST(req: NextRequest) {
         }
 
         generated.push({
-          date:    current.toISOString().split('T')[0],
+          date:    dateStr,
           dayName,
           heureDebut: hDebutFinal,
           heureFin:   hFinFinal,

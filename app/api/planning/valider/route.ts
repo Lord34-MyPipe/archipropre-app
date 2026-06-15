@@ -92,8 +92,24 @@ export async function POST(req: NextRequest) {
   if (pErr || !planning)
     return NextResponse.json({ error: pErr?.message ?? 'Erreur création planning' }, { status: 400 })
 
-  // Insérer les interventions planifiées
-  const rows = interventions.map((i: {
+  // Récupérer les interventions réelles déjà existantes (en_cours ou terminee) pour cette résidence+période
+  const { data: existingInters } = await admin.from('interventions')
+    .select('agent_id, date_prevue')
+    .eq('residence_id', residenceId)
+    .in('statut', ['en_cours', 'terminee'])
+    .gte('date_prevue', dateDebut)
+    .lte('date_prevue', lastDate)
+
+  const existingSet = new Set(
+    (existingInters ?? []).map(i => `${i.agent_id ?? ''}|${i.date_prevue}`)
+  )
+
+  // Insérer les interventions planifiées (en excluant les jours où une vraie intervention existe déjà)
+  const rows = interventions
+    .filter((i: { date: string; agentId: string | null }) =>
+      !existingSet.has(`${i.agentId ?? ''}|${i.date}`)
+    )
+    .map((i: {
     date: string; agentId: string | null
     heureDebut: string; heureFin: string; typePrincipal: string
   }) => ({
@@ -107,6 +123,11 @@ export async function POST(req: NextRequest) {
                : i.typePrincipal === 'contrainte_horaire' ? 'contrainte_horaire'
                : 'ponctuelle',
   }))
+
+  if (rows.length === 0) {
+    await admin.from('plannings').delete().eq('id', planning.id)
+    return NextResponse.json({ error: 'Aucune intervention à planifier (toutes déjà réalisées ou en cours)' }, { status: 400 })
+  }
 
   const { error: iErr } = await admin.from('interventions_planifiees').insert(rows)
   if (iErr) {

@@ -11,9 +11,16 @@ async function getManagerId(): Promise<string | null> {
 
 const DAY_NAMES = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi']
 
-/** Normalise "18:00:00" → "18:00", garde null si null */
+/** Normalise "18:00:00" → "18:00", null si null */
 const normalizeTime = (t: string | null | undefined): string | null =>
   t ? t.substring(0, 5) : null
+
+/** Ajoute minutes à "HH:MM" → "HH:MM" */
+function addMinutes(heure: string, minutes: number): string {
+  const [h, m] = heure.split(':').map(Number)
+  const total = h * 60 + m + minutes
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
+}
 
 interface TacheRow {
   id: string
@@ -28,15 +35,8 @@ interface TacheRow {
   zone_nom: string | null
 }
 
-/** Ajoute `minutes` à une heure "HH:MM" et retourne "HH:MM" */
-function addMinutes(heure: string, minutes: number): string {
-  const [h, m] = heure.split(':').map(Number)
-  const total = h * 60 + m + minutes
-  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
-}
-
 function tacheAppliesOn(t: TacheRow, date: Date): boolean {
-  const day = DAY_NAMES[date.getDay()]
+  const day   = DAY_NAMES[date.getDay()]
   const month = date.getMonth() + 1
   const week  = Math.ceil(date.getDate() / 7)
 
@@ -91,8 +91,8 @@ export async function POST(req: NextRequest) {
     .eq('residence_id', residenceId).eq('actif', true)
     .order('created_at', { ascending: false }).limit(1).maybeSingle()
 
-  const heureDebut: string    = normalizeTime(contrat?.heure_debut_min) ?? '08:00'
-  const heureFinContrat: string = normalizeTime(contrat?.heure_fin_max) ?? '12:00'
+  const heureDebut: string      = normalizeTime(contrat?.heure_debut_min) ?? '08:00'
+  const heureFinContrat: string = normalizeTime(contrat?.heure_fin_max)   ?? '12:00'
   const joursInterdits: string[] = contrat?.jours_interdits ?? []
   const dureeEstimeeFallback: number =
     (res as unknown as { duree_estimee_min?: number }).duree_estimee_min ?? 0
@@ -137,32 +137,10 @@ export async function POST(req: NextRequest) {
       : ((t.zones_residence as { nom: string } | null)?.nom ?? null),
   }))
 
-  // Jours hebdo = jours définis par des tâches HEBDO uniquement (anchor days)
-  const joursHebdo = new Set<string>()
-  taches.forEach(t => {
-    if (t.frequence_type === 'hebdo') {
-      ;(t.jours_semaine ?? []).forEach(d => joursHebdo.add(d))
-    }
-  })
+  // Jours actifs = tout jour couvert par au moins une tâche
+  const joursActifs = new Set<string>()
+  taches.forEach(t => { ;(t.jours_semaine ?? []).forEach(d => joursActifs.add(d)) })
 
-  // Jours contrainte seule = jours couverts UNIQUEMENT par des tâches contrainte_horaire
-  const joursContrainteSeul = new Set<string>()
-  taches.forEach(t => {
-    if (t.frequence_type === 'contrainte_horaire') {
-      ;(t.jours_semaine ?? []).forEach(d => { if (!joursHebdo.has(d)) joursContrainteSeul.add(d) })
-    }
-  })
-
-  console.log('[generer] joursHebdo:', [...joursHebdo])
-  console.log('[generer] joursContrainteSeul:', [...joursContrainteSeul])
-  console.log('[generer] taches mardi:', taches
-    .filter(t => (t.jours_semaine ?? []).includes('mardi'))
-    .map(t => ({ libelle: t.libelle, frequence_type: t.frequence_type, jours_semaine: t.jours_semaine, heure_debut: t.heure_debut, duree_minutes: t.duree_minutes })))
-  console.log('[generer] taches lundi:', taches
-    .filter(t => (t.jours_semaine ?? []).includes('lundi'))
-    .map(t => ({ libelle: t.libelle, frequence_type: t.frequence_type, jours_semaine: t.jours_semaine, duree_minutes: t.duree_minutes })))
-
-  // Parcourir les dates
   type InterventionGenerated = {
     date: string; dayName: string
     heureDebut: string; heureFin: string
@@ -177,65 +155,58 @@ export async function POST(req: NextRequest) {
   const current = new Date(start)
 
   while (current <= end) {
-    const dayName = DAY_NAMES[current.getDay()]
-    const isHebdoDay      = joursHebdo.has(dayName)
-    const isContrainteDay = joursContrainteSeul.has(dayName)
-
-    const dateStr = current.toISOString().split('T')[0]
+    const dayName   = DAY_NAMES[current.getDay()]
+    const dateStr   = current.toISOString().split('T')[0]
     const existingKey = `${res.agent_prefere_id ?? ''}|${dateStr}`
 
-    if ((isHebdoDay || isContrainteDay) && !joursInterdits.includes(dayName) && !existingSet.has(existingKey)) {
+    if (joursActifs.has(dayName) && !joursInterdits.includes(dayName) && !existingSet.has(existingKey)) {
       const matching = taches.filter(t => tacheAppliesOn(t, current))
 
       if (matching.length > 0) {
-        const types = matching.map(t => t.frequence_type)
+        // Tâches contrainte_horaire avec heure propre → intervention séparée à leur créneau
+        const matchingCH     = matching.filter(t => t.frequence_type === 'contrainte_horaire' && t.heure_debut)
+        // Toutes les autres (hebdo, mensuel, etc. + CH sans heure propre) → intervention aux heures du contrat
+        const matchingNormal = matching.filter(t => !(t.frequence_type === 'contrainte_horaire' && t.heure_debut))
 
-        // Heure de début : heures de la tâche contrainte ou heures du contrat
-        let hDebutFinal: string
-        let typePrincipal: string
-
-        if (!isHebdoDay) {
-          // Jour purement contrainte_horaire
-          const ctTask = matching.find(t => t.frequence_type === 'contrainte_horaire' && t.heure_debut)
-          hDebutFinal  = ctTask?.heure_debut ?? heureDebut
-          typePrincipal = 'contrainte_horaire'
-        } else {
-          // Jour hebdo (ou mix)
-          const hasNonCH = matching.some(t => t.frequence_type !== 'contrainte_horaire')
-          hDebutFinal = hasNonCH
-            ? heureDebut
-            : (matching.find(t => t.heure_debut)?.heure_debut ?? heureDebut)
-          typePrincipal = types.includes('hebdo')        ? 'hebdo'
-            : types.includes('mensuel')      ? 'mensuel'
-            : types.includes('trimestriel')  ? 'trimestriel'
-            : types.includes('semestriel')   ? 'semestriel'
-            : types.includes('annuel')       ? 'annuel'
-            : 'contrainte_horaire'
+        // ── Intervention standard (heures du contrat) ──────────────────────
+        if (matchingNormal.length > 0) {
+          const dureeTotale = matchingNormal.reduce((sum, t) => sum + (t.duree_minutes ?? 0), 0)
+          const hFinNormal  = dureeTotale > 0
+            ? addMinutes(heureDebut, dureeTotale)
+            : dureeEstimeeFallback > 0
+              ? addMinutes(heureDebut, dureeEstimeeFallback)
+              : heureFinContrat
+          const types = matchingNormal.map(t => t.frequence_type)
+          generated.push({
+            date: dateStr, dayName,
+            heureDebut, heureFin: hFinNormal,
+            agentId: res.agent_prefere_id ?? null, agentNom,
+            taches: matchingNormal.map(t => ({ id: t.id, libelle: t.libelle, type: t.frequence_type, zone: t.zone_nom })),
+            typePrincipal: types.includes('hebdo')        ? 'hebdo'
+              : types.includes('mensuel')     ? 'mensuel'
+              : types.includes('trimestriel') ? 'trimestriel'
+              : types.includes('semestriel')  ? 'semestriel'
+              : types.includes('annuel')      ? 'annuel'
+              : 'ponctuelle',
+          })
         }
 
-        // Heure de fin : hDebutFinal + somme des durées des tâches du jour
-        const dureeTotale = matching.reduce((sum, t) => sum + (t.duree_minutes ?? 0), 0)
-        let hFinFinal: string
-        if (dureeTotale > 0) {
-          hFinFinal = addMinutes(hDebutFinal, dureeTotale)
-        } else if (dureeEstimeeFallback > 0) {
-          hFinFinal = addMinutes(hDebutFinal, dureeEstimeeFallback)
-        } else {
-          hFinFinal = heureFinContrat
+        // ── Intervention contrainte_horaire (heure propre de la tâche) ─────
+        if (matchingCH.length > 0) {
+          const ctTask   = matchingCH[0]
+          const hDebutCH = ctTask.heure_debut!
+          const dureeCH  = matchingCH.reduce((sum, t) => sum + (t.duree_minutes ?? 0), 0)
+          const hFinCH   = dureeCH > 0
+            ? addMinutes(hDebutCH, dureeCH)
+            : ctTask.heure_fin ?? heureFinContrat
+          generated.push({
+            date: dateStr, dayName,
+            heureDebut: hDebutCH, heureFin: hFinCH,
+            agentId: res.agent_prefere_id ?? null, agentNom,
+            taches: matchingCH.map(t => ({ id: t.id, libelle: t.libelle, type: t.frequence_type, zone: t.zone_nom })),
+            typePrincipal: 'contrainte_horaire',
+          })
         }
-
-        generated.push({
-          date:    dateStr,
-          dayName,
-          heureDebut: hDebutFinal,
-          heureFin:   hFinFinal,
-          agentId: res.agent_prefere_id ?? null,
-          agentNom,
-          taches: matching.map(t => ({
-            id: t.id, libelle: t.libelle, type: t.frequence_type, zone: t.zone_nom,
-          })),
-          typePrincipal,
-        })
       }
     }
 

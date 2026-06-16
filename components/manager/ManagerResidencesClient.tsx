@@ -4,11 +4,19 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import ResidenceCard from './ResidenceCard'
 import type { ResidenceMapItem } from '@/components/shared/ResidencesMap'
+import type { EtatResidenceInfo, ResidenceEtat } from './ResidenceCard'
 
 const ResidencesMap = dynamic(
   () => import('@/components/shared/ResidencesMap'),
   { ssr: false, loading: () => <div className="h-[580px] bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400 text-sm">Chargement de la carte…</div> }
 )
+
+const ETAT_OPTIONS: { value: 'all' | ResidenceEtat; label: string; color: string }[] = [
+  { value: 'all',            label: 'Tous états',      color: 'bg-slate-100 text-slate-600' },
+  { value: 'a_configurer',   label: 'À configurer',    color: 'bg-slate-200 text-slate-600' },
+  { value: 'prete',          label: 'Prête',           color: 'bg-orange-100 text-orange-600' },
+  { value: 'planning_actif', label: 'Planning actif',  color: 'bg-green-100 text-green-700' },
+]
 
 const TYPE_OPTIONS = [
   { value: '', label: 'Tous types' },
@@ -24,8 +32,10 @@ const STATUT_OPTIONS = [
   { value: 'sommeil', label: 'En sommeil' },
 ]
 
+type ResidenceWithMeta = ResidenceMapItem & { _etat?: EtatResidenceInfo | null }
+
 interface Props {
-  residences: ResidenceMapItem[]
+  residences: ResidenceWithMeta[]
   agents: { id: string; nom: string; prenom: string }[]
   total: number
 }
@@ -36,6 +46,7 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
   const [showSug, setShowSug]     = useState(false)
   const [filterType, setFilterType]     = useState('')
   const [filterStatut, setFilterStatut] = useState<'all' | 'actif' | 'sommeil'>('all')
+  const [filterEtat, setFilterEtat]     = useState<'all' | ResidenceEtat>('all')
   const searchRef = useRef<HTMLDivElement>(null)
 
   // Fermer suggestions au clic extérieur
@@ -54,9 +65,10 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
       if (filterType && r.type_client !== filterType) return false
       if (filterStatut === 'actif' && !r.actif) return false
       if (filterStatut === 'sommeil' && r.actif) return false
+      if (filterEtat !== 'all' && r._etat?.etat !== filterEtat) return false
       return true
     })
-  }, [residences, search, filterType, filterStatut])
+  }, [residences, search, filterType, filterStatut, filterEtat])
 
   const suggestions = useMemo(() => {
     if (search.length < 2) return []
@@ -146,6 +158,21 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
             )}
           </div>
 
+          {/* Filtres état — boutons pill */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {ETAT_OPTIONS.map(o => (
+              <button key={o.value}
+                onClick={() => setFilterEtat(o.value)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${
+                  filterEtat === o.value
+                    ? `${o.color} border-current shadow-sm`
+                    : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
+                }`}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+
           {/* Filtres compacts */}
           <div className="flex items-center gap-2 flex-wrap">
             <select
@@ -162,9 +189,9 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
               {STATUT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
 
-            {(filterType || filterStatut !== 'all' || search) && (
+            {(filterType || filterStatut !== 'all' || filterEtat !== 'all' || search) && (
               <button
-                onClick={() => { setFilterType(''); setFilterStatut('all'); setSearch('') }}
+                onClick={() => { setFilterType(''); setFilterStatut('all'); setFilterEtat('all'); setSearch('') }}
                 className="px-3 py-2 bg-slate-100 text-slate-500 rounded-xl text-sm hover:bg-slate-200 transition-colors flex items-center gap-1.5">
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>

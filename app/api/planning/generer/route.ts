@@ -9,224 +9,191 @@ async function getManagerId(): Promise<string | null> {
   return p?.role === 'manager' ? user.id : null
 }
 
-const DAY_NAMES = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi']
+const DAY_NAMES = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi']
 
-/** Normalise "18:00:00" → "18:00", null si null */
+const DAY_ISO: Record<string, number> = {
+  lundi: 1, mardi: 2, mercredi: 3, jeudi: 4, vendredi: 5, samedi: 6, dimanche: 7,
+}
+
+/** Normalise "HH:MM:SS" → "HH:MM", null si null */
 const normalizeTime = (t: string | null | undefined): string | null =>
   t ? t.substring(0, 5) : null
 
-/** Ajoute minutes à "HH:MM" → "HH:MM" */
+/** Ajoute des minutes à "HH:MM" → "HH:MM" */
 function addMinutes(heure: string, minutes: number): string {
   const [h, m] = heure.split(':').map(Number)
   const total = h * 60 + m + minutes
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
 }
 
-interface TacheRow {
-  id: string
-  libelle: string
-  frequence_type: string
-  jours_semaine: string[]
-  semaine_du_mois: number[] | null
-  mois_de_annee: number[] | null
-  heure_debut: string | null
-  heure_fin: string | null
-  duree_minutes: number | null
-  zone_nom: string | null
-}
-
-function tacheAppliesOn(t: TacheRow, date: Date): boolean {
-  const day   = DAY_NAMES[date.getDay()]
-  const month = date.getMonth() + 1
-  const week  = Math.ceil(date.getDate() / 7)
-
-  if (!(t.jours_semaine ?? []).includes(day)) return false
-
-  switch (t.frequence_type) {
-    case 'hebdo':
-    case 'contrainte_horaire':
-      return true
-    case 'mensuel':
-      return (t.semaine_du_mois ?? [1]).includes(week)
-    case 'trimestriel':
-    case 'semestriel':
-    case 'annuel':
-      return (
-        (t.semaine_du_mois ?? [1]).includes(week) &&
-        (t.mois_de_annee ?? []).includes(month)
-      )
-    default:
-      return false
-  }
-}
-
-// POST — génère un planning prévisionnel (sans écriture en base)
-// Les données sont écrites dans interventions_planifiees via POST /api/planning/valider
+// POST — génère les interventions et les insère dans la table interventions
+// Body: { residenceId, dateDebut?, dateFin? }
+// dateDebut/dateFin sont optionnels : si absents, on utilise date_debut/date_fin du contrat actif.
 export async function POST(req: NextRequest) {
   const managerId = await getManagerId()
   if (!managerId) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
   const body = await req.json()
-  const { residenceId, dateDebut, dateFin } = body
-  console.log('[generer] body reçu:', { residenceId, dateDebut, dateFin, managerId })
+  const { residenceId, dateDebut: bodyDebut, dateFin: bodyFin } = body
+  console.log('[generer] body reçu:', { residenceId, bodyDebut, bodyFin, managerId })
 
-  if (!residenceId || !dateDebut || !dateFin)
-    return NextResponse.json({ error: 'Champs manquants' }, { status: 400 })
+  if (!residenceId)
+    return NextResponse.json({ error: 'residenceId manquant' }, { status: 400 })
 
   const admin = await createAdminClient()
 
-  // Ownership
+  // ── 1. Vérification ownership ────────────────────────────────────────────────
   const { data: res } = await admin.from('residences')
-    .select('id, nom, agent_prefere_id, duree_estimee_min')
+    .select('id, nom, agent_prefere_id')
     .eq('id', residenceId).eq('manager_id', managerId).single()
-  console.log('[generer] résidence:', res ? `${res.nom} (agent: ${res.agent_prefere_id ?? 'aucun'})` : 'NON TROUVÉE (mauvais manager_id ?)')
-  if (!res) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
+  console.log('[generer] résidence:', res ? `"${res.nom}" agent=${res.agent_prefere_id ?? 'aucun'}` : 'NON TROUVÉE (manager_id mismatch ?)')
+  if (!res) return NextResponse.json({ error: 'Résidence introuvable ou non autorisée' }, { status: 403 })
 
-  // Agent
-  let agentNom: string | null = null
-  if (res.agent_prefere_id) {
-    const { data: agent } = await admin.from('profiles')
-      .select('nom, prenom').eq('id', res.agent_prefere_id).single()
-    if (agent) agentNom = `${agent.prenom} ${agent.nom}`
-  }
+  if (!res.agent_prefere_id)
+    return NextResponse.json({ error: 'Aucun agent attitré pour cette résidence.' }, { status: 400 })
 
-  // Contrat actif
+  // ── 2. Contrat actif ─────────────────────────────────────────────────────────
   const { data: contrat } = await admin.from('contrats_residences')
-    .select('heure_debut_min, heure_fin_max, jours_interdits')
+    .select('date_debut, date_fin, heure_debut_min, heure_fin_max, jours_obliges, jours_interdits')
     .eq('residence_id', residenceId).eq('actif', true)
     .order('created_at', { ascending: false }).limit(1).maybeSingle()
 
-  console.log('[generer] contrat trouvé:', contrat
-    ? `${contrat.heure_debut_min} → ${contrat.heure_fin_max}, interdits: [${(contrat.jours_interdits ?? []).join(',')}]`
-    : 'AUCUN contrat actif → heures par défaut 08:00/12:00')
+  console.log('[generer] contrat:', contrat
+    ? `${contrat.date_debut} → ${contrat.date_fin} | ${contrat.heure_debut_min}→${contrat.heure_fin_max} | obliges=[${(contrat.jours_obliges ?? []).join(',')}]`
+    : 'AUCUN contrat actif')
+  if (!contrat)
+    return NextResponse.json({ error: 'Aucun contrat actif pour cette résidence.' }, { status: 400 })
 
-  const heureDebut: string      = normalizeTime(contrat?.heure_debut_min) ?? '08:00'
-  const heureFinContrat: string = normalizeTime(contrat?.heure_fin_max)   ?? '12:00'
-  const joursInterdits: string[] = contrat?.jours_interdits ?? []
-  const dureeEstimeeFallback: number =
-    (res as unknown as { duree_estimee_min?: number }).duree_estimee_min ?? 0
+  const heureDebut    = normalizeTime(contrat.heure_debut_min) ?? '08:00'
+  const heureFinMax   = normalizeTime(contrat.heure_fin_max)   ?? '12:00'
+  const joursObliges: string[]  = contrat.jours_obliges  ?? []
+  const joursInterdits: string[] = contrat.jours_interdits ?? []
 
-  // Interventions réelles déjà existantes sur la période (en_cours ou terminee)
-  const { data: existingInters } = await admin.from('interventions')
-    .select('agent_id, date_prevue')
+  // Plage de dates : paramètres body en priorité, sinon durée du contrat
+  const dateDebut = bodyDebut ?? contrat.date_debut
+  const dateFin   = bodyFin   ?? contrat.date_fin
+
+  // ── 3. Tâches hebdomadaires ──────────────────────────────────────────────────
+  const { data: taches, error: tachesErr } = await admin.from('taches_template')
+    .select('id, libelle, jours_semaine, duree_minutes')
     .eq('residence_id', residenceId)
-    .in('statut', ['en_cours', 'terminee'])
-    .gte('date_prevue', dateDebut)
-    .lte('date_prevue', dateFin)
+    .eq('frequence_type', 'hebdo')
 
-  const existingSet = new Set(
-    (existingInters ?? []).map(i => `${i.agent_id ?? ''}|${i.date_prevue}`)
-  )
+  console.log('[generer] taches hebdo:', taches?.length ?? 0,
+    tachesErr ? `ERREUR: ${tachesErr.message}` : '',
+    taches?.map(t => `"${t.libelle}"[${(t.jours_semaine ?? []).join(',')}]`).join(', '))
 
-  // Tâches template (toutes sauf sur_passage)
-  const { data: rawTaches, error: tachesErr } = await admin.from('taches_template')
-    .select('id, libelle, frequence_type, jours_semaine, semaine_du_mois, mois_de_annee, heure_debut, heure_fin, duree_minutes, zones_residence(nom)')
-    .eq('residence_id', residenceId)
-    .neq('frequence_type', 'sur_passage')
-    .order('ordre')
+  if (!taches?.length)
+    return NextResponse.json(
+      { error: 'Aucune tâche hebdomadaire configurée pour cette résidence.' },
+      { status: 400 }
+    )
 
-  console.log('[generer] taches_template:', rawTaches?.length ?? 0, 'tâches trouvées', tachesErr ? `ERREUR: ${tachesErr.message}` : '')
-  if (!rawTaches?.length) console.warn('[generer] ⚠️ Aucune tâche template pour cette résidence → planning vide')
+  // ── 4. Jours actifs ──────────────────────────────────────────────────────────
+  // jours_obliges du contrat → priorité absolue ; sinon union des jours_semaine des tâches
+  const joursFromTaches = [...new Set(taches.flatMap(t => t.jours_semaine ?? []))]
+  const joursBase = joursObliges.length > 0 ? joursObliges : joursFromTaches
+  const joursActifs = joursBase.filter(j => !joursInterdits.includes(j))
 
-  const taches: TacheRow[] = (rawTaches ?? []).map((t: {
-    id: string; libelle: string; frequence_type: string;
-    jours_semaine: string[]; semaine_du_mois: number[] | null;
-    mois_de_annee: number[] | null; heure_debut: string | null; heure_fin: string | null;
-    duree_minutes: number | null;
-    zones_residence: { nom: string }[] | { nom: string } | null
-  }) => ({
-    id: t.id,
-    libelle: t.libelle,
-    frequence_type: t.frequence_type,
-    jours_semaine: t.jours_semaine ?? [],
-    semaine_du_mois: t.semaine_du_mois,
-    mois_de_annee: t.mois_de_annee,
-    heure_debut: normalizeTime(t.heure_debut),
-    heure_fin:   normalizeTime(t.heure_fin),
-    duree_minutes: t.duree_minutes ?? null,
-    zone_nom: Array.isArray(t.zones_residence)
-      ? (t.zones_residence[0]?.nom ?? null)
-      : ((t.zones_residence as { nom: string } | null)?.nom ?? null),
-  }))
+  console.log('[generer] jours actifs:', joursActifs,
+    `(source: ${joursObliges.length > 0 ? 'jours_obliges du contrat' : 'taches_template'})`)
 
-  // Jours actifs = tout jour couvert par au moins une tâche
-  const joursActifs = new Set<string>()
-  taches.forEach(t => { ;(t.jours_semaine ?? []).forEach(d => joursActifs.add(d)) })
+  if (!joursActifs.length)
+    return NextResponse.json(
+      { error: 'Aucun jour disponible (tous interdits ou liste vide).' },
+      { status: 400 }
+    )
 
-  type InterventionGenerated = {
-    date: string; dayName: string
-    heureDebut: string; heureFin: string
-    agentId: string | null; agentNom: string | null
-    taches: { id: string; libelle: string; type: string; zone: string | null }[]
-    typePrincipal: string
+  // Durée totale par jour (somme des duree_minutes des tâches actives ce jour)
+  const dureePourJour = new Map<string, number>()
+  for (const jour of joursActifs) {
+    const duree = taches
+      .filter(t => (t.jours_semaine ?? []).includes(jour))
+      .reduce((sum, t) => sum + (t.duree_minutes ?? 0), 0)
+    dureePourJour.set(jour, duree)
   }
 
-  const generated: InterventionGenerated[] = []
+  // ── 5. Génération des dates ──────────────────────────────────────────────────
   const start   = new Date(dateDebut + 'T00:00:00')
   const end     = new Date(dateFin   + 'T00:00:00')
   const current = new Date(start)
 
+  type InterventionRow = {
+    agent_id: string
+    residence_id: string
+    date_prevue: string
+    heure_debut_prevue: string
+    heure_fin_prevue: string
+    statut: string
+  }
+
+  const rows: InterventionRow[] = []
+
   while (current <= end) {
-    const dayName   = DAY_NAMES[current.getDay()]
-    const dateStr   = current.toISOString().split('T')[0]
-    const existingKey = `${res.agent_prefere_id ?? ''}|${dateStr}`
-
-    if (joursActifs.has(dayName) && !joursInterdits.includes(dayName) && !existingSet.has(existingKey)) {
-      const matching = taches.filter(t => tacheAppliesOn(t, current))
-
-      if (matching.length > 0) {
-        // Tâches contrainte_horaire avec heure propre → intervention séparée à leur créneau
-        const matchingCH     = matching.filter(t => t.frequence_type === 'contrainte_horaire' && t.heure_debut)
-        // Toutes les autres (hebdo, mensuel, etc. + CH sans heure propre) → intervention aux heures du contrat
-        const matchingNormal = matching.filter(t => !(t.frequence_type === 'contrainte_horaire' && t.heure_debut))
-
-        // ── Intervention standard (heures du contrat) ──────────────────────
-        if (matchingNormal.length > 0) {
-          const dureeTotale = matchingNormal.reduce((sum, t) => sum + (t.duree_minutes ?? 0), 0)
-          const hFinNormal  = dureeTotale > 0
-            ? addMinutes(heureDebut, dureeTotale)
-            : dureeEstimeeFallback > 0
-              ? addMinutes(heureDebut, dureeEstimeeFallback)
-              : heureFinContrat
-          const types = matchingNormal.map(t => t.frequence_type)
-          generated.push({
-            date: dateStr, dayName,
-            heureDebut, heureFin: hFinNormal,
-            agentId: res.agent_prefere_id ?? null, agentNom,
-            taches: matchingNormal.map(t => ({ id: t.id, libelle: t.libelle, type: t.frequence_type, zone: t.zone_nom })),
-            typePrincipal: types.includes('hebdo')        ? 'hebdo'
-              : types.includes('mensuel')     ? 'mensuel'
-              : types.includes('trimestriel') ? 'trimestriel'
-              : types.includes('semestriel')  ? 'semestriel'
-              : types.includes('annuel')      ? 'annuel'
-              : 'ponctuelle',
-          })
-        }
-
-        // ── Intervention contrainte_horaire (heure propre de la tâche) ─────
-        if (matchingCH.length > 0) {
-          const ctTask   = matchingCH[0]
-          const hDebutCH = ctTask.heure_debut!
-          const dureeCH  = matchingCH.reduce((sum, t) => sum + (t.duree_minutes ?? 0), 0)
-          const hFinCH   = dureeCH > 0
-            ? addMinutes(hDebutCH, dureeCH)
-            : ctTask.heure_fin ?? heureFinContrat
-          generated.push({
-            date: dateStr, dayName,
-            heureDebut: hDebutCH, heureFin: hFinCH,
-            agentId: res.agent_prefere_id ?? null, agentNom,
-            taches: matchingCH.map(t => ({ id: t.id, libelle: t.libelle, type: t.frequence_type, zone: t.zone_nom })),
-            typePrincipal: 'contrainte_horaire',
-          })
-        }
-      }
+    const dayName = DAY_NAMES[current.getDay()]
+    if (joursActifs.includes(dayName)) {
+      const dateStr = current.toISOString().split('T')[0]
+      const duree   = dureePourJour.get(dayName) ?? 0
+      const hFin    = duree > 0 ? addMinutes(heureDebut, duree) : heureFinMax
+      rows.push({
+        agent_id:          res.agent_prefere_id,
+        residence_id:      residenceId,
+        date_prevue:       dateStr,
+        heure_debut_prevue: heureDebut,
+        heure_fin_prevue:   hFin,
+        statut:            'planifiee',
+      })
     }
-
     current.setDate(current.getDate() + 1)
   }
 
-  console.log(`[generer] résultat: ${generated.length} interventions générées sur ${dateDebut} → ${dateFin}`)
-  if (generated.length === 0) console.warn('[generer] ⚠️ 0 interventions — vérifier tâches, jours_interdits, et dates')
+  console.log(`[generer] ${rows.length} interventions à insérer (${dateDebut} → ${dateFin})`)
 
-  return NextResponse.json({ interventions: generated, agentNom })
+  if (!rows.length)
+    return NextResponse.json(
+      { error: 'Aucune intervention générée sur la période du contrat.' },
+      { status: 400 }
+    )
+
+  // ── 6. Suppression des anciennes interventions 'planifiee' pour cette résidence ──
+  const { error: delErr } = await admin.from('interventions')
+    .delete()
+    .eq('residence_id', residenceId)
+    .eq('statut', 'planifiee')
+    .gte('date_prevue', dateDebut)
+    .lte('date_prevue', dateFin)
+  if (delErr) console.warn('[generer] suppression anciennes planifiees:', delErr.message)
+
+  // ── 7. INSERT par batches de 500 ────────────────────────────────────────────
+  const BATCH = 500
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const { error: insErr } = await admin.from('interventions').insert(rows.slice(i, i + BATCH))
+    if (insErr) {
+      console.error('[generer] ❌ INSERT échoué:', insErr.message, insErr.details ?? '')
+      return NextResponse.json({ error: insErr.message }, { status: 400 })
+    }
+  }
+
+  console.log(`[generer] ✅ ${rows.length} interventions insérées dans la table interventions`)
+
+  // Retourner aussi la liste pour affichage UI (compatible avec ContratModal/PlanningPreviewModal)
+  const interventionsForUI = rows.map(r => ({
+    date:       r.date_prevue,
+    dayName:    DAY_NAMES[new Date(r.date_prevue + 'T00:00:00').getDay()],
+    heureDebut: r.heure_debut_prevue,
+    heureFin:   r.heure_fin_prevue,
+    agentId:    r.agent_id,
+    agentNom:   null,
+    taches:     [],
+    typePrincipal: 'hebdo',
+  }))
+
+  return NextResponse.json({
+    count:         rows.length,
+    interventions: interventionsForUI,
+    agentId:       res.agent_prefere_id,
+  })
 }
+
+// Ré-export du mapping pour usage externe éventuel
+export { DAY_ISO }

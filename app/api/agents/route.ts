@@ -67,7 +67,8 @@ export async function PATCH(req: NextRequest) {
   if (!manager) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
   const body = await req.json()
-  const { id, nom, prenom, telephone, vehicule, zones_geo, competences, contrat_heures_hebdo, disponibilites, actif } = body
+  const { id, nom, prenom, telephone, vehicule, zones_geo, competences, contrat_heures_hebdo, disponibilites, actif,
+          mode_deplacement, secteur_libelle, seuil_cible_pct } = body
   if (!id) return NextResponse.json({ error: 'id manquant' }, { status: 400 })
 
   const admin = await createAdminClient()
@@ -88,6 +89,9 @@ export async function PATCH(req: NextRequest) {
   if (contrat_heures_hebdo !== undefined) updates.contrat_heures_hebdo = contrat_heures_hebdo
   if (disponibilites !== undefined) updates.disponibilites = disponibilites
   if (actif !== undefined) updates.actif = actif
+  if (mode_deplacement !== undefined) updates.mode_deplacement = mode_deplacement
+  if (secteur_libelle !== undefined) updates.secteur_libelle = secteur_libelle || null
+  if (seuil_cible_pct !== undefined) updates.seuil_cible_pct = Number(seuil_cible_pct)
 
   const { error } = await admin.from('profiles').update(updates).eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })

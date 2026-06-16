@@ -14,6 +14,12 @@ function genPassword(): string {
   return Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
 }
 
+const MODE_DEPLACEMENT_OPTIONS = [
+  { value: 'tramway', label: '🚊 Tramway uniquement' },
+  { value: 'voiture', label: '🚗 Voiture' },
+  { value: 'velo',    label: '🛵 Vélo / Scooter' },
+] as const
+
 interface FormState {
   nom: string
   prenom: string
@@ -25,6 +31,9 @@ interface FormState {
   competences: string[]
   contrat_heures_hebdo: number
   disponibilites: Record<string, boolean>
+  mode_deplacement: string
+  secteur_libelle: string
+  seuil_cible_pct: number
 }
 
 function defaultForm(agent?: Profile | null): FormState {
@@ -43,6 +52,9 @@ function defaultForm(agent?: Profile | null): FormState {
     competences: agent?.competences ?? [],
     contrat_heures_hebdo: agent?.contrat_heures_hebdo ?? 35,
     disponibilites: dispo,
+    mode_deplacement: (agent as unknown as Record<string, string>)?.mode_deplacement ?? 'voiture',
+    secteur_libelle: (agent as unknown as Record<string, string>)?.secteur_libelle ?? '',
+    seuil_cible_pct: (agent as unknown as Record<string, number>)?.seuil_cible_pct ?? 80,
   }
 }
 
@@ -132,6 +144,9 @@ export default function AgentFormModal({ agent, onClose, onSaved }: Props) {
       competences: form.competences,
       contrat_heures_hebdo: Number(form.contrat_heures_hebdo),
       disponibilites: form.disponibilites,
+      mode_deplacement: form.mode_deplacement,
+      secteur_libelle: form.secteur_libelle.trim() || null,
+      seuil_cible_pct: Number(form.seuil_cible_pct),
       ...(isEdit ? { id: agent!.id } : { password: form.password }),
     }
 
@@ -267,14 +282,6 @@ export default function AgentFormModal({ agent, onClose, onSaved }: Props) {
             <TagsInput tags={form.competences} setTags={t => set('competences', t)} placeholder="nettoyage vitres, produits spéciaux…"/>
           </div>
 
-          {/* Heures hebdo */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Heures hebdomadaires max</label>
-            <input type="number" min={1} max={48} value={form.contrat_heures_hebdo}
-              onChange={e => set('contrat_heures_hebdo', Number(e.target.value))}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0BBFBF] focus:border-transparent transition"/>
-          </div>
-
           {/* Disponibilités */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">Disponibilités</label>
@@ -289,6 +296,61 @@ export default function AgentFormModal({ agent, onClose, onSaved }: Props) {
                   {JOURS_LABELS[j]}
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* ── Capacité & déplacement ── */}
+          <div className="border-t border-slate-100 pt-5">
+            <h3 className="text-sm font-semibold text-slate-700 mb-4 flex items-center gap-2">
+              <span className="w-6 h-6 rounded-lg bg-[#0BBFBF]/10 flex items-center justify-center text-[#0BBFBF] text-xs">⚡</span>
+              Capacité &amp; déplacement
+            </h3>
+
+            {/* Contrat horaire hebdo */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Contrat horaire hebdomadaire
+                <span className="text-slate-400 font-normal ml-1">(h/semaine)</span>
+              </label>
+              <input type="number" min={0} max={50} value={form.contrat_heures_hebdo}
+                onChange={e => set('contrat_heures_hebdo', Number(e.target.value))}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0BBFBF] focus:border-transparent transition"/>
+            </div>
+
+            {/* Mode déplacement */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Mode de déplacement</label>
+              <select value={form.mode_deplacement}
+                onChange={e => set('mode_deplacement', e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-[#0BBFBF] focus:border-transparent transition">
+                {MODE_DEPLACEMENT_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Secteur principal */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Secteur principal</label>
+              <input type="text" value={form.secteur_libelle}
+                onChange={e => set('secteur_libelle', e.target.value)}
+                placeholder="Ligne 1, Centre, Mobilité totale…"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0BBFBF] focus:border-transparent transition"/>
+            </div>
+
+            {/* Seuil cible */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-sm font-medium text-slate-700">Seuil cible de charge</label>
+                <span className="text-sm font-bold text-[#0A2E5A]">{form.seuil_cible_pct}%</span>
+              </div>
+              <input type="range" min={50} max={100} step={5}
+                value={form.seuil_cible_pct}
+                onChange={e => set('seuil_cible_pct', Number(e.target.value))}
+                className="w-full accent-[#0BBFBF]"/>
+              <p className="text-xs text-slate-400 mt-1">
+                Au-delà de ce seuil, l&apos;agent est considéré comme optimisé
+              </p>
             </div>
           </div>
 

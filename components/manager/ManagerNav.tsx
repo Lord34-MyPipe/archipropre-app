@@ -9,6 +9,7 @@ const items = [
   { href: '/manager/planning',  label: 'Planning',        icon: '📅' },
   { href: '/manager/residences',label: 'Résidences',      icon: '🏢' },
   { href: '/manager/agents',    label: 'Agents',          icon: '👥' },
+  { href: '/manager/charge',    label: 'Charge',          icon: '📊' },
 ]
 
 export default function ManagerNav() {

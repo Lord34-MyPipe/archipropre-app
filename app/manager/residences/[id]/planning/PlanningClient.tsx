@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { InterventionRow } from './page'
@@ -62,6 +62,12 @@ export default function PlanningClient({
 }: Props) {
   const router = useRouter()
   const [inters, setInters]           = useState<InterventionRow[]>(initialInters)
+
+  // Synchronise le state local quand le Server Component renvoie de nouvelles props (après router.refresh())
+  useEffect(() => {
+    setInters(initialInters)
+    setPage(1)
+  }, [initialInters])
   const [page, setPage]               = useState(1)
   const [regenConfirm, setRegenConfirm] = useState(false)
   const [regenLoading, setRegenLoading] = useState(false)

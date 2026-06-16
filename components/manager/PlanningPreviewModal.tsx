@@ -3,7 +3,15 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase'
 import type { Residence } from '@/lib/types'
-import type { GeneratedIntervention } from './ContratModal'
+export interface GeneratedIntervention {
+  date: string
+  heureDebut: string | null
+  heureFin: string | null
+  typePrincipal: string
+  agentId?: string | null
+  agentNom?: string | null
+  taches: Array<{ id: string; libelle: string; dureeMinutes?: number; zone?: string | null }>
+}
 
 const TYPE_BG: Record<string, string> = {
   hebdo:             'bg-blue-500',
@@ -311,7 +319,7 @@ export default function PlanningPreviewModal({
                 {selectedInter.agentNom && (
                   <div className="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2.5">
                     <div className="w-7 h-7 rounded-full bg-[#1A5FA8] flex items-center justify-center text-white text-xs font-bold shrink-0">
-                      {selectedInter.agentNom.split(' ').map(p => p[0]).join('')}
+                      {selectedInter.agentNom.split(' ').map((p: string) => p[0]).join('')}
                     </div>
                     <p className="text-sm font-medium text-slate-800">{selectedInter.agentNom}</p>
                   </div>

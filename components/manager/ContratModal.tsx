@@ -3,17 +3,6 @@
 import { useState, useEffect } from 'react'
 import type { Residence } from '@/lib/types'
 
-export interface GeneratedIntervention {
-  date: string
-  dayName: string
-  heureDebut: string
-  heureFin: string
-  agentId: string | null
-  agentNom: string | null
-  taches: { id: string; libelle: string; type: string; zone: string | null }[]
-  typePrincipal: string
-}
-
 const JOURS = ['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche']
 const JOURS_LABELS: Record<string, string> = {
   lundi: 'Lun', mardi: 'Mar', mercredi: 'Mer',
@@ -30,10 +19,10 @@ function in12Months() {
 interface Props {
   residence: Residence
   onClose: () => void
-  onGenerated: (inters: GeneratedIntervention[], genDebut: string, genFin: string) => void
+  onSaved?: () => void
 }
 
-export default function ContratModal({ residence, onClose, onGenerated }: Props) {
+export default function ContratModal({ residence, onClose, onSaved }: Props) {
   // Contrat fields
   const [contratId, setContratId]       = useState<string | null>(null)
   const [dateDebut, setDateDebut]       = useState(todayStr())
@@ -51,12 +40,6 @@ export default function ContratModal({ residence, onClose, onGenerated }: Props)
   const [saved, setSaved]         = useState(false)
   const [error, setError]         = useState('')
 
-  // Génération
-  const [genDebut, setGenDebut]   = useState('')
-  const [genFin, setGenFin]       = useState('')
-  const [generating, setGenerating] = useState(false)
-  const [genError, setGenError]   = useState('')
-
   useEffect(() => {
     fetch(`/api/contrats?residenceId=${residence.id}`)
       .then(r => r.json())
@@ -72,8 +55,6 @@ export default function ContratModal({ residence, onClose, onGenerated }: Props)
           setHeureMin(contrat.heure_debut_min ?? '07:00')
           setHeureMax(contrat.heure_fin_max ?? '18:00')
           setNotes(contrat.notes_specifiques ?? '')
-          setGenDebut(contrat.date_debut)
-          setGenFin(contrat.date_fin)
           setSaved(true)
         }
         setLoading(false)
@@ -106,27 +87,8 @@ export default function ContratModal({ residence, onClose, onGenerated }: Props)
     setSaving(false)
     if (!res.ok) { setError(json.error ?? 'Erreur inconnue'); return }
     setContratId(json.data.id)
-    if (!genDebut) setGenDebut(dateDebut)
-    if (!genFin)   setGenFin(dateFin)
     setSaved(true)
-  }
-
-  async function handleGenerate() {
-    setGenerating(true)
-    setGenError('')
-    const res = await fetch('/api/planning/generer', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ residenceId: residence.id, dateDebut: genDebut, dateFin: genFin }),
-    })
-    const json = await res.json()
-    setGenerating(false)
-    if (!res.ok) { setGenError(json.error ?? 'Erreur de génération'); return }
-    if (!json.interventions?.length) {
-      setGenError('Aucune intervention générée. Vérifiez les tâches template et les jours interdits.')
-      return
-    }
-    onGenerated(json.interventions, genDebut, genFin)
+    onSaved?.()
   }
 
   const JourCheckboxes = ({
@@ -271,52 +233,6 @@ export default function ContratModal({ residence, onClose, onGenerated }: Props)
                 />
               </div>
 
-              {/* Section génération — visible après premier enregistrement */}
-              {saved && (
-                <div className="border-t border-dashed border-slate-200 pt-5 space-y-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[#0BBFBF] text-xl">📅</span>
-                    <p className="font-semibold text-slate-800">Générer le planning</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                        Du
-                      </label>
-                      <input type="date" value={genDebut} onChange={e => setGenDebut(e.target.value)}
-                        className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0BBFBF]/40"/>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                        Au
-                      </label>
-                      <input type="date" value={genFin} onChange={e => setGenFin(e.target.value)}
-                        className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0BBFBF]/40"/>
-                    </div>
-                  </div>
-                  {genError && (
-                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm">{genError}</div>
-                  )}
-                  <button
-                    onClick={handleGenerate}
-                    disabled={generating || !genDebut || !genFin}
-                    className="w-full py-3 rounded-xl text-white text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
-                    style={{ background: 'linear-gradient(135deg,#0BBFBF,#0A9A9A)' }}
-                  >
-                    {generating ? (
-                      <>
-                        <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"/>
-                        Génération en cours…
-                      </>
-                    ) : (
-                      '✨ Générer le planning'
-                    )}
-                  </button>
-                  <p className="text-xs text-slate-400 text-center">
-                    Basé sur les tâches template de cette résidence
-                  </p>
-                </div>
-              )}
             </div>
           )}
         </div>

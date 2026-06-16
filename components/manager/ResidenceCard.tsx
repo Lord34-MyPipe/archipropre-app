@@ -2,13 +2,13 @@
 
 import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import type { Residence } from '@/lib/types'
 import { createClient } from '@/lib/supabase'
 import { downloadQRCodePDF } from '@/lib/qr-pdf'
 import AgentAttitreModal from '@/components/manager/AgentAttitreModal'
 import PlanifierInterventionModal from '@/components/manager/PlanifierInterventionModal'
-import ContratModal, { type GeneratedIntervention } from '@/components/manager/ContratModal'
-import PlanningPreviewModal from '@/components/manager/PlanningPreviewModal'
+import ContratModal from '@/components/manager/ContratModal'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -118,6 +118,7 @@ interface Props {
 }
 
 export default function ResidenceCard({ residence: initial }: Props) {
+  const router     = useRouter()
   const etat       = initial._etat?.etat ?? 'a_configurer'
   const etatCfg    = ETAT_CONFIG[etat]
 
@@ -132,15 +133,14 @@ export default function ResidenceCard({ residence: initial }: Props) {
   const [showAttitreModal, setShowAttitreModal]   = useState(false)
   const [showPlanifierModal, setShowPlanifierModal] = useState(false)
   const [showContratModal, setShowContratModal]   = useState(false)
-  const [showPlanningPreview, setShowPlanningPreview] = useState(false)
-  const [generatedPlan, setGeneratedPlan]   = useState<GeneratedIntervention[]>([])
-  const [planGenDebut, setPlanGenDebut]     = useState('')
-  const [planGenFin, setPlanGenFin]         = useState('')
-  const [regenLoading, setRegenLoading]     = useState(false)
-  const [regenError, setRegenError]         = useState('')
-  const [toggling, setToggling]             = useState(false)
-  const [qrLoading, setQrLoading]           = useState(false)
-  const [toast, setToast]                   = useState('')
+  const [genConfirm, setGenConfirm]     = useState(false)
+  const [genLoading, setGenLoading]     = useState(false)
+  const [genError, setGenError]         = useState('')
+  const [regenLoading, setRegenLoading] = useState(false)
+  const [regenError, setRegenError]     = useState('')
+  const [toggling, setToggling]         = useState(false)
+  const [qrLoading, setQrLoading]       = useState(false)
+  const [toast, setToast]               = useState('')
   const toastRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const menuRef  = useRef<HTMLDivElement>(null)
 
@@ -190,13 +190,31 @@ export default function ResidenceCard({ residence: initial }: Props) {
     setQrLoading(false)
   }
 
+  async function handleGenerer() {
+    setGenLoading(true); setGenError('')
+    try {
+      const res = await fetch('/api/planning/generer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ residenceId: initial.id }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Erreur de génération')
+      setGenConfirm(false)
+      router.push(`/manager/residences/${initial.id}/planning`)
+    } catch (e: unknown) {
+      setGenError(e instanceof Error ? e.message : 'Erreur inconnue')
+    }
+    setGenLoading(false)
+  }
+
   // Bouton principal contextuel
   function handlePrimaryAction() {
     if (etat === 'a_configurer') {
       if (!agentPrefereId) { setShowAttitreModal(true) }
       else { setShowContratModal(true) }
     } else if (etat === 'prete') {
-      setShowContratModal(true)
+      setGenConfirm(true); setGenError('')
     }
     // 'planning_actif' → Link (géré dans JSX)
   }
@@ -450,18 +468,43 @@ export default function ResidenceCard({ residence: initial }: Props) {
 
       {/* Modales */}
       {showContratModal && (
-        <ContratModal residence={initial} onClose={() => setShowContratModal(false)}
-          onGenerated={(inters, gDebut, gFin) => {
-            setGeneratedPlan(inters); setPlanGenDebut(gDebut); setPlanGenFin(gFin)
-            setShowContratModal(false); setShowPlanningPreview(true)
-          }}/>
+        <ContratModal
+          residence={initial}
+          onClose={() => setShowContratModal(false)}
+          onSaved={() => showCardToast('Contrat mis à jour')}
+        />
       )}
 
-      {showPlanningPreview && (
-        <PlanningPreviewModal interventions={generatedPlan} residence={initial}
-          genDebut={planGenDebut} genFin={planGenFin}
-          onClose={() => setShowPlanningPreview(false)}
-          onValidated={(count) => { setShowPlanningPreview(false); showCardToast(`Planning publié — ${count} interventions planifiées ✓`) }}/>
+      {/* Confirm Générer le planning */}
+      {genConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-[#0BBFBF]/10 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-[#0BBFBF]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5"/>
+                </svg>
+              </div>
+              <h2 className="text-base font-bold text-slate-800">Générer le planning ?</h2>
+            </div>
+            <p className="text-sm text-slate-600 mb-5 leading-relaxed">
+              Cela va créer toutes les interventions planifiées pour <span className="font-semibold">{initial.nom}</span> sur toute la durée du contrat, à partir des tâches configurées.
+            </p>
+            {genError && <p className="mb-4 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{genError}</p>}
+            <div className="flex gap-3">
+              <button onClick={() => setGenConfirm(false)} disabled={genLoading}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 disabled:opacity-50">
+                Annuler
+              </button>
+              <button onClick={handleGenerer} disabled={genLoading}
+                className="flex-1 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2">
+                {genLoading
+                  ? <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"/>Génération…</>
+                  : 'Générer'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showAttitreModal && (

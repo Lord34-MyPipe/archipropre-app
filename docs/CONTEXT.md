@@ -105,27 +105,30 @@ L'état se calcule automatiquement, aucun champ à maintenir.
 ✅ Menu ⋯ actions secondaires (QR, Maps, tâches, agent, contrat…)
 ✅ Cache Next.js corrigé (force-dynamic sur Server Components)
 ✅ Home Inside : planning_actif, Marie Dupont, 157 interventions planifiées
+✅ Page /manager/residences/[id]/planning (voir/modifier/supprimer/régénérer)
+✅ Refonte contrat : creneaux_acceptes JSONB remplace heure_debut_min/fin
+✅ Fréquence estimée calculée depuis taches_template
+✅ Tâche "Mise en place" 5 min sur toutes les résidences
+✅ Durées tâches template corrigées (5 min par défaut)
+✅ Génération planning depuis creneaux_acceptes + jours_semaine taches_template
+✅ Idempotence régénération planning (DELETE + INSERT)
+✅ Rafraîchissement immédiat après régénération (router.refresh + useEffect)
 
 ## Bugs connus à corriger
-🐛 Durées d'intervention bizarres sur vue planning semaine (07:00 → 07:07)
-   → bug de calcul depuis les tâches template
 🐛 Agents démo à 0% sur /manager/charge (pas d'interventions assignées)
    → injecter interventions de test pour valider les couleurs
 
 ## À faire Phase 1 (dans l'ordre)
-1. Page /manager/residences/[id]/planning
-   → voir / modifier / supprimer / régénérer les interventions
-2. Corriger bug durées interventions
-3. Interventions de test sur agents démo
-4. Moteur IA proposition d'agent à la création d'un contrat
+1. Interventions de test sur agents démo
+2. Moteur IA proposition d'agent à la création d'un contrat
    → Edge Function Supabase + API Anthropic claude-sonnet-4-6
    → top 3 agents, taux après ajout, surcoût trajet, explication
-5. Moteur IA réorganisation planning sur absence/congé
-6. Validation tâches avec photo obligatoire (iPhone)
-7. Rapport final agent + envoi manager
-8. Dashboard manager temps réel (Supabase Realtime)
-9. Alertes 15 min (Edge Function + cron)
-10. Dashboard directeur KPIs
+3. Moteur IA réorganisation planning sur absence/congé
+4. Validation tâches avec photo obligatoire (iPhone)
+5. Rapport final agent + envoi manager
+6. Dashboard manager temps réel (Supabase Realtime)
+7. Alertes 15 min (Edge Function + cron)
+8. Dashboard directeur KPIs
 
 ## À faire Phase 2
 - Optimisation tournées (Leaflet + OSRM)

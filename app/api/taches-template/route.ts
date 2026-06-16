@@ -15,6 +15,30 @@ async function ownsResidence(managerId: string, residenceId: string): Promise<bo
   return !!data
 }
 
+// GET — lister les tâches template d'une résidence (optionnel: ?frequenceType=hebdo)
+export async function GET(req: NextRequest) {
+  const managerId = await getManagerId()
+  if (!managerId) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+
+  const residenceId   = req.nextUrl.searchParams.get('residenceId')
+  const frequenceType = req.nextUrl.searchParams.get('frequenceType')
+  if (!residenceId) return NextResponse.json({ error: 'residenceId manquant' }, { status: 400 })
+  if (!await ownsResidence(managerId, residenceId))
+    return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
+
+  const admin = await createAdminClient()
+  let query = admin.from('taches_template')
+    .select('id, libelle, frequence_type, jours_semaine, duree_minutes, ordre')
+    .eq('residence_id', residenceId)
+    .order('ordre', { ascending: true })
+
+  if (frequenceType) query = query.eq('frequence_type', frequenceType)
+
+  const { data, error } = await query
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+  return NextResponse.json({ data })
+}
+
 // POST — créer une tâche template
 export async function POST(req: NextRequest) {
   const managerId = await getManagerId()

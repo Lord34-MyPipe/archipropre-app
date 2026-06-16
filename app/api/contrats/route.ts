@@ -46,9 +46,9 @@ export async function POST(req: NextRequest) {
   const {
     residenceId, contratId,
     dateDebut, dateFin,
-    montantMensuel, nbInterventionsMois,
+    montantMensuel,
     joursObliges, joursInterdits,
-    heureDebutMin, heureFinnMax,
+    creneauxAcceptes,
     notesSpecifiques,
   } = body
 
@@ -63,11 +63,9 @@ export async function POST(req: NextRequest) {
     date_debut:           dateDebut,
     date_fin:             dateFin,
     montant_mensuel:      montantMensuel ? Number(montantMensuel) : null,
-    nb_interventions_mois: Number(nbInterventionsMois ?? 4),
     jours_obliges:        joursObliges ?? [],
     jours_interdits:      joursInterdits ?? [],
-    heure_debut_min:      heureDebutMin ?? null,
-    heure_fin_max:        heureFinnMax ?? null,
+    creneaux_acceptes:    creneauxAcceptes ?? [],
     notes_specifiques:    notesSpecifiques ?? null,
     actif:                true,
   }

@@ -26,9 +26,20 @@ function addMinutes(heure: string, minutes: number): string {
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
 }
 
+interface Creneau {
+  jours: string[]
+  heure_debut: string
+  heure_fin: string
+  label?: string
+}
+
+/** Trouve le créneau couvrant un jour donné, ou null */
+function creneauPourJour(creneaux: Creneau[], jour: string): Creneau | null {
+  return creneaux.find(c => c.jours.includes(jour)) ?? null
+}
+
 // POST — génère les interventions et les insère dans la table interventions
 // Body: { residenceId, dateDebut?, dateFin? }
-// dateDebut/dateFin sont optionnels : si absents, on utilise date_debut/date_fin du contrat actif.
 export async function POST(req: NextRequest) {
   const managerId = await getManagerId()
   if (!managerId) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
@@ -46,7 +57,7 @@ export async function POST(req: NextRequest) {
   const { data: res } = await admin.from('residences')
     .select('id, nom, agent_prefere_id')
     .eq('id', residenceId).eq('manager_id', managerId).single()
-  console.log('[generer] résidence:', res ? `"${res.nom}" agent=${res.agent_prefere_id ?? 'aucun'}` : 'NON TROUVÉE (manager_id mismatch ?)')
+  console.log('[generer] résidence:', res ? `"${res.nom}" agent=${res.agent_prefere_id ?? 'aucun'}` : 'NON TROUVÉE')
   if (!res) return NextResponse.json({ error: 'Résidence introuvable ou non autorisée' }, { status: 403 })
 
   if (!res.agent_prefere_id)
@@ -54,19 +65,18 @@ export async function POST(req: NextRequest) {
 
   // ── 2. Contrat actif ─────────────────────────────────────────────────────────
   const { data: contrat } = await admin.from('contrats_residences')
-    .select('date_debut, date_fin, heure_debut_min, heure_fin_max, jours_obliges, jours_interdits')
+    .select('date_debut, date_fin, jours_obliges, jours_interdits, creneaux_acceptes')
     .eq('residence_id', residenceId).eq('actif', true)
     .order('created_at', { ascending: false }).limit(1).maybeSingle()
 
   console.log('[generer] contrat:', contrat
-    ? `${contrat.date_debut} → ${contrat.date_fin} | ${contrat.heure_debut_min}→${contrat.heure_fin_max} | obliges=[${(contrat.jours_obliges ?? []).join(',')}]`
+    ? `${contrat.date_debut} → ${contrat.date_fin} | creneaux=${JSON.stringify(contrat.creneaux_acceptes)}`
     : 'AUCUN contrat actif')
   if (!contrat)
     return NextResponse.json({ error: 'Aucun contrat actif pour cette résidence.' }, { status: 400 })
 
-  const heureDebut    = normalizeTime(contrat.heure_debut_min) ?? '08:00'
-  const heureFinMax   = normalizeTime(contrat.heure_fin_max)   ?? '12:00'
-  const joursObliges: string[]  = contrat.jours_obliges  ?? []
+  const creneaux: Creneau[] = contrat.creneaux_acceptes ?? []
+  const joursObliges: string[]   = contrat.jours_obliges  ?? []
   const joursInterdits: string[] = contrat.jours_interdits ?? []
 
   // Plage de dates : paramètres body en priorité, sinon durée du contrat
@@ -90,7 +100,6 @@ export async function POST(req: NextRequest) {
     )
 
   // ── 4. Jours actifs ──────────────────────────────────────────────────────────
-  // jours_obliges du contrat → priorité absolue ; sinon union des jours_semaine des tâches
   const joursFromTaches = [...new Set(taches.flatMap(t => t.jours_semaine ?? []))]
   const joursBase = joursObliges.length > 0 ? joursObliges : joursFromTaches
   const joursActifs = joursBase.filter(j => !joursInterdits.includes(j))
@@ -132,16 +141,24 @@ export async function POST(req: NextRequest) {
   while (current <= end) {
     const dayName = DAY_NAMES[current.getDay()]
     if (joursActifs.includes(dayName)) {
-      const dateStr = current.toISOString().split('T')[0]
-      const duree   = dureePourJour.get(dayName) ?? 0
-      const hFin    = duree > 0 ? addMinutes(heureDebut, duree) : heureFinMax
+      const dateStr  = current.toISOString().split('T')[0]
+      const duree    = dureePourJour.get(dayName) ?? 0
+      const creneau  = creneauPourJour(creneaux, dayName)
+      const hDebut   = creneau ? normalizeTime(creneau.heure_debut) ?? '08:00' : '08:00'
+      const hFinMax  = creneau ? normalizeTime(creneau.heure_fin)   ?? null    : null
+      const hFin     = duree > 0 ? addMinutes(hDebut, duree) : (hFinMax ?? addMinutes(hDebut, 120))
+
+      if (hFinMax && hFin > hFinMax) {
+        console.warn(`[generer] ⚠️ ${dateStr} (${dayName}) : heure_fin=${hFin} > fin créneau=${hFinMax} (durée=${duree}min)`)
+      }
+
       rows.push({
-        agent_id:          res.agent_prefere_id,
-        residence_id:      residenceId,
-        date_prevue:       dateStr,
-        heure_debut_prevue: heureDebut,
+        agent_id:           res.agent_prefere_id,
+        residence_id:       residenceId,
+        date_prevue:        dateStr,
+        heure_debut_prevue: hDebut,
         heure_fin_prevue:   hFin,
-        statut:            'planifiee',
+        statut:             'planifiee',
       })
     }
     current.setDate(current.getDate() + 1)
@@ -155,7 +172,7 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     )
 
-  // ── 6. Suppression des anciennes interventions 'planifiee' pour cette résidence ──
+  // ── 6. Suppression des anciennes interventions 'planifiee' ──────────────────
   const { error: delErr } = await admin.from('interventions')
     .delete()
     .eq('residence_id', residenceId)
@@ -176,7 +193,6 @@ export async function POST(req: NextRequest) {
 
   console.log(`[generer] ✅ ${rows.length} interventions insérées dans la table interventions`)
 
-  // Retourner aussi la liste pour affichage UI (compatible avec ContratModal/PlanningPreviewModal)
   const interventionsForUI = rows.map(r => ({
     date:       r.date_prevue,
     dayName:    DAY_NAMES[new Date(r.date_prevue + 'T00:00:00').getDay()],
@@ -195,5 +211,4 @@ export async function POST(req: NextRequest) {
   })
 }
 
-// Ré-export du mapping pour usage externe éventuel
 export { DAY_ISO }

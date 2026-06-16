@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import PlanningClient from './PlanningClient'
+import type { Creneau } from '@/components/manager/ContratModal'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,6 +39,16 @@ export default async function PlanningPage({ params }: Props) {
     if (agent) agentNom = `${agent.prenom} ${agent.nom}`
   }
 
+  // Créneaux du contrat actif
+  const { data: contrat } = await admin.from('contrats_residences')
+    .select('creneaux_acceptes')
+    .eq('residence_id', id)
+    .eq('actif', true)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const creneaux: Creneau[] = contrat?.creneaux_acceptes ?? []
+
   // Interventions planifiées et en cours
   const { data: rawInters } = await admin.from('interventions')
     .select('id, date_prevue, heure_debut_prevue, heure_fin_prevue, statut, agent_id')
@@ -45,7 +56,7 @@ export default async function PlanningPage({ params }: Props) {
     .in('statut', ['planifiee', 'en_cours'])
     .order('date_prevue', { ascending: true })
 
-  // Nom des agents (peut y avoir plusieurs agents sur des interventions)
+  // Nom des agents
   const agentIds = [...new Set((rawInters ?? []).map(i => i.agent_id).filter(Boolean))]
   const agentMap = new Map<string, string>()
   if (agentIds.length > 0) {
@@ -65,7 +76,7 @@ export default async function PlanningPage({ params }: Props) {
   }))
 
   // Stats
-  const now = new Date().toISOString().split('T')[0]
+  const now       = new Date().toISOString().split('T')[0]
   const monthStart = now.slice(0, 7) + '-01'
   const monthEnd   = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0]
   const prochaine  = interventions.find(i => i.date_prevue >= now)?.date_prevue ?? null
@@ -76,6 +87,7 @@ export default async function PlanningPage({ params }: Props) {
       residenceId={id}
       residenceNom={residence.nom}
       agentNom={agentNom}
+      creneaux={creneaux}
       interventions={interventions}
       total={interventions.length}
       prochaine={prochaine}

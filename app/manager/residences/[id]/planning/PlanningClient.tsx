@@ -4,10 +4,20 @@ import { useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { InterventionRow } from './page'
+import type { Creneau } from '@/components/manager/ContratModal'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const JOURS_FR = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam']
+const JOURS_FR   = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam']
+const JOURS_ABBR: Record<string, string> = {
+  lundi: 'Lun', mardi: 'Mar', mercredi: 'Mer', jeudi: 'Jeu',
+  vendredi: 'Ven', samedi: 'Sam', dimanche: 'Dim',
+}
+
+function formatCreneau(c: Creneau): string {
+  const jours = c.jours.map(j => JOURS_ABBR[j] ?? j).join('-')
+  return `${jours} ${c.heure_debut}–${c.heure_fin}`
+}
 const MOIS_FR  = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc']
 
 function normalizeTime(t: string | null | undefined): string {
@@ -37,6 +47,7 @@ interface Props {
   residenceId: string
   residenceNom: string
   agentNom: string | null
+  creneaux: Creneau[]
   interventions: InterventionRow[]
   total: number
   prochaine: string | null
@@ -46,7 +57,7 @@ interface Props {
 // ── Composant ─────────────────────────────────────────────────────────────────
 
 export default function PlanningClient({
-  residenceId, residenceNom, agentNom,
+  residenceId, residenceNom, agentNom, creneaux,
   interventions: initialInters, total, prochaine, ceMois,
 }: Props) {
   const router = useRouter()
@@ -167,6 +178,22 @@ export default function PlanningClient({
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0"/>
                   </svg>
                   {agentNom}
+                </p>
+              )}
+              {creneaux.length > 0 && (
+                <p className="text-blue-300/80 text-xs mt-1 flex items-start gap-1.5">
+                  <svg className="w-3.5 h-3.5 shrink-0 mt-px" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                  <span>
+                    Créneaux client :&nbsp;
+                    {creneaux.map((c, i) => (
+                      <span key={i}>
+                        {i > 0 && <span className="mx-1 opacity-50">·</span>}
+                        {formatCreneau(c)}
+                      </span>
+                    ))}
+                  </span>
                 </p>
               )}
             </div>

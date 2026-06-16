@@ -129,11 +129,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Aucune intervention à planifier (toutes déjà réalisées ou en cours)' }, { status: 400 })
   }
 
+  console.log(`[valider] INSERT ${rows.length} interventions_planifiees pour résidence ${residenceId}`)
   const { error: iErr } = await admin.from('interventions_planifiees').insert(rows)
   if (iErr) {
+    console.error('[valider] ❌ INSERT interventions_planifiees échoué:', iErr.message, iErr.details ?? '')
     await admin.from('plannings').delete().eq('id', planning.id)
     return NextResponse.json({ error: iErr.message }, { status: 400 })
   }
 
+  console.log(`[valider] ✅ ${rows.length} interventions planifiées publiées, planning_id: ${planning.id}`)
   return NextResponse.json({ planningId: planning.id, count: rows.length })
 }

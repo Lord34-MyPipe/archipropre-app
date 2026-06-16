@@ -61,11 +61,15 @@ function tacheAppliesOn(t: TacheRow, date: Date): boolean {
 }
 
 // POST — génère un planning prévisionnel (sans écriture en base)
+// Les données sont écrites dans interventions_planifiees via POST /api/planning/valider
 export async function POST(req: NextRequest) {
   const managerId = await getManagerId()
   if (!managerId) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
-  const { residenceId, dateDebut, dateFin } = await req.json()
+  const body = await req.json()
+  const { residenceId, dateDebut, dateFin } = body
+  console.log('[generer] body reçu:', { residenceId, dateDebut, dateFin, managerId })
+
   if (!residenceId || !dateDebut || !dateFin)
     return NextResponse.json({ error: 'Champs manquants' }, { status: 400 })
 
@@ -75,6 +79,7 @@ export async function POST(req: NextRequest) {
   const { data: res } = await admin.from('residences')
     .select('id, nom, agent_prefere_id, duree_estimee_min')
     .eq('id', residenceId).eq('manager_id', managerId).single()
+  console.log('[generer] résidence:', res ? `${res.nom} (agent: ${res.agent_prefere_id ?? 'aucun'})` : 'NON TROUVÉE (mauvais manager_id ?)')
   if (!res) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
 
   // Agent
@@ -90,6 +95,10 @@ export async function POST(req: NextRequest) {
     .select('heure_debut_min, heure_fin_max, jours_interdits')
     .eq('residence_id', residenceId).eq('actif', true)
     .order('created_at', { ascending: false }).limit(1).maybeSingle()
+
+  console.log('[generer] contrat trouvé:', contrat
+    ? `${contrat.heure_debut_min} → ${contrat.heure_fin_max}, interdits: [${(contrat.jours_interdits ?? []).join(',')}]`
+    : 'AUCUN contrat actif → heures par défaut 08:00/12:00')
 
   const heureDebut: string      = normalizeTime(contrat?.heure_debut_min) ?? '08:00'
   const heureFinContrat: string = normalizeTime(contrat?.heure_fin_max)   ?? '12:00'
@@ -110,11 +119,14 @@ export async function POST(req: NextRequest) {
   )
 
   // Tâches template (toutes sauf sur_passage)
-  const { data: rawTaches } = await admin.from('taches_template')
+  const { data: rawTaches, error: tachesErr } = await admin.from('taches_template')
     .select('id, libelle, frequence_type, jours_semaine, semaine_du_mois, mois_de_annee, heure_debut, heure_fin, duree_minutes, zones_residence(nom)')
     .eq('residence_id', residenceId)
     .neq('frequence_type', 'sur_passage')
     .order('ordre')
+
+  console.log('[generer] taches_template:', rawTaches?.length ?? 0, 'tâches trouvées', tachesErr ? `ERREUR: ${tachesErr.message}` : '')
+  if (!rawTaches?.length) console.warn('[generer] ⚠️ Aucune tâche template pour cette résidence → planning vide')
 
   const taches: TacheRow[] = (rawTaches ?? []).map((t: {
     id: string; libelle: string; frequence_type: string;
@@ -212,6 +224,9 @@ export async function POST(req: NextRequest) {
 
     current.setDate(current.getDate() + 1)
   }
+
+  console.log(`[generer] résultat: ${generated.length} interventions générées sur ${dateDebut} → ${dateFin}`)
+  if (generated.length === 0) console.warn('[generer] ⚠️ 0 interventions — vérifier tâches, jours_interdits, et dates')
 
   return NextResponse.json({ interventions: generated, agentNom })
 }

@@ -4,12 +4,23 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
 
+interface PropositionClient {
+  nom:                string
+  adresse_normalisee?: string
+  adresse?:           string
+  lat?:               number
+  lng?:               number
+  erreur?:            string
+}
+
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
   actions?: ActionsPayload | null
   applyState?: 'idle' | 'applying' | 'done' | 'error'
+  propositionClient?: PropositionClient | null
+  createState?: 'idle' | 'creating' | 'done' | 'error'
 }
 
 interface ActionReassigner {
@@ -107,11 +118,13 @@ export default function CopilotePanel({ open, onClose, semaine }: Props) {
       })
       const data = await res.json()
       const assistantMsg: Message = {
-        id:      genId(),
-        role:    'assistant',
-        content: res.ok ? data.reponse : (data.error ?? 'Erreur inconnue'),
-        actions: res.ok ? data.actions : null,
-        applyState: 'idle',
+        id:               genId(),
+        role:             'assistant',
+        content:          res.ok ? data.reponse : (data.error ?? 'Erreur inconnue'),
+        actions:          res.ok ? data.actions : null,
+        applyState:       'idle',
+        propositionClient: res.ok ? (data.propositionClient ?? null) : null,
+        createState:      'idle',
       }
       setMessages(prev => [...prev, assistantMsg])
     } catch {
@@ -172,6 +185,38 @@ export default function CopilotePanel({ open, onClose, semaine }: Props) {
       ])
     } else {
       setMessages(prev => prev.map(m => m.id === msgId ? { ...m, applyState: 'done' as const } : m))
+      router.refresh()
+    }
+  }
+
+  async function applyCreation(msgId: string, pc: PropositionClient) {
+    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, createState: 'creating' as const } : m))
+    const res = await fetch('/api/residences/creer-rapide', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        nom:                pc.nom,
+        adresse:            pc.adresse_normalisee ?? pc.adresse,
+        adresse_normalisee: pc.adresse_normalisee,
+        lat:                pc.lat ?? null,
+        lng:                pc.lng ?? null,
+      }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      setMessages(prev => [
+        ...prev.map(m => m.id === msgId ? { ...m, createState: 'error' as const } : m),
+        { id: genId(), role: 'assistant' as const, content: `⚠️ Erreur création client : ${data.error ?? res.statusText}` },
+      ])
+    } else {
+      const residence = await res.json()
+      setMessages(prev => [
+        ...prev.map(m => m.id === msgId ? { ...m, createState: 'done' as const } : m),
+        {
+          id: genId(), role: 'assistant' as const,
+          content: `✅ Client **${pc.nom}** créé (ID : \`${residence.id}\`). Rendez-vous sur la page Résidences pour configurer le contrat et affecter un agent.`,
+        },
+      ])
       router.refresh()
     }
   }
@@ -246,6 +291,64 @@ export default function CopilotePanel({ open, onClose, semaine }: Props) {
                     : <ReactMarkdown>{msg.content}</ReactMarkdown>
                   }
                 </div>
+
+                {/* Carte proposition client */}
+                {msg.role === 'assistant' && msg.propositionClient && (() => {
+                  const pc = msg.propositionClient
+                  return (
+                    <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
+                      <div className="px-4 py-3 border-b border-slate-100" style={{ background: '#F0FBFB' }}>
+                        <p className="text-xs font-bold text-[#0A6060] flex items-center gap-1.5">
+                          <span>🏢</span> Nouveau client à créer
+                        </p>
+                      </div>
+                      <div className="px-4 py-3 space-y-1">
+                        {pc.erreur ? (
+                          <p className="text-xs text-red-600">{pc.erreur}</p>
+                        ) : (
+                          <>
+                            <p className="text-xs font-semibold text-slate-800">{pc.nom}</p>
+                            <p className="text-xs text-slate-500">{pc.adresse_normalisee}</p>
+                            {pc.lat != null && pc.lng != null && (
+                              <p className="text-xs text-slate-400">
+                                GPS : {pc.lat.toFixed(5)}, {pc.lng.toFixed(5)}
+                              </p>
+                            )}
+                          </>
+                        )}
+                      </div>
+                      {!pc.erreur && msg.createState !== 'done' && (
+                        <div className="px-4 py-3 border-t border-slate-100 flex gap-2">
+                          <button
+                            onClick={() => applyCreation(msg.id, pc)}
+                            disabled={msg.createState === 'creating'}
+                            className="flex-1 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-60 transition-opacity"
+                            style={{ background: '#0BBFBF' }}
+                          >
+                            {msg.createState === 'creating' ? 'Création…' : '✓ Créer ce client'}
+                          </button>
+                          <button
+                            onClick={() => setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, propositionClient: null } : m))}
+                            disabled={msg.createState === 'creating'}
+                            className="px-3 py-2 rounded-xl text-xs font-medium text-slate-500 border border-slate-200 hover:bg-slate-50 transition-colors disabled:opacity-60"
+                          >
+                            Annuler
+                          </button>
+                        </div>
+                      )}
+                      {msg.createState === 'done' && (
+                        <div className="px-4 py-3 border-t border-slate-100">
+                          <p className="text-xs font-semibold text-[#0A6060]">✓ Client créé</p>
+                        </div>
+                      )}
+                      {msg.createState === 'error' && (
+                        <div className="px-4 py-3 border-t border-slate-100">
+                          <p className="text-xs font-semibold text-red-600">⚠ Erreur lors de la création</p>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
 
                 {/* Carte actions */}
                 {msg.role === 'assistant' && (msg.actions?.actions?.length || msg.actions?.interventions?.length) ? (

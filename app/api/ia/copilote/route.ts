@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase-server'
 import Anthropic from '@anthropic-ai/sdk'
 import { lireCacheTrajet, calculerTrajet, type ModeTrajet } from '@/lib/trajet'
+import { geocoder } from '@/lib/geocodage'
 
 export const dynamic = 'force-dynamic'
 
@@ -257,7 +258,21 @@ RÈGLE CAPACITÉ : Ne jamais proposer d'affecter plus d'interventions à un agen
 [/ACTIONS]
 
 - Si aucune action concrète n'est applicable, n'inclus PAS de bloc [ACTIONS].
-- IMPORTANT : utilise TOUJOURS les UUIDs complets (36 caractères, format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx) tels qu'ils apparaissent dans ce contexte. Ne tronque jamais un UUID.`
+- IMPORTANT : utilise TOUJOURS les UUIDs complets (36 caractères, format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx) tels qu'ils apparaissent dans ce contexte. Ne tronque jamais un UUID.
+
+CRÉATION DE CLIENT (nouvelle résidence) :
+Si le manager demande de créer un nouveau client, une nouvelle résidence ou un nouveau site, tu dois :
+1. Identifier le nom du client et l'adresse depuis le message.
+2. Si l'adresse semble incomplète (pas de ville, pas de numéro), demander des précisions AVANT d'émettre le bloc.
+3. NE PAS inventer de coordonnées GPS — c'est le serveur qui les obtient via géocodage.
+4. Terminer ta réponse par un bloc [PROPOSITION_CLIENT], format strict SANS markdown autour :
+
+[PROPOSITION_CLIENT]
+{"nom":"<nom exact du client>","adresse":"<adresse complète avec ville>"}
+[/PROPOSITION_CLIENT]
+
+5. Expliquer brièvement que tu vas vérifier l'adresse et que la fiche sera soumise à validation avant création.
+6. Ne jamais inclure un bloc [ACTIONS] en même temps qu'un bloc [PROPOSITION_CLIENT].`
 
   const messages: Anthropic.MessageParam[] = [
     ...historique.map(h => ({ role: h.role, content: h.content } as Anthropic.MessageParam)),
@@ -294,5 +309,41 @@ RÈGLE CAPACITÉ : Ne jamais proposer d'affecter plus d'interventions à un agen
     }
   }
 
-  return NextResponse.json({ reponse, actions })
+  // ── Parser le bloc [PROPOSITION_CLIENT] + géocodage ───────────────────────────
+  const propositionMatch = reponse.match(/\[PROPOSITION_CLIENT\]([\s\S]*?)\[\/PROPOSITION_CLIENT\]/)
+  let propositionClient: Record<string, unknown> | null = null
+
+  if (propositionMatch) {
+    reponse = reponse.replace(/\[PROPOSITION_CLIENT\][\s\S]*?\[\/PROPOSITION_CLIENT\]/, '').trim()
+    try {
+      const raw = JSON.parse(
+        propositionMatch[1].replace(/```json/gi, '').replace(/```/g, '').trim()
+      ) as { nom?: string; adresse?: string }
+
+      const nomClient     = raw.nom?.trim()
+      const adresseClient = raw.adresse?.trim()
+
+      if (nomClient && adresseClient) {
+        const geo = await geocoder(adresseClient)
+        if (geo) {
+          propositionClient = {
+            nom:                nomClient,
+            adresse_normalisee: geo.adresse_normalisee,
+            lat:                geo.lat,
+            lng:                geo.lng,
+          }
+        } else {
+          propositionClient = {
+            nom:    nomClient,
+            adresse: adresseClient,
+            erreur: 'Adresse introuvable — précisez le numéro, la rue et la ville.',
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[copilote] Échec parsing PROPOSITION_CLIENT:', e)
+    }
+  }
+
+  return NextResponse.json({ reponse, actions, propositionClient })
 }

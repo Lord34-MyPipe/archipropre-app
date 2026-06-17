@@ -19,12 +19,12 @@ export async function POST(req: NextRequest) {
 
   const [{ data: residence }, { data: agents }] = await Promise.all([
     admin.from('residences')
-      .select('id, nom, adresse, competences_requises, vehicule_requis, agent_exclu_ids')
+      .select('id, nom, adresse, lat, lng, competences_requises, vehicule_requis, agent_exclu_ids')
       .eq('id', residenceId)
       .eq('manager_id', user.id)
       .single(),
     admin.from('profiles')
-      .select('id, nom, prenom, zones_geo, competences, vehicule, contrat_heures_hebdo, residences_attitrees, residences_exclues, binome_agent_id')
+      .select('id, nom, prenom, zones_geo, competences, vehicule, contrat_heures_hebdo, residences_attitrees, residences_exclues, binome_agent_id, depart_lat, depart_lng')
       .eq('manager_id', user.id)
       .eq('actif', true)
       .eq('role', 'agent')
@@ -56,17 +56,24 @@ export async function POST(req: NextRequest) {
 
   const excludedIds: string[] = residence.agent_exclu_ids ?? []
 
-  const agentLines = (agents ?? [])
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type AgentRow = typeof agents extends (infer T)[] | null ? T & { depart_lat?: any; depart_lng?: any } : never
+
+  const agentLines = ((agents ?? []) as AgentRow[])
     .filter(a => !excludedIds.includes(a.id))
     .map(a => {
       const absList = absenceMap[a.id] ?? []
       const absStr = absList.length > 0
         ? `absent(e) du ${absList.map(x => `${x.dateDebut} au ${x.dateFin}`).join(', ')}`
         : 'disponible'
+      const gps = (a.depart_lat != null && a.depart_lng != null)
+        ? `${Number(a.depart_lat).toFixed(5)}, ${Number(a.depart_lng).toFixed(5)}`
+        : null
       return [
         `- ID: ${a.id}`,
         `  Nom: ${a.prenom} ${a.nom}`,
         `  Zones: ${(a.zones_geo ?? []).join(', ') || 'non renseignées'}`,
+        gps ? `  Coordonnées départ: ${gps}` : '',
         `  Compétences: ${(a.competences ?? []).join(', ') || 'aucune'}`,
         `  Véhiculé: ${a.vehicule ? 'oui' : 'non'}`,
         `  Heures hebdo contrat: ${a.contrat_heures_hebdo ?? '?'}h`,
@@ -76,22 +83,30 @@ export async function POST(req: NextRequest) {
       ].filter(Boolean).join('\n')
     }).join('\n\n')
 
+  const resLat  = (residence as Record<string, unknown>).lat
+  const resLng  = (residence as Record<string, unknown>).lng
+  const resGps  = (resLat != null && resLng != null)
+    ? `${Number(resLat).toFixed(5)}, ${Number(resLng).toFixed(5)}`
+    : null
+
   const prompt = `Tu es un assistant de planification pour une société de nettoyage. Tu dois choisir le meilleur agent attitré pour une résidence.
 
 RÉSIDENCE :
-- Nom: ${residenceDetails.nom}
-- Adresse: ${residenceDetails.adresse ?? 'non renseignée'}
-- Compétences requises: ${(residenceDetails.competences_requises ?? []).join(', ') || 'aucune'}
-- Véhicule requis: ${residenceDetails.vehicule_requis ? 'oui' : 'non'}
+- Nom: ${residence.nom}
+- Adresse: ${residence.adresse ?? 'non renseignée'}
+${resGps ? `- Coordonnées GPS: ${resGps}` : ''}
+- Compétences requises: ${(residence.competences_requises ?? []).join(', ') || 'aucune'}
+- Véhicule requis: ${residence.vehicule_requis ? 'oui' : 'non'}
 
 AGENTS DISPONIBLES (non exclus) :
 ${agentLines || 'Aucun agent disponible'}
 
 CONSIGNES :
 1. Sélectionne l'agent (ou le binôme) le plus adapté.
-2. Priorité : compatibilité géographique, compétences requises, disponibilité, charge de travail (moins d'attitrages = mieux).
-3. Si un binôme existe et que les deux sont disponibles, préfère-le pour les résidences importantes.
-4. Réponds UNIQUEMENT avec un objet JSON strict (pas de markdown, pas de texte avant/après) :
+2. Priorité : proximité GPS (si disponible), compatibilité géographique (zones), compétences requises, disponibilité, charge de travail (moins d'attitrages = mieux).
+3. Si des coordonnées GPS sont présentes, favorise l'agent dont les coordonnées de départ sont les plus proches de la résidence.
+4. Si un binôme existe et que les deux sont disponibles, préfère-le pour les résidences importantes.
+5. Réponds UNIQUEMENT avec un objet JSON strict, sans markdown ni texte autour :
    {"agentId": "<uuid>", "raison": "<explication courte en français, max 2 phrases>"}
 
    Où agentId est l'ID de l'agent primary recommandé (celui avec le contrat principal).`
@@ -140,12 +155,13 @@ CONSIGNES :
   let agentId: string
   let raison: string
 
-  if (typeof raw.agentId === 'string' && typeof raw.raison === 'string') {
-    agentId = raw.agentId
+  if (typeof (raw.agentId ?? raw.agent_id) === 'string' && typeof raw.raison === 'string') {
+    agentId = String(raw.agentId ?? raw.agent_id)
     raison  = raw.raison
   } else if (Array.isArray(raw.suggestions) && raw.suggestions.length > 0) {
     const first = raw.suggestions[0] as Record<string, unknown>
-    agentId = String(first.agentId ?? '')
+    // Accepter agentId (camelCase) ou agent_id (snake_case)
+    agentId = String(first.agentId ?? first.agent_id ?? '')
     raison  = String(first.raison ?? '')
   } else {
     console.error('[suggest-agent] Structure inattendue:', JSON.stringify(raw))

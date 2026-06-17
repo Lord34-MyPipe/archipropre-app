@@ -202,6 +202,7 @@ export default function ResidenceCard({ residence: initial }: Props) {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Erreur de génération')
       setGenConfirm(false)
+      router.refresh()
       const warns: string[] = json.warnings ?? []
       if (warns.length > 0) {
         setGenWarnings(warns)

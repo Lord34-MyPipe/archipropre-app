@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const { residenceId, zoneId, libelle, frequenceType, frequenceValeur,
           joursSemaine, semaineDuMois, moisDeAnnee,
-          heureDebut, heureFin, contrainteExterne, tacheLieeId } = body
+          heureDebut, heureFin, contrainteExterne, tacheLieeId, dureeMinutes } = body
 
   if (!residenceId || !libelle || !frequenceType)
     return NextResponse.json({ error: 'Champs manquants' }, { status: 400 })
@@ -76,6 +76,7 @@ export async function POST(req: NextRequest) {
     heure_fin:         heureFin || null,
     contrainte_externe: contrainteExterne || null,
     tache_liee_id:     tacheLieeId || null,
+    duree_minutes:     dureeMinutes ?? 0,
     ordre:             (count ?? 0) + 1,
   }).select().single()
 

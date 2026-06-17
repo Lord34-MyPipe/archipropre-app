@@ -256,7 +256,22 @@ export default function TacheModal({
     if (!res.ok) { setError(json.error ?? 'Erreur'); return }
 
     if (editingTache) {
-      onSaved({ ...editingTache, ...payload, zone_id: zoneId } as TacheTemplate, false)
+      // payload uses camelCase; TacheTemplate uses snake_case — map explicitly
+      onSaved({
+        ...editingTache,
+        zone_id:            zoneId,
+        libelle:            payload.libelle,
+        frequence_type:     payload.frequenceType as TacheTemplate['frequence_type'],
+        frequence_valeur:   payload.frequenceValeur,
+        jours_semaine:      payload.joursSemaine,
+        semaine_du_mois:    payload.semaineDuMois,
+        mois_de_annee:      payload.moisDeAnnee,
+        heure_debut:        payload.heureDebut,
+        heure_fin:          payload.heureFin,
+        contrainte_externe: payload.contrainteExterne,
+        tache_liee_id:      payload.tacheLieeId,
+        duree_minutes:      payload.dureeMinutes,
+      } as TacheTemplate, false)
     } else {
       onSaved(json.data as TacheTemplate, true)
     }

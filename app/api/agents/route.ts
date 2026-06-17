@@ -102,9 +102,11 @@ export async function PATCH(req: NextRequest) {
     if (oldBinomeId && oldBinomeId !== newBinomeId) {
       await admin.from('profiles').update({ binome_agent_id: null }).eq('id', oldBinomeId)
     }
-    // Relation symétrique : pointer le nouveau binôme vers cet agent
+    // Relation symétrique : pointer le nouveau binôme vers cet agent + copier le facteur
     if (newBinomeId) {
-      await admin.from('profiles').update({ binome_agent_id: id }).eq('id', newBinomeId)
+      const symUpdate: Record<string, unknown> = { binome_agent_id: id }
+      if (facteur_binome !== undefined) symUpdate.facteur_binome = Number(facteur_binome)
+      await admin.from('profiles').update(symUpdate).eq('id', newBinomeId)
     }
   }
 

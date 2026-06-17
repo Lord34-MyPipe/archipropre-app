@@ -13,9 +13,6 @@ const STATUT_BG: Record<string, string> = {
 const STATUT_LABEL: Record<string, string> = {
   planifiee: 'Planifiée', en_cours: 'En cours', terminee: 'Terminée', non_demarree: 'En retard',
 }
-const RECURRENCE_LABEL: Record<string, string> = {
-  hebdo: '↻', bihebdo: '↻↻', mensuelle: '📅', ponctuelle: '', contrainte_horaire: '🕐',
-}
 const JOURS = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim']
 
 export default async function ManagerPlanning() {
@@ -41,11 +38,6 @@ export default async function ManagerPlanning() {
   const agentIds = (agents ?? []).map(a => a.id)
   const ids = agentIds.length ? agentIds : ['00000000-0000-0000-0000-000000000000']
 
-  // Planning IDs publiés de ce manager
-  const { data: mgPlannings } = await supabase
-    .from('plannings').select('id').eq('manager_id', user.id).eq('statut', 'publie')
-  const planningIds = (mgPlannings ?? []).map(p => p.id)
-
   // Congés et absences des agents pour la semaine
   const [{ data: congesRaw }, { data: absencesRaw }] = await Promise.all([
     supabase.from('conges')
@@ -60,14 +52,12 @@ export default async function ManagerPlanning() {
 
   // Construit un Set "agentId|dateStr" pour les jours couverts par un congé ou absence validé
   const congeKeys = new Set<string>()
-  const congeMotifs: Record<string, string> = {} // "agentId|dateStr" → motif
+  const congeMotifs: Record<string, string> = {}
   const allConges = [...(congesRaw ?? []), ...(absencesRaw ?? [])]
   allConges.forEach(c => {
-    // Accepte : valide=true, statut approuve/accepte/validé, ou pas de statut de rejet
     const statutStr = (c.statut ?? '').toLowerCase()
     const isRejected = ['refuse','rejeté','rejete','annule','annulé'].some(s => statutStr.includes(s))
     if (isRejected) return
-    // Parcourt chaque jour de la plage
     const dStart = new Date(c.date_debut + 'T00:00:00')
     const dEnd   = new Date(c.date_fin   + 'T00:00:00')
     const cur = new Date(dStart)
@@ -80,42 +70,15 @@ export default async function ManagerPlanning() {
     }
   })
 
-  // Interventions réelles (scannées / en cours / terminées)
-  const [{ data: intersRaw }, planifieesResult] = await Promise.all([
-    supabase.from('interventions')
-      .select('id, agent_id, date_prevue, heure_debut_prevue, heure_fin_prevue, statut, residences(nom)')
-      .in('agent_id', ids)
-      .gte('date_prevue', debut).lte('date_prevue', fin)
-      .order('heure_debut_prevue'),
-
-    planningIds.length > 0
-      ? supabase.from('interventions_planifiees')
-          .select('id, agent_id, date, heure_debut, heure_fin, recurrence, residence_id, residences(nom)')
-          .in('planning_id', planningIds)
-          .in('agent_id', ids)
-          .gte('date', debut).lte('date', fin)
-          .order('heure_debut')
-      : Promise.resolve({ data: [] as unknown as null, error: null }),
-  ])
+  // Source unique : table interventions (nouveau système)
+  const { data: intersRaw } = await supabase.from('interventions')
+    .select('id, agent_id, residence_id, date_prevue, heure_debut_prevue, heure_fin_prevue, statut, residences(nom)')
+    .in('agent_id', ids)
+    .gte('date_prevue', debut).lte('date_prevue', fin)
+    .order('heure_debut_prevue')
 
   const inters = intersRaw ?? []
-
-  // Déduplication interventions_planifiees (plusieurs générations possible)
-  const seen = new Set<string>()
-  const planifiees = (planifieesResult.data ?? []).filter(p => {
-    const key = `${p.agent_id}|${p.date}|${p.residence_id}`
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-
-  // Masquer les planifiées si une intervention réelle existe déjà pour (agent, date, residence)
-  const realKeys = new Set(inters.map(i => `${i.agent_id}|${i.date_prevue}|${(i as { residence_id?: string }).residence_id ?? ''}`))
-  const planifieesFiltered = planifiees.filter(p => !realKeys.has(`${p.agent_id}|${p.date}|${p.residence_id}`))
-
-  const totalReal     = inters.length
-  const totalPlanifie = planifieesFiltered.length
-  const totalSemaine  = totalReal + totalPlanifie
+  const totalSemaine = inters.length
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -139,15 +102,11 @@ export default async function ManagerPlanning() {
         <div className="flex gap-3 mt-4 flex-wrap">
           <div className="flex items-center gap-1.5">
             <div className="w-3 h-3 rounded-sm bg-blue-400"/>
-            <span className="text-xs text-blue-200">Planifiée ({totalReal})</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-sm bg-[#0BBFBF]"/>
-            <span className="text-xs text-blue-200">Planning généré ({totalPlanifie})</span>
+            <span className="text-xs text-blue-200">Planifiée</span>
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-3 h-3 rounded-sm bg-amber-400"/>
-            <span className="text-xs text-blue-200">🕐 Horaire fixe</span>
+            <span className="text-xs text-blue-200">En cours</span>
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-3 h-3 rounded-sm bg-green-400"/>
@@ -171,7 +130,7 @@ export default async function ManagerPlanning() {
             <p className="text-4xl mb-3">📅</p>
             <p className="text-slate-600 font-medium">Aucune intervention cette semaine</p>
             <p className="text-slate-400 text-sm mt-1">
-              Allez dans une résidence → ⚙️ → Créer un contrat → Générer le planning
+              Allez dans une résidence → générer le planning
             </p>
             <Link href="/manager/residences"
               className="inline-block mt-4 px-4 py-2 rounded-xl text-sm font-semibold text-white"
@@ -213,7 +172,6 @@ export default async function ManagerPlanning() {
                   const hasAnything = semaine.some(d => {
                     const ds = d.toISOString().split('T')[0]
                     return inters.some(i => i.agent_id === agent.id && i.date_prevue === ds)
-                        || planifieesFiltered.some(p => p.agent_id === agent.id && p.date === ds)
                   })
                   if (!hasAnything) return null
 
@@ -230,16 +188,14 @@ export default async function ManagerPlanning() {
                         </div>
                       </td>
                       {semaine.map((d, j) => {
-                        const dateStr = d.toISOString().split('T')[0]
+                        const dateStr      = d.toISOString().split('T')[0]
                         const dayInters    = inters.filter(i => i.agent_id === agent.id && i.date_prevue === dateStr)
-                        const dayPlanifie  = planifieesFiltered.filter(p => p.agent_id === agent.id && p.date === dateStr)
                         const isOnLeave    = congeKeys.has(`${agent.id}|${dateStr}`)
                         const leaveLabel   = congeMotifs[`${agent.id}|${dateStr}`] ?? 'Congé'
-                        const hasConflict  = isOnLeave && (dayInters.length > 0 || dayPlanifie.length > 0)
+                        const hasConflict  = isOnLeave && dayInters.length > 0
                         return (
                           <td key={j} className={`px-1 py-2 align-top min-w-[80px] ${isOnLeave ? 'bg-orange-50/60' : ''}`}>
                             <div className="space-y-1">
-                              {/* Badge congé */}
                               {isOnLeave && (
                                 <div className={`px-1.5 py-1 rounded-lg text-[10px] font-semibold leading-tight flex items-center gap-1 ${
                                   hasConflict
@@ -250,7 +206,6 @@ export default async function ManagerPlanning() {
                                   <span className="truncate">{hasConflict ? 'Conflit congé' : leaveLabel}</span>
                                 </div>
                               )}
-                              {/* Interventions réelles */}
                               {dayInters.map(i => (
                                 <div key={i.id}
                                   className={`px-1.5 py-1.5 rounded-lg text-[10px] font-medium leading-tight ${
@@ -274,32 +229,6 @@ export default async function ManagerPlanning() {
                                   </div>
                                 </div>
                               ))}
-                              {/* Interventions planifiées (planning généré) */}
-                              {dayPlanifie.map(p => {
-                                const isCH = p.recurrence === 'contrainte_horaire'
-                                const cellCls = isOnLeave
-                                  ? 'bg-red-50 text-red-800 border border-red-300'
-                                  : isCH
-                                    ? 'bg-amber-50 text-amber-800 border border-amber-200'
-                                    : 'bg-[#0BBFBF]/10 text-[#0A5F5F] border border-[#0BBFBF]/30'
-                                return (
-                                  <div key={p.id} className={`px-1.5 py-1.5 rounded-lg text-[10px] font-medium leading-tight ${cellCls}`}>
-                                    <div className="truncate font-semibold">
-                                      {(p as { residences?: { nom?: string } }).residences?.nom ?? '—'}
-                                    </div>
-                                    {p.heure_debut && (
-                                      <div className="text-[9px] opacity-80 mt-0.5">
-                                        {String(p.heure_debut).slice(0,5)}
-                                        {p.heure_fin ? ` → ${String(p.heure_fin).slice(0,5)}` : ''}
-                                      </div>
-                                    )}
-                                    <div className="text-[9px] opacity-60 mt-0.5 flex items-center gap-0.5">
-                                      {isOnLeave ? <span>⚠️</span> : <span>{isCH ? '🕐' : '📅'}</span>}
-                                      <span>{isOnLeave ? 'Conflit congé' : isCH ? 'Horaire fixe' : 'Planifié'}</span>
-                                    </div>
-                                  </div>
-                                )
-                              })}
                             </div>
                           </td>
                         )
@@ -307,12 +236,11 @@ export default async function ManagerPlanning() {
                     </tr>
                   )
                 })}
-                {/* Agents sans intervention cette semaine — ligne vide */}
+                {/* Agents sans intervention cette semaine */}
                 {(agents ?? []).filter(agent =>
                   !semaine.some(d => {
                     const ds = d.toISOString().split('T')[0]
                     return inters.some(i => i.agent_id === agent.id && i.date_prevue === ds)
-                        || planifieesFiltered.some(p => p.agent_id === agent.id && p.date === ds)
                   })
                 ).map(agent => (
                   <tr key={`empty-${agent.id}`}>
@@ -354,30 +282,29 @@ export default async function ManagerPlanning() {
             </div>
             <div className="divide-y divide-slate-50">
               {semaine.map(d => {
-                const dateStr = d.toISOString().split('T')[0]
-                const dayInters    = inters.filter(i => i.date_prevue === dateStr)
-                const dayPlanifie  = planifieesFiltered.filter(p => p.date === dateStr)
+                const dateStr       = d.toISOString().split('T')[0]
+                const dayInters     = inters.filter(i => i.date_prevue === dateStr)
                 const agentsEnConge = (agents ?? []).filter(a => congeKeys.has(`${a.id}|${dateStr}`))
-                if (!dayInters.length && !dayPlanifie.length && !agentsEnConge.length) return null
+                if (!dayInters.length && !agentsEnConge.length) return null
                 return (
                   <div key={dateStr}>
                     <div className="px-5 py-2.5 bg-slate-50 flex items-center gap-2 flex-wrap">
                       <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
                         {d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}
                       </p>
-                      {(dayInters.length + dayPlanifie.length) > 0 && (
+                      {dayInters.length > 0 && (
                         <span className="px-2 py-0.5 bg-white border border-slate-200 rounded-full text-xs text-slate-500 font-medium">
-                          {dayInters.length + dayPlanifie.length} intervention{dayInters.length + dayPlanifie.length > 1 ? 's' : ''}
+                          {dayInters.length} intervention{dayInters.length > 1 ? 's' : ''}
                         </span>
                       )}
                       {agentsEnConge.map(a => (
                         <span key={a.id} className={`px-2 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 ${
-                          congeKeys.has(`${a.id}|${dateStr}`) && (dayInters.some(i => i.agent_id === a.id) || dayPlanifie.some(p => p.agent_id === a.id))
+                          dayInters.some(i => i.agent_id === a.id)
                             ? 'bg-red-100 text-red-700 border border-red-200'
                             : 'bg-orange-100 text-orange-700 border border-orange-200'
                         }`}>
                           🏖️ {a.prenom} {a.nom}
-                          {(dayInters.some(i => i.agent_id === a.id) || dayPlanifie.some(p => p.agent_id === a.id)) && (
+                          {dayInters.some(i => i.agent_id === a.id) && (
                             <span className="text-red-600 font-bold"> ⚠️</span>
                           )}
                         </span>
@@ -406,35 +333,6 @@ export default async function ManagerPlanning() {
                           </div>
                           <span className={`px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 ${STATUT_BG[i.statut] ?? 'bg-slate-100 text-slate-600'}`}>
                             {STATUT_LABEL[i.statut] ?? i.statut}
-                          </span>
-                        </div>
-                      )
-                    })}
-                    {dayPlanifie.map(p => {
-                      const agent  = (agents ?? []).find(a => a.id === p.agent_id)
-                      const isCH   = p.recurrence === 'contrainte_horaire'
-                      const rowBg  = isCH ? 'bg-amber-50' : 'bg-[#0BBFBF]/5'
-                      const avatarBg = isCH ? 'bg-amber-400' : 'bg-[#0BBFBF]'
-                      const badgeCls = isCH
-                        ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                        : 'bg-[#0BBFBF]/20 text-[#0A6060] border border-[#0BBFBF]/30'
-                      return (
-                        <div key={p.id} className={`px-5 py-3 flex items-center gap-3 ${rowBg}`}>
-                          <div className={`w-8 h-8 rounded-full ${avatarBg} flex items-center justify-center text-white text-xs font-bold shrink-0`}>
-                            {agent ? agent.prenom[0] + agent.nom[0] : (isCH ? '🕐' : '📅')}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-slate-800 truncate">
-                              {(p as { residences?: { nom?: string } }).residences?.nom ?? '—'}
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              {agent ? `${agent.prenom} ${agent.nom}` : ''}
-                              {p.heure_debut ? ` · ${String(p.heure_debut).slice(0,5)}` : ''}
-                              {p.heure_fin   ? ` → ${String(p.heure_fin).slice(0,5)}`   : ''}
-                            </p>
-                          </div>
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 ${badgeCls}`}>
-                            {isCH ? '🕐 Horaire fixe' : '📅 Planifié'}
                           </span>
                         </div>
                       )

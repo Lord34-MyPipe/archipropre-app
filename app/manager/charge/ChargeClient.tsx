@@ -271,8 +271,8 @@ export default function ChargeClient({ agents }: Props) {
 
                     {/* Labels sous la barre */}
                     <div className="absolute left-0 right-0 text-[10px] leading-tight" style={{ top: 18 }}>
-                      {/* ↑ Xh à la position de charge */}
-                      {showChargeLabel && (
+                      {/* ↑ Xh à la position de charge — uniquement sans dépassement */}
+                      {heuresSup === 0 && showChargeLabel && (
                         <span
                           className="absolute -translate-x-1/2 text-slate-500 whitespace-nowrap"
                           style={{ left: `${posCharge}%` }}
@@ -287,13 +287,13 @@ export default function ChargeClient({ agents }: Props) {
                       >
                         {contrat}h contrat
                       </span>
-                      {/* +Xh sup à droite, uniquement en dépassement */}
+                      {/* En dépassement : label fusionné "Xh prog (+Xh sup)" à droite */}
                       {heuresSup > 0 && (
                         <span
                           className="absolute right-0 font-semibold whitespace-nowrap"
                           style={{ color: '#A32D2D' }}
                         >
-                          +{heuresSup}h sup
+                          {heuresProg}h (+{heuresSup}h sup)
                         </span>
                       )}
                     </div>

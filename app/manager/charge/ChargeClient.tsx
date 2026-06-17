@@ -175,7 +175,7 @@ export default function ChargeClient({ agents }: Props) {
 
                 {/* Infos + barre */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className="font-semibold text-slate-800 text-sm truncate">{agent.nom_complet}</span>
                     {agent.mode_deplacement && (
                       <span className="text-xs text-slate-500">
@@ -185,10 +185,18 @@ export default function ChargeClient({ agents }: Props) {
                     {agent.secteur_libelle && (
                       <span className="text-xs text-slate-400 truncate hidden md:block">· {agent.secteur_libelle}</span>
                     )}
+                    {agent.binome_nom && (
+                      <span className="text-xs px-1.5 py-0.5 bg-[#0BBFBF]/10 text-[#0BBFBF] rounded-full font-medium whitespace-nowrap">
+                        + {agent.binome_nom}
+                      </span>
+                    )}
                     {indisponible && (
                       <span className="text-xs px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded-full">Indisponible</span>
                     )}
                   </div>
+                  {agent.binome_nom && (
+                    <p className="text-xs text-[#0BBFBF] mb-1">Binôme · {agent.nom_complet.split(' ')[0]} + {agent.binome_nom.split(' ')[0]}</p>
+                  )}
 
                   {/* Barre de progression */}
                   <div className="relative h-2.5 bg-slate-100 rounded-full overflow-visible">

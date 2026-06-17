@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
 
   // ── 1. Vérification ownership ────────────────────────────────────────────────
   const { data: res } = await admin.from('residences')
-    .select('id, nom, agent_prefere_id')
+    .select('id, nom, agent_prefere_id, agent_secondaire_id')
     .eq('id', residenceId).eq('manager_id', managerId).single()
   console.log('[generer] résidence:', res ? `"${res.nom}" agent=${res.agent_prefere_id ?? 'aucun'}` : 'NON TROUVÉE')
   if (!res) return NextResponse.json({ error: 'Résidence introuvable ou non autorisée' }, { status: 403 })
@@ -193,10 +193,26 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     )
 
+  // ── 6b. Interventions miroir pour le binôme ──────────────────────────────────
+  let allRows = [...rowsFuturs]
+  if (res.agent_secondaire_id) {
+    const { data: agentProfile } = await admin
+      .from('profiles').select('facteur_binome').eq('id', res.agent_prefere_id).single()
+    const facteur = Number(agentProfile?.facteur_binome ?? 0.60)
+    const mirrorRows = rowsFuturs.map(r => {
+      const [fh, fm] = r.heure_debut_prevue.split(':').map(Number)
+      const [th, tm] = r.heure_fin_prevue.split(':').map(Number)
+      const dureeBinome = Math.round(((th * 60 + tm) - (fh * 60 + fm)) * facteur)
+      return { ...r, agent_id: res.agent_secondaire_id!, heure_fin_prevue: addMinutes(r.heure_debut_prevue, dureeBinome) }
+    })
+    allRows = [...rowsFuturs, ...mirrorRows]
+    console.log(`[generer] binôme ${res.agent_secondaire_id} : ${mirrorRows.length} interventions miroir (facteur ${facteur})`)
+  }
+
   // ── 7. DELETE + INSERT atomique via RPC PostgreSQL ──────────────────────────
   const { data: insertedCount, error: rpcErr } = await admin.rpc('planifier_interventions', {
     p_residence_id: residenceId,
-    p_lignes:       rowsFuturs,
+    p_lignes:       allRows,
   })
   console.log('RPC result:', rpcErr, insertedCount)
   if (rpcErr) {

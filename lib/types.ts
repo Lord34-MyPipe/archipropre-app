@@ -21,6 +21,8 @@ export interface Profile {
   adresse_domicile: string | null
   actif: boolean
   created_at: string
+  binome_agent_id: string | null
+  facteur_binome: number
 }
 
 export interface Residence {
@@ -33,6 +35,7 @@ export interface Residence {
   type_client: TypeClient | null
   client_exigeant: boolean
   agent_prefere_id: string | null
+  agent_secondaire_id: string | null
   agent_exclu_ids: string[]
   vehicule_requis: boolean
   competences_requises: string[]

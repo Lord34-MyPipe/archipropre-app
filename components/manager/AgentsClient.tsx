@@ -223,6 +223,7 @@ export default function AgentsClient({ agents: initial }: Props) {
       {modalOpen && (
         <AgentFormModal
           agent={editing}
+          agents={agents}
           onClose={() => setModalOpen(false)}
           onSaved={onSaved}
         />

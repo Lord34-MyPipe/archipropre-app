@@ -34,6 +34,8 @@ interface FormState {
   mode_deplacement: string
   secteur_libelle: string
   seuil_cible_pct: number
+  binome_agent_id: string
+  facteur_binome: number
 }
 
 function defaultForm(agent?: Profile | null): FormState {
@@ -55,11 +57,14 @@ function defaultForm(agent?: Profile | null): FormState {
     mode_deplacement: (agent as unknown as Record<string, string>)?.mode_deplacement ?? 'voiture',
     secteur_libelle: (agent as unknown as Record<string, string>)?.secteur_libelle ?? '',
     seuil_cible_pct: (agent as unknown as Record<string, number>)?.seuil_cible_pct ?? 80,
+    binome_agent_id: (agent as unknown as Record<string, string>)?.binome_agent_id ?? '',
+    facteur_binome: (agent as unknown as Record<string, number>)?.facteur_binome ?? 0.60,
   }
 }
 
 interface Props {
   agent?: Profile | null
+  agents?: Profile[]
   onClose: () => void
   onSaved: () => void
 }
@@ -112,7 +117,7 @@ function TagsInput({ tags, setTags, placeholder }: {
   )
 }
 
-export default function AgentFormModal({ agent, onClose, onSaved }: Props) {
+export default function AgentFormModal({ agent, agents = [], onClose, onSaved }: Props) {
   const isEdit = !!agent
   const [form, setForm] = useState<FormState>(() => defaultForm(agent))
   const [loading, setLoading] = useState(false)
@@ -147,6 +152,8 @@ export default function AgentFormModal({ agent, onClose, onSaved }: Props) {
       mode_deplacement: form.mode_deplacement,
       secteur_libelle: form.secteur_libelle.trim() || null,
       seuil_cible_pct: Number(form.seuil_cible_pct),
+      binome_agent_id: form.binome_agent_id || null,
+      facteur_binome: Number(form.facteur_binome),
       ...(isEdit ? { id: agent!.id } : { password: form.password }),
     }
 
@@ -353,6 +360,59 @@ export default function AgentFormModal({ agent, onClose, onSaved }: Props) {
               </p>
             </div>
           </div>
+
+          {/* ── Binôme ── */}
+          {isEdit && (
+            <div className="border-t border-slate-100 pt-5">
+              <h3 className="text-sm font-semibold text-slate-700 mb-4 flex items-center gap-2">
+                <span className="w-6 h-6 rounded-lg bg-[#0BBFBF]/10 flex items-center justify-center text-[#0BBFBF] text-xs">👥</span>
+                Binôme
+              </h3>
+
+              {/* Select agent binôme */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Agent binôme</label>
+                <select
+                  value={form.binome_agent_id}
+                  onChange={e => set('binome_agent_id', e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-[#0BBFBF] focus:border-transparent transition">
+                  <option value="">Aucun (travaille seul)</option>
+                  {agents.filter(a => a.id !== agent?.id).map(a => (
+                    <option key={a.id} value={a.id}>{a.prenom} {a.nom}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Info symétrique */}
+              {form.binome_agent_id && (() => {
+                const binome = agents.find(a => a.id === form.binome_agent_id)
+                return binome ? (
+                  <div className="mb-4 flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs">
+                    <span className="shrink-0">⚠️</span>
+                    <span>
+                      {agent?.prenom} sera automatiquement affecté·e avec {binome.prenom} {binome.nom} sur toutes ses résidences
+                    </span>
+                  </div>
+                ) : null
+              })()}
+
+              {/* Facteur vitesse */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-sm font-medium text-slate-700">Facteur de vitesse en binôme</label>
+                  <span className="text-sm font-bold text-[#0BBFBF]">{Number(form.facteur_binome).toFixed(2)}</span>
+                </div>
+                <input type="range" min={0.4} max={1.0} step={0.05}
+                  value={form.facteur_binome}
+                  onChange={e => set('facteur_binome', Number(e.target.value))}
+                  className="w-full accent-[#0BBFBF]"/>
+                <p className="text-xs text-slate-400 mt-1">
+                  {Number(form.facteur_binome).toFixed(2)} = {Math.round((1 - Number(form.facteur_binome)) * 100)}% plus rapide à deux
+                  {Number(form.facteur_binome) === 1.0 && ' (aucun gain)'}
+                </p>
+              </div>
+            </div>
+          )}
 
           <div className="h-2"/>
         </form>

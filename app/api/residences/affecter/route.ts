@@ -21,11 +21,34 @@ export async function PATCH(req: NextRequest) {
     .from('residences').select('id').eq('id', residenceId).eq('manager_id', managerId).single()
   if (!res) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
 
+  // Chercher le binôme de l'agent affecté
+  let agentSecondaireId: string | null = null
+  let binomeNom: string | null = null
+  if (agentPrefereId) {
+    const { data: agentProfile } = await admin
+      .from('profiles')
+      .select('binome_agent_id, nom, prenom')
+      .eq('id', agentPrefereId)
+      .single()
+    if (agentProfile?.binome_agent_id) {
+      agentSecondaireId = agentProfile.binome_agent_id
+      const { data: binome } = await admin
+        .from('profiles')
+        .select('nom, prenom')
+        .eq('id', agentSecondaireId)
+        .single()
+      if (binome) {
+        binomeNom = `${agentProfile.prenom} ${agentProfile.nom} + ${binome.prenom} ${binome.nom} (binôme)`
+      }
+    }
+  }
+
   const { error } = await admin.from('residences').update({
-    agent_prefere_id: agentPrefereId ?? null,
-    agent_exclu_ids: agentExcluIds ?? [],
+    agent_prefere_id:    agentPrefereId ?? null,
+    agent_secondaire_id: agentSecondaireId,
+    agent_exclu_ids:     agentExcluIds ?? [],
   }).eq('id', residenceId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, binomeNom })
 }

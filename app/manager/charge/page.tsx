@@ -15,6 +15,7 @@ export interface ChargeAgent {
   heures_trajets_est: number
   capacite_disponible: number
   taux_remplissage_pct: number
+  binome_nom: string | null
 }
 
 export default async function ChargePage() {
@@ -44,6 +45,23 @@ export default async function ChargePage() {
       .select('*')
       .in('agent_id', agentIds)
     agents = (data ?? []) as ChargeAgent[]
+
+    // Enrichir avec le nom du binôme
+    const { data: profiles } = await admin
+      .from('profiles')
+      .select('id, binome_agent_id, nom, prenom')
+      .in('id', agentIds)
+    const binomeIds = (profiles ?? []).map(p => p.binome_agent_id).filter(Boolean) as string[]
+    let binomeProfiles: { id: string; nom: string; prenom: string }[] = []
+    if (binomeIds.length > 0) {
+      const { data: bp } = await admin.from('profiles').select('id, nom, prenom').in('id', binomeIds)
+      binomeProfiles = (bp ?? []) as { id: string; nom: string; prenom: string }[]
+    }
+    agents = agents.map(a => {
+      const p = profiles?.find(x => x.id === a.agent_id)
+      const b = p?.binome_agent_id ? binomeProfiles.find(x => x.id === p.binome_agent_id) : null
+      return { ...a, binome_nom: b ? `${b.prenom} ${b.nom}` : null }
+    })
   }
 
   return <ChargeClient agents={agents} managerId={user.id} />

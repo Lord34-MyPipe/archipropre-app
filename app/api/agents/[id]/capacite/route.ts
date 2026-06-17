@@ -13,7 +13,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (manager?.role !== 'manager') return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
 
   const body = await req.json()
-  const { contrat_heures_hebdo, seuil_cible_pct, mode_deplacement, secteur_libelle } = body
+  const { contrat_heures_hebdo, seuil_cible_pct, mode_deplacement, secteur_libelle,
+          binome_agent_id, facteur_binome } = body
 
   if (contrat_heures_hebdo !== undefined) {
     const h = Number(contrat_heures_hebdo)
@@ -30,7 +31,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const admin = await createAdminClient()
 
-  const { data: agent } = await admin.from('profiles').select('manager_id').eq('id', id).single()
+  const { data: agent } = await admin.from('profiles').select('manager_id, binome_agent_id').eq('id', id).single()
   if (!agent || agent.manager_id !== user.id)
     return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
 
@@ -39,6 +40,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (seuil_cible_pct !== undefined) updates.seuil_cible_pct = Number(seuil_cible_pct)
   if (mode_deplacement !== undefined) updates.mode_deplacement = mode_deplacement
   if (secteur_libelle !== undefined) updates.secteur_libelle = secteur_libelle || null
+  if (facteur_binome !== undefined) updates.facteur_binome = Number(facteur_binome)
+
+  if (binome_agent_id !== undefined) {
+    const newBinomeId = binome_agent_id || null
+    const oldBinomeId = agent.binome_agent_id ?? null
+    updates.binome_agent_id = newBinomeId
+    if (oldBinomeId && oldBinomeId !== newBinomeId) {
+      await admin.from('profiles').update({ binome_agent_id: null }).eq('id', oldBinomeId)
+    }
+    if (newBinomeId) {
+      await admin.from('profiles').update({ binome_agent_id: id }).eq('id', newBinomeId)
+    }
+  }
 
   const { error } = await admin.from('profiles').update(updates).eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })

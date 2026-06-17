@@ -68,13 +68,13 @@ export async function PATCH(req: NextRequest) {
 
   const body = await req.json()
   const { id, nom, prenom, telephone, vehicule, zones_geo, competences, contrat_heures_hebdo, disponibilites, actif,
-          mode_deplacement, secteur_libelle, seuil_cible_pct } = body
+          mode_deplacement, secteur_libelle, seuil_cible_pct, binome_agent_id, facteur_binome } = body
   if (!id) return NextResponse.json({ error: 'id manquant' }, { status: 400 })
 
   const admin = await createAdminClient()
 
   // Vérifier que l'agent appartient à ce manager
-  const { data: agent } = await admin.from('profiles').select('manager_id').eq('id', id).single()
+  const { data: agent } = await admin.from('profiles').select('manager_id, binome_agent_id').eq('id', id).single()
   if (agent?.manager_id !== manager.id) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
   }
@@ -92,6 +92,21 @@ export async function PATCH(req: NextRequest) {
   if (mode_deplacement !== undefined) updates.mode_deplacement = mode_deplacement
   if (secteur_libelle !== undefined) updates.secteur_libelle = secteur_libelle || null
   if (seuil_cible_pct !== undefined) updates.seuil_cible_pct = Number(seuil_cible_pct)
+  if (facteur_binome !== undefined) updates.facteur_binome = Number(facteur_binome)
+
+  if (binome_agent_id !== undefined) {
+    const newBinomeId = binome_agent_id || null
+    const oldBinomeId = agent?.binome_agent_id ?? null
+    updates.binome_agent_id = newBinomeId
+    // Effacer l'ancien binôme si différent
+    if (oldBinomeId && oldBinomeId !== newBinomeId) {
+      await admin.from('profiles').update({ binome_agent_id: null }).eq('id', oldBinomeId)
+    }
+    // Relation symétrique : pointer le nouveau binôme vers cet agent
+    if (newBinomeId) {
+      await admin.from('profiles').update({ binome_agent_id: id }).eq('id', newBinomeId)
+    }
+  }
 
   const { error } = await admin.from('profiles').update(updates).eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })

@@ -203,7 +203,10 @@ export default function ResidenceCard({ residence: initial }: Props) {
       setGenConfirm(false)
       router.push(`/manager/residences/${initial.id}/planning`)
     } catch (e: unknown) {
-      setGenError(e instanceof Error ? e.message : 'Erreur inconnue')
+      const msg = e instanceof Error ? e.message : 'Erreur inconnue'
+      setGenError(msg)
+      setGenConfirm(false)
+      setTimeout(() => setGenError(''), 5000)
     }
     setGenLoading(false)
   }
@@ -450,6 +453,13 @@ export default function ResidenceCard({ residence: initial }: Props) {
           </div>
         </div>
 
+        {/* Erreur génération planning */}
+        {genError && (
+          <p className="mt-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+            Erreur : {genError}
+          </p>
+        )}
+
         {/* Token QR (caché par défaut) */}
         {showToken && (
           <div className="bg-slate-50 rounded-xl px-3 py-2.5 border border-slate-100 mt-3">
@@ -490,7 +500,6 @@ export default function ResidenceCard({ residence: initial }: Props) {
             <p className="text-sm text-slate-600 mb-5 leading-relaxed">
               Cela va créer toutes les interventions planifiées pour <span className="font-semibold">{initial.nom}</span> sur toute la durée du contrat, à partir des tâches configurées.
             </p>
-            {genError && <p className="mb-4 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{genError}</p>}
             <div className="flex gap-3">
               <button onClick={() => setGenConfirm(false)} disabled={genLoading}
                 className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-sm font-medium hover:bg-slate-50 disabled:opacity-50">

@@ -81,7 +81,7 @@ export default async function ManagerPlanning() {
   // Interventions réelles (scannées / en cours / terminées)
   const [{ data: intersRaw }, planifieesResult] = await Promise.all([
     supabase.from('interventions')
-      .select('id, agent_id, date_prevue, heure_debut_prevue, statut, residences(nom)')
+      .select('id, agent_id, date_prevue, heure_debut_prevue, heure_fin_prevue, statut, residences(nom)')
       .in('agent_id', ids)
       .gte('date_prevue', debut).lte('date_prevue', fin)
       .order('heure_debut_prevue'),
@@ -262,6 +262,9 @@ export default async function ManagerPlanning() {
                                   {i.heure_debut_prevue && (
                                     <div className="text-[9px] opacity-70 mt-0.5">
                                       {i.heure_debut_prevue.slice(0,5)}
+                                      {(i as { heure_fin_prevue?: string | null }).heure_fin_prevue
+                                        ? ` → ${(i as { heure_fin_prevue: string }).heure_fin_prevue.slice(0,5)}`
+                                        : ' → ?'}
                                     </div>
                                   )}
                                   <div className="text-[9px] opacity-60 mt-0.5">
@@ -392,6 +395,11 @@ export default async function ManagerPlanning() {
                             <p className="text-xs text-slate-500">
                               {agent ? `${agent.prenom} ${agent.nom}` : ''}
                               {i.heure_debut_prevue ? ` · ${i.heure_debut_prevue.slice(0,5)}` : ''}
+                              {i.heure_debut_prevue
+                                ? ((i as { heure_fin_prevue?: string | null }).heure_fin_prevue
+                                    ? ` → ${(i as { heure_fin_prevue: string }).heure_fin_prevue.slice(0,5)}`
+                                    : ' → ?')
+                                : ''}
                             </p>
                           </div>
                           <span className={`px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 ${STATUT_BG[i.statut] ?? 'bg-slate-100 text-slate-600'}`}>

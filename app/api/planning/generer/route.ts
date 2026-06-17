@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
       const creneau  = creneauPourJour(creneaux, dayName)
       const hDebut   = creneau ? normalizeTime(creneau.heure_debut) ?? '08:00' : '08:00'
       const hFinMax  = creneau ? normalizeTime(creneau.heure_fin)   ?? null    : null
-      const hFin     = duree > 0 ? addMinutes(hDebut, duree) : (hFinMax ?? addMinutes(hDebut, 120))
+      const hFin     = duree > 0 ? addMinutes(hDebut, duree) : (hFinMax ?? addMinutes(hDebut, 60))
 
       if (hFinMax && hFin > hFinMax) {
         console.warn(`[generer] ⚠️ ${dateStr} (${dayName}) : heure_fin=${hFin} > fin créneau=${hFinMax} (durée=${duree}min)`)
@@ -172,14 +172,15 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     )
 
-  // ── 6. Suppression des anciennes interventions 'planifiee' ──────────────────
+  // ── 6. Suppression ardoise propre — toutes les interventions futures non réalisées ──
+  const today = new Date().toISOString().split('T')[0]
   const { error: delErr } = await admin.from('interventions')
     .delete()
     .eq('residence_id', residenceId)
-    .eq('statut', 'planifiee')
-    .gte('date_prevue', dateDebut)
-    .lte('date_prevue', dateFin)
-  if (delErr) console.warn('[generer] suppression anciennes planifiees:', delErr.message)
+    .gte('date_prevue', today)
+    .neq('statut', 'terminee')
+    .neq('statut', 'en_cours')
+  if (delErr) console.warn('[generer] suppression avant régénération:', delErr.message)
 
   // ── 7. INSERT par batches de 500 ────────────────────────────────────────────
   const BATCH = 500

@@ -145,6 +145,17 @@ L'état se calcule automatiquement, aucun champ à maintenir.
    en rouge foncé au-delà du contrat, label fusionné "Xh (+Xh sup)" si dépassement
 ✅ v_charge_agent expose les heures programmées en valeur absolue
 ✅ Cartes KPI page charge : agents, remplissage moyen, capacité libre, en surcharge
+✅ Géocodage adresse→GPS via Nominatim (lib/geocodage.ts, User-Agent requis, biais Montpellier)
+✅ Création de client par le copilote IA en langage naturel + validation par bouton
+   (route /api/residences/creer-rapide, garde-fou structurel)
+✅ Mini-carte Leaflet de validation GPS dans le copilote : marqueur déplaçable,
+   bouton agrandir → grande carte zoomable, bascule plan/satellite (Esri World Imagery)
+✅ Intervention ponctuelle via copilote (route /api/interventions/creer-ponctuelle,
+   double insert interventions + taches_intervention, validation par bouton)
+✅ Règle anti-hallucination dans le copilote : interdiction de prétendre avoir agi
+   sans confirmation technique réelle (proposition + bouton obligatoire)
+✅ Contexte copilote enrichi : liste complète des résidences du manager (tous états)
+   + date du jour réelle injectée en fuseau Europe/Paris (fix décalage UTC)
 
 ## Bugs connus à corriger
 ℹ️ depart_lat/lng de Marie Dupont (agent test) à null — point par défaut siège

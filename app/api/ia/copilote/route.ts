@@ -127,7 +127,7 @@ export async function POST(req: NextRequest) {
 
   const agentsStr = agents.length > 0
     ? agents.map(a =>
-        `${a.nom_complet} | ${Math.round(a.taux_remplissage_pct)}% chargé | ${a.capacite_disponible.toFixed(1)}h libres | ${a.mode_deplacement ?? 'NC'} | ${a.secteur_libelle ?? 'NC'}`
+        `agent_id=${a.agent_id} | ${a.nom_complet} | ${Math.round(a.taux_remplissage_pct)}% chargé | ${a.capacite_disponible.toFixed(1)}h libres | ${a.mode_deplacement ?? 'NC'} | ${a.secteur_libelle ?? 'NC'}`
       ).join('\n')
     : 'Aucun agent'
 
@@ -142,9 +142,12 @@ export async function POST(req: NextRequest) {
 
   const interventionsStr = interventions.length > 0
     ? interventions.map(i => {
-        const nom = i.profiles ? `${i.profiles.prenom} ${i.profiles.nom}` : i.agent_id
-        const res = i.residences?.nom ?? '?'
-        return `[ID:${i.id}] ${nom} | ${res} | ${i.date_prevue} ${i.heure_debut_prevue ?? '?'}→${i.heure_fin_prevue ?? '?'} | ${i.statut}`
+        const nom    = i.profiles ? `${i.profiles.prenom} ${i.profiles.nom}` : i.agent_id
+        const res    = i.residences?.nom ?? '?'
+        // UUIDs complets (36 chars) — ne pas tronquer
+        const intId  = String(i.id)
+        const agId   = String(i.agent_id)
+        return `intervention_id=${intId} agent_id=${agId} | ${nom} | ${res} | ${i.date_prevue} ${i.heure_debut_prevue ?? '?'}→${i.heure_fin_prevue ?? '?'} | ${i.statut}`
       }).join('\n')
     : 'Aucune intervention cette semaine'
 
@@ -180,7 +183,7 @@ RÈGLES :
 [/ACTIONS]
 
 - Si aucune action concrète n'est applicable, n'inclus PAS de bloc [ACTIONS].
-- Utilise les IDs d'interventions fournis entre crochets [ID:xxx] dans les listes.`
+- IMPORTANT : utilise TOUJOURS les UUIDs complets (36 caractères, format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx) tels qu'ils apparaissent dans ce contexte. Ne tronque jamais un UUID.`
 
   const messages: Anthropic.MessageParam[] = [
     ...historique.map(h => ({ role: h.role, content: h.content } as Anthropic.MessageParam)),

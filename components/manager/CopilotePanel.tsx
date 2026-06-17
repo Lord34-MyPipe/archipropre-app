@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import ReactMarkdown from 'react-markdown'
 
 interface Message {
   id: string
@@ -203,14 +204,17 @@ export default function CopilotePanel({ open, onClose }: Props) {
               <div className={`max-w-[85%] flex flex-col gap-2`}>
                 {/* Bulle */}
                 <div
-                  className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+                  className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
                     msg.role === 'user'
-                      ? 'text-white rounded-br-sm'
-                      : 'text-slate-800 bg-slate-100 rounded-bl-sm'
+                      ? 'text-white rounded-br-sm whitespace-pre-wrap'
+                      : 'text-slate-800 bg-slate-100 rounded-bl-sm prose prose-sm prose-slate max-w-none'
                   }`}
                   style={msg.role === 'user' ? { background: '#1A5FA8' } : undefined}
                 >
-                  {msg.content}
+                  {msg.role === 'user'
+                    ? msg.content
+                    : <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  }
                 </div>
 
                 {/* Carte actions */}

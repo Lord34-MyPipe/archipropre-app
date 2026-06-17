@@ -1,349 +1,730 @@
 export const dynamic = 'force-dynamic'
 
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
+
+// ── Types ──────────────────────────────────────────────────────────────────
+type Vue = 'jour' | 'semaine' | 'mois'
+
+interface Intervention {
+  id: string
+  agent_id: string
+  date_prevue: string
+  heure_debut_prevue: string | null
+  heure_fin_prevue: string | null
+  statut: string
+  agent_prenom: string
+  agent_nom_str: string
+  residence_nom: string
+}
+
+interface AgentRow { id: string; nom: string; prenom: string }
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet',
+  'août','septembre','octobre','novembre','décembre']
+const JOURS_LONG = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi']
+const JOURS_COL  = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim']
 
 const STATUT_BG: Record<string, string> = {
-  planifiee:    'bg-blue-100 text-blue-700 border border-blue-200',
-  en_cours:     'bg-amber-100 text-amber-700 border border-amber-200',
-  terminee:     'bg-green-100 text-green-700 border border-green-200',
-  non_demarree: 'bg-red-100 text-red-700 border border-red-200',
+  planifiee:    'bg-blue-100 text-blue-700 border-blue-200',
+  en_cours:     'bg-amber-100 text-amber-700 border-amber-200',
+  terminee:     'bg-green-100 text-green-700 border-green-200',
+  non_demarree: 'bg-red-100 text-red-700 border-red-200',
 }
 const STATUT_LABEL: Record<string, string> = {
   planifiee: 'Planifiée', en_cours: 'En cours', terminee: 'Terminée', non_demarree: 'En retard',
 }
-const JOURS = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim']
 
-export default async function ManagerPlanning() {
+// ── Date helpers ───────────────────────────────────────────────────────────
+function toStr(d: Date) { return d.toISOString().split('T')[0] }
+
+function getMonday(d: Date): Date {
+  const r = new Date(d); r.setHours(0, 0, 0, 0)
+  const day = r.getDay()
+  r.setDate(r.getDate() - (day === 0 ? 6 : day - 1))
+  return r
+}
+
+function addDays(d: Date, n: number): Date {
+  const r = new Date(d); r.setDate(r.getDate() + n); return r
+}
+
+function addMonths(d: Date, n: number): Date {
+  return new Date(d.getFullYear(), d.getMonth() + n, 1)
+}
+
+function parseDate(s: string | undefined, fb: Date): Date {
+  if (!s) return fb
+  const d = new Date(s + 'T00:00:00')
+  return isNaN(d.getTime()) ? fb : d
+}
+
+// ── Main ───────────────────────────────────────────────────────────────────
+interface Props {
+  searchParams: Promise<{ vue?: string; date?: string }>
+}
+
+export default async function ManagerPlanning({ searchParams }: Props) {
+  const sp  = await searchParams
+  const vue: Vue = (['jour','semaine','mois'].includes(sp.vue ?? '') ? sp.vue as Vue : 'semaine')
+
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const todayStr = toStr(today)
+
+  // ── Compute range based on view ──────────────────────────────────────────
+  let dateBase: Date, debut: Date, fin: Date
+  let prevDate: string, nextDate: string, todayRef: string, title: string
+
+  if (vue === 'semaine') {
+    dateBase = getMonday(parseDate(sp.date, getMonday(today)))
+    debut = dateBase; fin = addDays(dateBase, 6)
+    prevDate = toStr(addDays(dateBase, -7)); nextDate = toStr(addDays(dateBase, 7))
+    todayRef = toStr(getMonday(today))
+    title = debut.getMonth() === fin.getMonth()
+      ? `Semaine du ${debut.getDate()} au ${fin.getDate()} ${MOIS_FR[debut.getMonth()]} ${debut.getFullYear()}`
+      : `${debut.getDate()} ${MOIS_FR[debut.getMonth()]} — ${fin.getDate()} ${MOIS_FR[fin.getMonth()]} ${fin.getFullYear()}`
+  } else if (vue === 'jour') {
+    dateBase = parseDate(sp.date, today); dateBase.setHours(0, 0, 0, 0)
+    debut = dateBase; fin = dateBase
+    prevDate = toStr(addDays(dateBase, -1)); nextDate = toStr(addDays(dateBase, 1))
+    todayRef = todayStr
+    title = `${JOURS_LONG[dateBase.getDay()]} ${dateBase.getDate()} ${MOIS_FR[dateBase.getMonth()]} ${dateBase.getFullYear()}`
+  } else {
+    const raw = parseDate(sp.date, today)
+    dateBase = new Date(raw.getFullYear(), raw.getMonth(), 1)
+    debut = dateBase; fin = new Date(dateBase.getFullYear(), dateBase.getMonth() + 1, 0)
+    prevDate = toStr(addMonths(dateBase, -1)); nextDate = toStr(addMonths(dateBase, 1))
+    todayRef = toStr(new Date(today.getFullYear(), today.getMonth(), 1))
+    const m = MOIS_FR[dateBase.getMonth()]
+    title = m.charAt(0).toUpperCase() + m.slice(1) + ' ' + dateBase.getFullYear()
+  }
+
+  const debutStr    = toStr(debut)
+  const finStr      = toStr(fin)
+  const dateBaseStr = toStr(dateBase)
+  const isCurrent   = dateBaseStr === todayRef
+
+  // ── Supabase ─────────────────────────────────────────────────────────────
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Semaine courante (lundi → dimanche)
-  const lundi = new Date()
-  lundi.setDate(lundi.getDate() - ((lundi.getDay() + 6) % 7))
-  const semaine = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(lundi)
-    d.setDate(lundi.getDate() + i)
-    return d
-  })
-  const debut = semaine[0].toISOString().split('T')[0]
-  const fin   = semaine[6].toISOString().split('T')[0]
-
-  const { data: agents } = await supabase
+  const { data: agentsRaw } = await supabase
     .from('profiles').select('id,nom,prenom')
     .eq('manager_id', user.id).eq('actif', true).order('nom')
 
-  const agentIds = (agents ?? []).map(a => a.id)
-  const ids = agentIds.length ? agentIds : ['00000000-0000-0000-0000-000000000000']
+  const agents: AgentRow[] = agentsRaw ?? []
+  const safeIds = agents.length ? agents.map(a => a.id) : ['00000000-0000-0000-0000-000000000000']
 
-  // Congés et absences des agents pour la semaine
-  const [{ data: congesRaw }, { data: absencesRaw }] = await Promise.all([
-    supabase.from('conges')
-      .select('agent_id, date_debut, date_fin, statut, motif')
-      .in('agent_id', ids)
-      .lte('date_debut', fin).gte('date_fin', debut),
-    supabase.from('absences')
-      .select('agent_id, date_debut, date_fin, statut, motif')
-      .in('agent_id', ids)
-      .lte('date_debut', fin).gte('date_fin', debut),
+  const [{ data: congesRaw }, { data: absRaw }, { data: intersRaw }] = await Promise.all([
+    supabase.from('conges').select('agent_id,date_debut,date_fin,statut,motif')
+      .in('agent_id', safeIds).lte('date_debut', finStr).gte('date_fin', debutStr),
+    supabase.from('absences').select('agent_id,date_debut,date_fin,statut,motif')
+      .in('agent_id', safeIds).lte('date_debut', finStr).gte('date_fin', debutStr),
+    supabase.from('interventions')
+      .select('id,agent_id,date_prevue,heure_debut_prevue,heure_fin_prevue,statut,residences(nom)')
+      .in('agent_id', safeIds).gte('date_prevue', debutStr).lte('date_prevue', finStr)
+      .order('heure_debut_prevue'),
   ])
 
-  // Construit un Set "agentId|dateStr" pour les jours couverts par un congé ou absence validé
-  const congeKeys = new Set<string>()
+  // Build conge keys
+  const congeKeys   = new Set<string>()
   const congeMotifs: Record<string, string> = {}
-  const allConges = [...(congesRaw ?? []), ...(absencesRaw ?? [])]
-  allConges.forEach(c => {
-    const statutStr = (c.statut ?? '').toLowerCase()
-    const isRejected = ['refuse','rejeté','rejete','annule','annulé'].some(s => statutStr.includes(s))
-    if (isRejected) return
-    const dStart = new Date(c.date_debut + 'T00:00:00')
-    const dEnd   = new Date(c.date_fin   + 'T00:00:00')
-    const cur = new Date(dStart)
-    while (cur <= dEnd) {
-      const ds = cur.toISOString().split('T')[0]
-      const key = `${c.agent_id}|${ds}`
-      congeKeys.add(key)
-      if (!congeMotifs[key]) congeMotifs[key] = c.motif ?? 'Congé'
+  ;[...(congesRaw ?? []), ...(absRaw ?? [])].forEach(c => {
+    const s = (c.statut ?? '').toLowerCase()
+    if (['refuse','rejeté','rejete','annule'].some(x => s.includes(x))) return
+    const cur = new Date(c.date_debut + 'T00:00:00')
+    const end = new Date(c.date_fin   + 'T00:00:00')
+    while (cur <= end) {
+      const k = `${c.agent_id}|${toStr(cur)}`
+      congeKeys.add(k); if (!congeMotifs[k]) congeMotifs[k] = c.motif ?? 'Congé'
       cur.setDate(cur.getDate() + 1)
     }
   })
 
-  // Source unique : table interventions (nouveau système)
-  const { data: intersRaw } = await supabase.from('interventions')
-    .select('id, agent_id, residence_id, date_prevue, heure_debut_prevue, heure_fin_prevue, statut, residences(nom)')
-    .in('agent_id', ids)
-    .gte('date_prevue', debut).lte('date_prevue', fin)
-    .order('heure_debut_prevue')
+  // Normalize interventions
+  const agentMap = new Map(agents.map(a => [a.id, a]))
+  type IR = {
+    id: string; agent_id: string; date_prevue: string
+    heure_debut_prevue: string | null; heure_fin_prevue: string | null
+    statut: string; residences?: { nom: string } | null
+  }
+  const inters: Intervention[] = ((intersRaw as unknown as IR[]) ?? []).map(i => {
+    const a = agentMap.get(i.agent_id)
+    return {
+      id: i.id, agent_id: i.agent_id, date_prevue: i.date_prevue,
+      heure_debut_prevue: i.heure_debut_prevue, heure_fin_prevue: i.heure_fin_prevue,
+      statut: i.statut,
+      agent_prenom: a?.prenom ?? '?', agent_nom_str: a?.nom ?? '',
+      residence_nom: i.residences?.nom ?? '—',
+    }
+  })
 
-  const inters = intersRaw ?? []
-  const totalSemaine = inters.length
+  const vueBtnLabel: Record<Vue, string> = { jour: 'Jour', semaine: 'Semaine', mois: 'Mois' }
 
   return (
     <div className="min-h-screen bg-slate-100">
-      {/* Header */}
-      <div className="bg-[#0A2E5A] text-white px-6 py-6 md:px-8">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">Planning de la semaine</h1>
-            <p className="text-blue-300 text-sm mt-1">
-              {semaine[0].toLocaleDateString('fr-FR',{day:'numeric',month:'long'})} –{' '}
-              {semaine[6].toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})}
-            </p>
+      {/* ── Header ── */}
+      <div className="bg-[#0A2E5A] text-white px-6 py-5 md:px-8">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+
+          {/* Navigation temporelle */}
+          <div className="flex items-center gap-2">
+            <Link href={`?vue=${vue}&date=${prevDate}`}
+              className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 transition-colors text-xl leading-none select-none">
+              ‹
+            </Link>
+            <div className="text-center px-1 min-w-[210px]">
+              <p className="font-semibold text-sm md:text-base leading-snug">{title}</p>
+              {!isCurrent ? (
+                <Link href={`?vue=${vue}&date=${todayRef}`}
+                  className="text-[#0BBFBF] text-xs hover:underline">
+                  Aujourd'hui
+                </Link>
+              ) : (
+                <p className="text-blue-300/60 text-xs">Période actuelle</p>
+              )}
+            </div>
+            <Link href={`?vue=${vue}&date=${nextDate}`}
+              className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/10 hover:bg-white/20 transition-colors text-xl leading-none select-none">
+              ›
+            </Link>
           </div>
-          <div className="text-right shrink-0">
-            <p className="text-3xl font-bold">{totalSemaine}</p>
-            <p className="text-blue-300 text-xs">interventions</p>
+
+          {/* Vue switcher + compteur */}
+          <div className="flex items-center gap-3">
+            <span className="text-blue-300/80 text-sm hidden sm:block">
+              {inters.length} intervention{inters.length !== 1 ? 's' : ''}
+            </span>
+            <div className="flex rounded-xl overflow-hidden border border-white/20 text-xs font-semibold">
+              {(['jour','semaine','mois'] as Vue[]).map(v => (
+                <Link key={v} href={`?vue=${v}&date=${dateBaseStr}`}
+                  className={`px-3 py-2 transition-colors ${
+                    vue === v ? 'bg-[#1A5FA8] text-white' : 'text-blue-200 hover:bg-white/10'
+                  }`}>
+                  {vueBtnLabel[v]}
+                </Link>
+              ))}
+            </div>
           </div>
         </div>
 
         {/* Légende */}
-        <div className="flex gap-3 mt-4 flex-wrap">
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-sm bg-blue-400"/>
-            <span className="text-xs text-blue-200">Planifiée</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-sm bg-amber-400"/>
-            <span className="text-xs text-blue-200">En cours</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-sm bg-green-400"/>
-            <span className="text-xs text-blue-200">Terminée</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-sm bg-orange-300"/>
-            <span className="text-xs text-blue-200">🏖️ Congé</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-sm bg-red-400"/>
-            <span className="text-xs text-blue-200">⚠️ Conflit congé</span>
-          </div>
+        <div className="flex gap-3 mt-3 flex-wrap text-xs text-blue-200">
+          {[['bg-blue-400','Planifiée'],['bg-amber-400','En cours'],['bg-green-400','Terminée'],
+            ['bg-orange-300','🏖️ Congé'],['bg-red-400','⚠️ Conflit']].map(([c,l]) => (
+            <div key={l} className="flex items-center gap-1.5">
+              <div className={`w-3 h-3 rounded-sm ${c}`}/>
+              <span>{l}</span>
+            </div>
+          ))}
         </div>
       </div>
 
-      <div className="p-4 md:p-8 pb-24 md:pb-8 space-y-4">
-
-        {totalSemaine === 0 && (
-          <div className="bg-white rounded-2xl border border-slate-100 p-10 text-center">
-            <p className="text-4xl mb-3">📅</p>
-            <p className="text-slate-600 font-medium">Aucune intervention cette semaine</p>
-            <p className="text-slate-400 text-sm mt-1">
-              Allez dans une résidence → générer le planning
-            </p>
-            <Link href="/manager/residences"
-              className="inline-block mt-4 px-4 py-2 rounded-xl text-sm font-semibold text-white"
-              style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}>
-              Gérer les résidences →
-            </Link>
-          </div>
+      {/* ── Content ── */}
+      <div className="p-4 md:p-8 pb-24 md:pb-8">
+        {vue === 'semaine' && (
+          <VueSemaine
+            dates={Array.from({length:7}, (_,i) => toStr(addDays(debut, i)))}
+            inters={inters}
+            agents={agents}
+            congeKeys={congeKeys}
+            congeMotifs={congeMotifs}
+            todayStr={todayStr}
+          />
         )}
+        {vue === 'jour' && (
+          <VueJour
+            dateStr={debutStr}
+            inters={inters}
+            agents={agents}
+            congeKeys={congeKeys}
+            congeMotifs={congeMotifs}
+          />
+        )}
+        {vue === 'mois' && (
+          <VueMois
+            debut={debut}
+            fin={fin}
+            inters={inters}
+            todayStr={todayStr}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
 
-        {/* Grille hebdomadaire */}
-        {totalSemaine > 0 && (
-          <div className="bg-white rounded-2xl border border-slate-100 overflow-x-auto">
-            <table className="w-full min-w-[640px]">
-              <thead>
-                <tr className="border-b border-slate-100">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 w-32 sticky left-0 bg-white">
-                    Agent
+// ── Vue Semaine ─────────────────────────────────────────────────────────────
+function VueSemaine({ dates, inters, agents, congeKeys, congeMotifs, todayStr }: {
+  dates: string[]
+  inters: Intervention[]
+  agents: AgentRow[]
+  congeKeys: Set<string>
+  congeMotifs: Record<string, string>
+  todayStr: string
+}) {
+  const hasData = inters.length > 0 ||
+    dates.some(d => agents.some(a => congeKeys.has(`${a.id}|${d}`)))
+
+  if (!hasData) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-100 p-10 text-center">
+        <p className="text-4xl mb-3">📅</p>
+        <p className="text-slate-600 font-medium">Aucune intervention cette semaine</p>
+        <p className="text-slate-400 text-sm mt-1">Allez dans une résidence pour générer le planning</p>
+        <Link href="/manager/residences"
+          className="inline-block mt-4 px-4 py-2 rounded-xl text-sm font-semibold text-white"
+          style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}>
+          Gérer les résidences →
+        </Link>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Grille */}
+      <div className="bg-white rounded-2xl border border-slate-100 overflow-x-auto">
+        <table className="w-full min-w-[640px]">
+          <thead>
+            <tr className="border-b border-slate-100">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 w-32 sticky left-0 bg-white">
+                Agent
+              </th>
+              {dates.map((dateStr, i) => {
+                const d = new Date(dateStr + 'T00:00:00')
+                const isToday = dateStr === todayStr
+                return (
+                  <th key={i} className={`px-2 py-3 text-center text-xs font-semibold w-24 ${isToday ? 'text-[#1A5FA8]' : 'text-slate-500'}`}>
+                    <Link href={`?vue=jour&date=${dateStr}`} className="hover:opacity-70 transition-opacity block">
+                      <div>{JOURS_COL[i]}</div>
+                      <div className={`text-base font-bold mt-0.5 ${
+                        isToday
+                          ? 'w-7 h-7 rounded-full bg-[#1A5FA8] text-white flex items-center justify-center mx-auto'
+                          : 'text-slate-800'
+                      }`}>
+                        {d.getDate()}
+                      </div>
+                    </Link>
                   </th>
-                  {semaine.map((d, i) => {
-                    const dateStr = d.toISOString().split('T')[0]
-                    const isToday = dateStr === new Date().toISOString().split('T')[0]
+                )
+              })}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {agents.map(agent => {
+              const hasAnything = dates.some(d =>
+                inters.some(i => i.agent_id === agent.id && i.date_prevue === d) ||
+                congeKeys.has(`${agent.id}|${d}`)
+              )
+              if (!hasAnything) return null
+
+              return (
+                <tr key={agent.id}>
+                  <td className="px-4 py-3 sticky left-0 bg-white border-r border-slate-50">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-full bg-[#1A5FA8] flex items-center justify-center text-white text-xs font-bold shrink-0">
+                        {agent.prenom[0]}{agent.nom[0]}
+                      </div>
+                      <span className="text-sm font-medium text-slate-700 truncate">{agent.prenom}</span>
+                    </div>
+                  </td>
+                  {dates.map((dateStr, j) => {
+                    const dayInters   = inters.filter(i => i.agent_id === agent.id && i.date_prevue === dateStr)
+                    const isOnLeave   = congeKeys.has(`${agent.id}|${dateStr}`)
+                    const leaveLabel  = congeMotifs[`${agent.id}|${dateStr}`] ?? 'Congé'
+                    const hasConflict = isOnLeave && dayInters.length > 0
                     return (
-                      <th key={i} className={`px-2 py-3 text-center text-xs font-semibold w-24 ${isToday ? 'text-[#1A5FA8]' : 'text-slate-500'}`}>
-                        <div>{JOURS[i]}</div>
-                        <div className={`text-base font-bold mt-0.5 ${
-                          isToday
-                            ? 'w-7 h-7 rounded-full bg-[#1A5FA8] text-white flex items-center justify-center mx-auto'
-                            : 'text-slate-800'
-                        }`}>
-                          {d.getDate()}
+                      <td key={j} className={`px-1 py-2 align-top ${isOnLeave ? 'bg-orange-50/60' : ''}`}>
+                        <div className="space-y-1">
+                          {isOnLeave && (
+                            <div className={`px-1.5 py-1 rounded-lg text-[10px] font-semibold leading-tight flex items-center gap-1 border ${
+                              hasConflict ? 'bg-red-100 text-red-700 border-red-300' : 'bg-orange-100 text-orange-700 border-orange-200'
+                            }`}>
+                              {hasConflict ? '⚠️' : '🏖️'}
+                              <span className="truncate">{hasConflict ? 'Conflit' : leaveLabel}</span>
+                            </div>
+                          )}
+                          {dayInters.map(i => (
+                            <div key={i.id}
+                              className={`px-1.5 py-1.5 rounded-lg text-[10px] font-medium leading-tight border ${
+                                isOnLeave
+                                  ? 'bg-red-50 text-red-800 border-red-300'
+                                  : (STATUT_BG[i.statut] ?? 'bg-slate-100 text-slate-600 border-slate-200')
+                              }`}>
+                              <div className="truncate font-semibold">{i.residence_nom}</div>
+                              {i.heure_debut_prevue && (
+                                <div className="text-[9px] opacity-70 mt-0.5">
+                                  {i.heure_debut_prevue.slice(0,5)}
+                                  {i.heure_fin_prevue ? ` → ${i.heure_fin_prevue.slice(0,5)}` : ' → ?'}
+                                </div>
+                              )}
+                              <div className="text-[9px] opacity-60 mt-0.5">{STATUT_LABEL[i.statut] ?? i.statut}</div>
+                            </div>
+                          ))}
                         </div>
-                      </th>
+                      </td>
                     )
                   })}
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {(agents ?? []).map(agent => {
-                  const hasAnything = semaine.some(d => {
-                    const ds = d.toISOString().split('T')[0]
-                    return inters.some(i => i.agent_id === agent.id && i.date_prevue === ds)
-                  })
-                  if (!hasAnything) return null
-
-                  return (
-                    <tr key={agent.id}>
-                      <td className="px-4 py-3 sticky left-0 bg-white border-r border-slate-50">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-[#1A5FA8] flex items-center justify-center text-white text-xs font-bold shrink-0">
-                            {agent.prenom[0]}{agent.nom[0]}
-                          </div>
-                          <span className="text-sm font-medium text-slate-700 truncate">
-                            {agent.prenom}
-                          </span>
-                        </div>
-                      </td>
-                      {semaine.map((d, j) => {
-                        const dateStr      = d.toISOString().split('T')[0]
-                        const dayInters    = inters.filter(i => i.agent_id === agent.id && i.date_prevue === dateStr)
-                        const isOnLeave    = congeKeys.has(`${agent.id}|${dateStr}`)
-                        const leaveLabel   = congeMotifs[`${agent.id}|${dateStr}`] ?? 'Congé'
-                        const hasConflict  = isOnLeave && dayInters.length > 0
-                        return (
-                          <td key={j} className={`px-1 py-2 align-top min-w-[80px] ${isOnLeave ? 'bg-orange-50/60' : ''}`}>
-                            <div className="space-y-1">
-                              {isOnLeave && (
-                                <div className={`px-1.5 py-1 rounded-lg text-[10px] font-semibold leading-tight flex items-center gap-1 ${
-                                  hasConflict
-                                    ? 'bg-red-100 text-red-700 border border-red-300'
-                                    : 'bg-orange-100 text-orange-700 border border-orange-200'
-                                }`}>
-                                  {hasConflict ? '⚠️' : '🏖️'}
-                                  <span className="truncate">{hasConflict ? 'Conflit congé' : leaveLabel}</span>
-                                </div>
-                              )}
-                              {dayInters.map(i => (
-                                <div key={i.id}
-                                  className={`px-1.5 py-1.5 rounded-lg text-[10px] font-medium leading-tight ${
-                                    isOnLeave
-                                      ? 'bg-red-50 text-red-800 border border-red-300'
-                                      : (STATUT_BG[i.statut] ?? 'bg-slate-100 text-slate-600 border border-slate-200')
-                                  }`}>
-                                  <div className="truncate font-semibold">
-                                    {(i as { residences?: { nom?: string } }).residences?.nom ?? '—'}
-                                  </div>
-                                  {i.heure_debut_prevue && (
-                                    <div className="text-[9px] opacity-70 mt-0.5">
-                                      {i.heure_debut_prevue.slice(0,5)}
-                                      {(i as { heure_fin_prevue?: string | null }).heure_fin_prevue
-                                        ? ` → ${(i as { heure_fin_prevue: string }).heure_fin_prevue.slice(0,5)}`
-                                        : ' → ?'}
-                                    </div>
-                                  )}
-                                  <div className="text-[9px] opacity-60 mt-0.5">
-                                    {STATUT_LABEL[i.statut] ?? i.statut}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  )
-                })}
-                {/* Agents sans intervention cette semaine */}
-                {(agents ?? []).filter(agent =>
-                  !semaine.some(d => {
-                    const ds = d.toISOString().split('T')[0]
-                    return inters.some(i => i.agent_id === agent.id && i.date_prevue === ds)
-                  })
-                ).map(agent => (
-                  <tr key={`empty-${agent.id}`}>
-                    <td className="px-4 py-3 sticky left-0 bg-white border-r border-slate-50">
-                      <div className="flex items-center gap-2 opacity-40">
-                        <div className="w-7 h-7 rounded-full bg-slate-300 flex items-center justify-center text-white text-xs font-bold shrink-0">
-                          {agent.prenom[0]}{agent.nom[0]}
-                        </div>
-                        <span className="text-sm font-medium text-slate-500 truncate">{agent.prenom}</span>
-                      </div>
-                    </td>
-                    {semaine.map((_, j) => (
-                      <td key={j} className="px-1 py-3">
-                        <div className="h-4 flex items-center justify-center">
-                          <div className="w-1 h-1 rounded-full bg-slate-200"/>
-                        </div>
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-
-                {!agents?.length && (
-                  <tr>
-                    <td colSpan={8} className="px-5 py-8 text-center text-slate-400 text-sm">
-                      Aucun agent dans votre équipe.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* Liste détaillée */}
-        {totalSemaine > 0 && (
-          <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100">
-              <h2 className="font-semibold text-slate-800">Détail de la semaine</h2>
-            </div>
-            <div className="divide-y divide-slate-50">
-              {semaine.map(d => {
-                const dateStr       = d.toISOString().split('T')[0]
-                const dayInters     = inters.filter(i => i.date_prevue === dateStr)
-                const agentsEnConge = (agents ?? []).filter(a => congeKeys.has(`${a.id}|${dateStr}`))
-                if (!dayInters.length && !agentsEnConge.length) return null
-                return (
-                  <div key={dateStr}>
-                    <div className="px-5 py-2.5 bg-slate-50 flex items-center gap-2 flex-wrap">
-                      <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                        {d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}
-                      </p>
-                      {dayInters.length > 0 && (
-                        <span className="px-2 py-0.5 bg-white border border-slate-200 rounded-full text-xs text-slate-500 font-medium">
-                          {dayInters.length} intervention{dayInters.length > 1 ? 's' : ''}
-                        </span>
-                      )}
-                      {agentsEnConge.map(a => (
-                        <span key={a.id} className={`px-2 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 ${
-                          dayInters.some(i => i.agent_id === a.id)
-                            ? 'bg-red-100 text-red-700 border border-red-200'
-                            : 'bg-orange-100 text-orange-700 border border-orange-200'
-                        }`}>
-                          🏖️ {a.prenom} {a.nom}
-                          {dayInters.some(i => i.agent_id === a.id) && (
-                            <span className="text-red-600 font-bold"> ⚠️</span>
-                          )}
-                        </span>
-                      ))}
+              )
+            })}
+            {/* Agents sans activité */}
+            {agents.filter(agent =>
+              !dates.some(d =>
+                inters.some(i => i.agent_id === agent.id && i.date_prevue === d) ||
+                congeKeys.has(`${agent.id}|${d}`)
+              )
+            ).map(agent => (
+              <tr key={`empty-${agent.id}`}>
+                <td className="px-4 py-3 sticky left-0 bg-white border-r border-slate-50">
+                  <div className="flex items-center gap-2 opacity-35">
+                    <div className="w-7 h-7 rounded-full bg-slate-300 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                      {agent.prenom[0]}{agent.nom[0]}
                     </div>
-                    {dayInters.map(i => {
-                      const agent = (agents ?? []).find(a => a.id === i.agent_id)
-                      return (
-                        <div key={i.id} className="px-5 py-3 flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-[#1A5FA8] flex items-center justify-center text-white text-xs font-bold shrink-0">
-                            {agent ? agent.prenom[0] + agent.nom[0] : '?'}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-slate-800 truncate">
-                              {(i as { residences?: { nom?: string } }).residences?.nom ?? '—'}
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              {agent ? `${agent.prenom} ${agent.nom}` : ''}
-                              {i.heure_debut_prevue ? ` · ${i.heure_debut_prevue.slice(0,5)}` : ''}
-                              {i.heure_debut_prevue
-                                ? ((i as { heure_fin_prevue?: string | null }).heure_fin_prevue
-                                    ? ` → ${(i as { heure_fin_prevue: string }).heure_fin_prevue.slice(0,5)}`
-                                    : ' → ?')
-                                : ''}
-                            </p>
-                          </div>
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 ${STATUT_BG[i.statut] ?? 'bg-slate-100 text-slate-600'}`}>
-                            {STATUT_LABEL[i.statut] ?? i.statut}
-                          </span>
-                        </div>
-                      )
-                    })}
+                    <span className="text-sm font-medium text-slate-500 truncate">{agent.prenom}</span>
                   </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
+                </td>
+                {dates.map((_,j) => (
+                  <td key={j} className="px-1 py-3">
+                    <div className="flex items-center justify-center">
+                      <div className="w-1 h-1 rounded-full bg-slate-200"/>
+                    </div>
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
+
+      {/* Détail par jour */}
+      {inters.length > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100">
+            <h2 className="font-semibold text-slate-800">Détail de la semaine</h2>
+          </div>
+          <div className="divide-y divide-slate-50">
+            {dates.map(dateStr => {
+              const d = new Date(dateStr + 'T00:00:00')
+              const dayInters     = inters.filter(i => i.date_prevue === dateStr)
+              const agentsEnConge = agents.filter(a => congeKeys.has(`${a.id}|${dateStr}`))
+              if (!dayInters.length && !agentsEnConge.length) return null
+              return (
+                <div key={dateStr}>
+                  <div className="px-5 py-2.5 bg-slate-50 flex items-center gap-2 flex-wrap">
+                    <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                      {d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}
+                    </p>
+                    {dayInters.length > 0 && (
+                      <span className="px-2 py-0.5 bg-white border border-slate-200 rounded-full text-xs text-slate-500 font-medium">
+                        {dayInters.length} intervention{dayInters.length > 1 ? 's' : ''}
+                      </span>
+                    )}
+                    {agentsEnConge.map(a => (
+                      <span key={a.id} className={`px-2 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 border ${
+                        dayInters.some(i => i.agent_id === a.id)
+                          ? 'bg-red-100 text-red-700 border-red-200'
+                          : 'bg-orange-100 text-orange-700 border-orange-200'
+                      }`}>
+                        🏖️ {a.prenom} {a.nom}
+                        {dayInters.some(i => i.agent_id === a.id) && <span className="font-bold"> ⚠️</span>}
+                      </span>
+                    ))}
+                  </div>
+                  {dayInters.map(i => (
+                    <div key={i.id} className="px-5 py-3 flex items-center gap-3 border-b border-slate-50 last:border-0">
+                      <div className="w-8 h-8 rounded-full bg-[#1A5FA8] flex items-center justify-center text-white text-xs font-bold shrink-0">
+                        {i.agent_prenom[0]}{i.agent_nom_str[0] ?? ''}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-800 truncate">{i.residence_nom}</p>
+                        <p className="text-xs text-slate-500">
+                          {i.agent_prenom} {i.agent_nom_str}
+                          {i.heure_debut_prevue ? ` · ${i.heure_debut_prevue.slice(0,5)}` : ''}
+                          {i.heure_debut_prevue && (i.heure_fin_prevue ? ` → ${i.heure_fin_prevue.slice(0,5)}` : ' → ?')}
+                        </p>
+                      </div>
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 border ${STATUT_BG[i.statut] ?? 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                        {STATUT_LABEL[i.statut] ?? i.statut}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Vue Jour ────────────────────────────────────────────────────────────────
+const HOURS = Array.from({length: 16}, (_, i) => `${String(i + 7).padStart(2, '0')}:00`)
+
+function VueJour({ dateStr, inters, agents, congeKeys, congeMotifs }: {
+  dateStr: string
+  inters: Intervention[]
+  agents: AgentRow[]
+  congeKeys: Set<string>
+  congeMotifs: Record<string, string>
+}) {
+  const agentsEnConge = agents.filter(a => congeKeys.has(`${a.id}|${dateStr}`))
+  const sorted = [...inters].sort((a, b) =>
+    (a.heure_debut_prevue ?? '00:00').localeCompare(b.heure_debut_prevue ?? '00:00')
+  )
+
+  if (sorted.length === 0 && agentsEnConge.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-slate-100 p-10 text-center">
+        <p className="text-4xl mb-3">📅</p>
+        <p className="text-slate-600 font-medium">Aucune intervention ce jour</p>
+        <p className="text-slate-400 text-sm mt-1">Naviguez vers une autre date ou générez un planning</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Congés du jour */}
+      {agentsEnConge.length > 0 && (
+        <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 flex flex-wrap gap-2 items-center">
+          <span className="text-sm text-orange-800 font-semibold">🏖️ Absents :</span>
+          {agentsEnConge.map(a => (
+            <span key={a.id} className={`px-3 py-1 rounded-full text-xs font-semibold border ${
+              sorted.some(i => i.agent_id === a.id)
+                ? 'bg-red-100 text-red-700 border-red-300'
+                : 'bg-orange-100 text-orange-700 border-orange-200'
+            }`}>
+              {sorted.some(i => i.agent_id === a.id) ? '⚠️ ' : ''}
+              {a.prenom} {a.nom}
+              {congeMotifs[`${a.id}|${dateStr}`] ? ` — ${congeMotifs[`${a.id}|${dateStr}`]}` : ''}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Grille horaire */}
+      <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 className="font-semibold text-slate-800">Planning de la journée</h2>
+          <span className="text-sm text-slate-400">
+            {sorted.length} intervention{sorted.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+        <div>
+          {HOURS.map(hour => {
+            const hourNum    = parseInt(hour)
+            const hourInters = sorted.filter(i => {
+              if (!i.heure_debut_prevue) return false
+              return parseInt(i.heure_debut_prevue.slice(0, 2)) === hourNum
+            })
+            const hasInter = hourInters.length > 0
+
+            return (
+              <div key={hour} className={`flex border-b border-slate-50 last:border-0 ${
+                hasInter ? '' : 'opacity-25 hover:opacity-50 transition-opacity'
+              }`}>
+                {/* Heure */}
+                <div className={`w-16 shrink-0 border-r border-slate-100 text-xs font-mono text-slate-400 flex items-start justify-center ${
+                  hasInter ? 'pt-3 pb-2' : 'py-1'
+                }`}>
+                  {hour}
+                </div>
+                {/* Interventions */}
+                <div className={`flex-1 ${hasInter ? 'p-2.5 space-y-2' : 'py-1'}`}>
+                  {hourInters.map(i => {
+                    const isConflict = congeKeys.has(`${i.agent_id}|${dateStr}`)
+                    return (
+                      <div key={i.id}
+                        className={`px-4 py-3 rounded-xl border flex items-start justify-between gap-3 ${
+                          isConflict
+                            ? 'bg-red-50 text-red-800 border-red-300'
+                            : (STATUT_BG[i.statut] ?? 'bg-slate-50 text-slate-700 border-slate-200')
+                        }`}>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <div className="w-6 h-6 rounded-full bg-[#1A5FA8]/10 flex items-center justify-center text-[10px] font-bold text-[#1A5FA8] shrink-0">
+                              {i.agent_prenom[0]}{i.agent_nom_str[0] ?? ''}
+                            </div>
+                            <p className="text-sm font-semibold truncate">{i.residence_nom}</p>
+                            {isConflict && (
+                              <span className="text-red-600 text-xs font-bold shrink-0">⚠️ Congé</span>
+                            )}
+                          </div>
+                          <p className="text-xs opacity-70 pl-8">{i.agent_prenom} {i.agent_nom_str}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-xs font-mono font-semibold">
+                            {i.heure_debut_prevue?.slice(0, 5) ?? '?'}
+                            {i.heure_fin_prevue ? ` → ${i.heure_fin_prevue.slice(0, 5)}` : ''}
+                          </p>
+                          <p className="text-[10px] opacity-60 mt-0.5">{STATUT_LABEL[i.statut] ?? i.statut}</p>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Vue Mois ────────────────────────────────────────────────────────────────
+function VueMois({ debut, fin, inters, todayStr }: {
+  debut: Date
+  fin: Date
+  inters: Intervention[]
+  todayStr: string
+}) {
+  // Build calendar grid (Mon-based, pad with prev/next month days)
+  const firstDow = debut.getDay()
+  const padStart = firstDow === 0 ? 6 : firstDow - 1
+
+  const cells: Array<{ dateStr: string; isCurrentMonth: boolean }> = []
+  const cur = addDays(debut, -padStart)
+  while (cells.length < 42) {
+    const ds = toStr(cur)
+    cells.push({ dateStr: ds, isCurrentMonth: cur >= debut && cur <= fin })
+    cur.setDate(cur.getDate() + 1)
+  }
+  // Drop trailing row if fully outside current month
+  while (cells.length > 35 && !cells.slice(-7).some(c => c.isCurrentMonth)) {
+    cells.splice(-7)
+  }
+
+  const countByDay = new Map<string, number>()
+  const agentsByDay = new Map<string, Set<string>>()
+  inters.forEach(i => {
+    countByDay.set(i.date_prevue, (countByDay.get(i.date_prevue) ?? 0) + 1)
+    if (!agentsByDay.has(i.date_prevue)) agentsByDay.set(i.date_prevue, new Set())
+    agentsByDay.get(i.date_prevue)!.add(i.agent_id)
+  })
+
+  const totalMois   = inters.length
+  const joursActifs = countByDay.size
+
+  return (
+    <div className="space-y-4">
+      {/* Résumé */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-white rounded-2xl border border-slate-100 px-5 py-4">
+          <p className="text-2xl font-bold text-[#1A5FA8]">{totalMois}</p>
+          <p className="text-xs text-slate-500 mt-0.5">Interventions</p>
+        </div>
+        <div className="bg-white rounded-2xl border border-slate-100 px-5 py-4">
+          <p className="text-2xl font-bold text-[#0BBFBF]">{joursActifs}</p>
+          <p className="text-xs text-slate-500 mt-0.5">Jours actifs</p>
+        </div>
+        <div className="bg-white rounded-2xl border border-slate-100 px-5 py-4">
+          <p className="text-2xl font-bold text-slate-700">
+            {totalMois > 0 ? Math.round(totalMois / Math.max(joursActifs, 1)) : 0}
+          </p>
+          <p className="text-xs text-slate-500 mt-0.5">Moy. / jour</p>
+        </div>
+      </div>
+
+      {/* Grille calendrier */}
+      <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+        {/* En-têtes */}
+        <div className="grid grid-cols-7 border-b border-slate-100">
+          {JOURS_COL.map(j => (
+            <div key={j} className="py-3 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              {j}
+            </div>
+          ))}
+        </div>
+        {/* Cases */}
+        <div className="grid grid-cols-7">
+          {cells.map(({ dateStr, isCurrentMonth }) => {
+            const count   = countByDay.get(dateStr) ?? 0
+            const nAgents = agentsByDay.get(dateStr)?.size ?? 0
+            const isToday = dateStr === todayStr
+            const d       = new Date(dateStr + 'T00:00:00')
+
+            return (
+              <Link key={dateStr} href={`?vue=jour&date=${dateStr}`}
+                className={`min-h-[80px] p-2 border-b border-r border-slate-50 transition-colors group ${
+                  !isCurrentMonth ? 'bg-slate-50/50' : 'hover:bg-blue-50/40'
+                }`}>
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-semibold mb-1.5 transition-colors ${
+                  isToday
+                    ? 'bg-[#1A5FA8] text-white'
+                    : isCurrentMonth
+                      ? 'text-slate-700 group-hover:bg-[#1A5FA8]/10 group-hover:text-[#1A5FA8]'
+                      : 'text-slate-300'
+                }`}>
+                  {d.getDate()}
+                </div>
+                {count > 0 && isCurrentMonth && (
+                  <div>
+                    <div className="inline-flex items-center gap-1 bg-[#1A5FA8]/10 text-[#1A5FA8] text-[10px] font-semibold px-1.5 py-0.5 rounded-md">
+                      {count} inter{count > 1 ? 's' : ''}
+                    </div>
+                    {nAgents > 1 && (
+                      <div className="text-[9px] text-slate-400 mt-0.5">{nAgents} agents</div>
+                    )}
+                  </div>
+                )}
+              </Link>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Liste détaillée du mois */}
+      {inters.length > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100">
+            <h2 className="font-semibold text-slate-800">Toutes les interventions du mois</h2>
+          </div>
+          <div className="divide-y divide-slate-50 max-h-[480px] overflow-y-auto">
+            {Array.from(countByDay.keys()).sort().map(ds => {
+              const d = new Date(ds + 'T00:00:00')
+              const dayInters = inters.filter(i => i.date_prevue === ds)
+              return (
+                <div key={ds}>
+                  <Link href={`?vue=jour&date=${ds}`}
+                    className="block px-5 py-2 bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                      {d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}
+                      <span className="ml-2 text-slate-400 normal-case font-normal">
+                        {dayInters.length} intervention{dayInters.length > 1 ? 's' : ''}
+                      </span>
+                    </p>
+                  </Link>
+                  {dayInters.map(i => (
+                    <div key={i.id} className="px-5 py-2.5 flex items-center gap-3 border-b border-slate-50 last:border-0">
+                      <div className="w-7 h-7 rounded-full bg-[#1A5FA8] flex items-center justify-center text-white text-xs font-bold shrink-0">
+                        {i.agent_prenom[0]}{i.agent_nom_str[0] ?? ''}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-800 truncate">{i.residence_nom}</p>
+                        <p className="text-xs text-slate-500">
+                          {i.agent_prenom} {i.agent_nom_str}
+                          {i.heure_debut_prevue ? ` · ${i.heure_debut_prevue.slice(0,5)}` : ''}
+                          {i.heure_debut_prevue && (i.heure_fin_prevue ? ` → ${i.heure_fin_prevue.slice(0,5)}` : ' → ?')}
+                        </p>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border shrink-0 ${STATUT_BG[i.statut] ?? 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                        {STATUT_LABEL[i.statut] ?? i.statut}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -130,6 +130,12 @@ L'état se calcule automatiquement, aucun champ à maintenir.
    raccourcis rapides, réassignation + décalage horaire en langage naturel,
    application directe en base, rendu Markdown, router.refresh() après action
 ✅ Fix camelCase/snake_case TacheModal (duree_minutes, frequence_type…)
+✅ Intégration OSRM temps de trajet réel (router.project-osrm.org)
+   — lib/trajet.ts : calculerTrajet + lireCacheTrajet + fallback 20%
+   — Cache Supabase distances_cache (lat/lng + mode, index spatial)
+   — Mode tramway : profil foot OSRM + forfait_tram paramétrable
+   — Réchauffage cache domicile→résidence à la génération de planning
+   — Copilote IA : trajets réels inter-résidences injectés dans le contexte
 
 ## Bugs connus à corriger
 🐛 Agents démo à 0% sur /manager/charge (pas d'interventions assignées)
@@ -148,7 +154,6 @@ L'état se calcule automatiquement, aucun champ à maintenir.
 9. Dashboard directeur KPIs
 
 ## À faire Phase 2
-- OSRM pour calcul temps de trajet réel entre résidences (remplace l'estimation 20%)
 - Gestion agents spécialisés (poubelles, vitres, façades…)
 - Gestion binôme solitaire sur absence (réaffecter automatiquement)
 - Optimisation tournées (Leaflet + OSRM)

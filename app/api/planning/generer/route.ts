@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase-server'
+import { calculerTrajet } from '@/lib/trajet'
 
 async function getManagerId(): Promise<string | null> {
   const supabase = await createClient()
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
 
   // ── 1. Vérification ownership ────────────────────────────────────────────────
   const { data: res } = await admin.from('residences')
-    .select('id, nom, agent_prefere_id, agent_secondaire_id')
+    .select('id, nom, lat, lng, agent_prefere_id, agent_secondaire_id')
     .eq('id', residenceId).eq('manager_id', managerId).single()
   console.log('[generer] résidence:', res ? `"${res.nom}" agent=${res.agent_prefere_id ?? 'aucun'}` : 'NON TROUVÉE')
   if (!res) return NextResponse.json({ error: 'Résidence introuvable ou non autorisée' }, { status: 403 })
@@ -213,6 +214,32 @@ export async function POST(req: NextRequest) {
   }
 
   console.log(`[generer] ✅ ${insertedCount} interventions insérées (transaction atomique)`)
+
+  // ── 8. Réchauffer le cache trajet domicile → résidence (fire-and-forget) ──────
+  void (async () => {
+    try {
+      const { data: agentProfile } = await admin
+        .from('profiles')
+        .select('depart_lat, depart_lng, mode_deplacement')
+        .eq('id', res.agent_prefere_id)
+        .single()
+
+      const resLat = (res as Record<string, unknown>).lat as number | null
+      const resLng = (res as Record<string, unknown>).lng as number | null
+
+      if (agentProfile?.depart_lat && agentProfile?.depart_lng && resLat && resLng) {
+        const mode = (agentProfile.mode_deplacement as 'voiture' | 'velo' | 'tramway') ?? 'voiture'
+        const trajet = await calculerTrajet(
+          agentProfile.depart_lat, agentProfile.depart_lng,
+          resLat, resLng,
+          mode,
+        )
+        console.log(`[generer] trajet domicile→${res.nom}: ${trajet.duree_minutes} min (${trajet.distance_km} km) mode=${mode}${trajet.depuis_cache ? ' [cache]' : ' [OSRM]'}`)
+      }
+    } catch (e) {
+      console.error('[generer] réchauffage cache trajet échoué:', e)
+    }
+  })()
 
   const interventionsForUI = rowsFuturs.map(r => ({
     date:       r.date_prevue,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase-server'
 import Anthropic from '@anthropic-ai/sdk'
+import { lireCacheTrajet, calculerTrajet, type ModeTrajet } from '@/lib/trajet'
 
 export const dynamic = 'force-dynamic'
 
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
 
     agentIds.length > 0
       ? admin.from('interventions')
-          .select('id, agent_id, residence_id, date_prevue, heure_debut_prevue, heure_fin_prevue, statut, residences(nom), profiles(nom, prenom)')
+          .select('id, agent_id, residence_id, date_prevue, heure_debut_prevue, heure_fin_prevue, statut, residences(nom, lat, lng), profiles(nom, prenom, mode_deplacement, depart_lat, depart_lng)')
           .in('agent_id', agentIds)
           .gte('date_prevue', semaine.debut)
           .lte('date_prevue', semaine.fin)
@@ -162,6 +163,49 @@ export async function POST(req: NextRequest) {
       }).join('\n')
     : 'Aucune absence en cours'
 
+  // ── Temps de trajet réels entre interventions consécutives ───────────────────
+  // Grouper par (agent_id, date_prevue), trier par heure_debut, calculer trajets
+  const trajetsLignes: string[] = []
+  type GroupKey = string
+  const groupes = new Map<GroupKey, typeof interventions>()
+  for (const i of interventions) {
+    const k: GroupKey = `${i.agent_id}|${i.date_prevue}`
+    if (!groupes.has(k)) groupes.set(k, [])
+    groupes.get(k)!.push(i)
+  }
+
+  await Promise.allSettled(
+    [...groupes.entries()].map(async ([, group]) => {
+      if (group.length < 2) return
+      group.sort((a, b) => (a.heure_debut_prevue ?? '').localeCompare(b.heure_debut_prevue ?? ''))
+      const nomAgent = group[0].profiles ? `${group[0].profiles.prenom} ${group[0].profiles.nom}` : group[0].agent_id
+      const mode: ModeTrajet = (group[0].profiles?.mode_deplacement as ModeTrajet) ?? 'voiture'
+
+      for (let idx = 0; idx < group.length - 1; idx++) {
+        const curr = group[idx]
+        const next = group[idx + 1]
+        const latA = curr.residences?.lat as number | null
+        const lngA = curr.residences?.lng as number | null
+        const latB = next.residences?.lat as number | null
+        const lngB = next.residences?.lng as number | null
+
+        if (!latA || !lngA || !latB || !lngB) continue
+
+        // D'abord cache, sinon OSRM (on n'attend pas plus de 6s)
+        let trajet = await lireCacheTrajet(latA, lngA, latB, lngB, mode)
+        if (!trajet) trajet = await calculerTrajet(latA, lngA, latB, lngB, mode)
+
+        const resA = curr.residences?.nom ?? '?'
+        const resB = next.residences?.nom ?? '?'
+        trajetsLignes.push(
+          `${nomAgent} le ${curr.date_prevue} : ${resA}→${resB} = ${trajet.duree_minutes} min (${trajet.distance_km} km, mode=${mode})${trajet.depuis_cache ? '' : ' [OSRM temps réel]'}`,
+        )
+      }
+    })
+  )
+
+  const trajetsStr = trajetsLignes.length > 0 ? trajetsLignes.join('\n') : 'Aucun trajet inter-résidences calculé (GPS manquants ou interventions isolées)'
+
   const systemPrompt = `Tu es le copilote planning d'Archipropre Services.
 Tu as accès en temps réel aux données suivantes (semaine du ${semaine.debut} au ${semaine.fin}) :
 
@@ -173,6 +217,9 @@ ${conflitsStr}
 
 INTERVENTIONS SEMAINE COURANTE :
 ${interventionsStr}
+
+TEMPS DE TRAJET RÉELS ENTRE RÉSIDENCES (via OSRM) :
+${trajetsStr}
 
 ABSENCES ET CONGÉS :
 ${absencesStr}
@@ -186,7 +233,7 @@ RÈGLE HORAIRES OBLIGATOIRE : Quand tu affectes plusieurs interventions à un m�
 Algorithme à appliquer :
 1. Pour chaque agent, trier ses interventions du jour par heure de début.
 2. La première intervention commence à son heure normale ou à 08:00 par défaut.
-3. Chaque intervention suivante commence à : heure_fin_intervention_précédente + 15 min (temps de trajet par défaut).
+3. Chaque intervention suivante commence à : heure_fin_intervention_précédente + temps_de_trajet_réel (section "TEMPS DE TRAJET" ci-dessus). Si le trajet n'est pas disponible, utiliser 15 min par défaut.
 4. heure_fin = heure_debut + durée originale de l'intervention (heure_fin_prevue - heure_debut_prevue).
 
 Exemple correct pour Marie le mardi :

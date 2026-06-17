@@ -50,6 +50,8 @@ export default function AgentAttitreModal({ residence, onClose, onSaved }: Props
   const [excludedIds, setExcludedIds] = useState<string[]>(residence.agent_exclu_ids ?? [])
   const [saving, setSaving]           = useState(false)
   const [error, setError]             = useState('')
+  const [suggesting, setSuggesting]   = useState(false)
+  const [suggestion, setSuggestion]   = useState<{ agentId: string; raison: string } | null>(null)
 
   useEffect(() => {
     const supabase = createClient()
@@ -145,6 +147,21 @@ export default function AgentAttitreModal({ residence, onClose, onSaved }: Props
     }
   }
 
+  async function handleSuggest() {
+    setSuggesting(true)
+    setSuggestion(null)
+    setError('')
+    const res = await fetch('/api/residences/suggest-agent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ residenceId: residence.id }),
+    })
+    const json = await res.json()
+    setSuggesting(false)
+    if (!res.ok) { setError(json.error ?? 'Erreur IA'); return }
+    setSuggestion(json)
+  }
+
   async function handleSave() {
     setSaving(true)
     setError('')
@@ -174,11 +191,53 @@ export default function AgentAttitreModal({ residence, onClose, onSaved }: Props
         </div>
 
         {/* Header */}
-        <div className="px-6 pt-4 pb-4 border-b border-slate-100 shrink-0">
+        <div className="px-6 pt-4 pb-3 shrink-0">
           <h3 className="font-bold text-slate-800 text-lg">Agent attitré</h3>
           <p className="text-sm text-slate-500 mt-0.5 truncate">{residence.nom}</p>
           {error && (
             <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{error}</div>
+          )}
+        </div>
+
+        {/* Bouton Suggestion IA + bandeau résultat — toujours visible, jamais scrollable */}
+        <div className="px-6 pb-4 shrink-0 border-b border-slate-100">
+          <button
+            onClick={handleSuggest}
+            disabled={suggesting || loading}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-white text-sm font-semibold disabled:opacity-60 transition-opacity"
+            style={{ background: '#0BBFBF' }}
+          >
+            {suggesting ? (
+              <>
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                </svg>
+                Analyse en cours…
+              </>
+            ) : (
+              <>
+                <span>✨</span>
+                Obtenir une suggestion IA
+              </>
+            )}
+          </button>
+
+          {suggestion && (
+            <div className="mt-3 p-3 bg-teal-50 border border-teal-200 rounded-xl">
+              <p className="text-xs font-semibold text-teal-700">✨ Recommandation IA</p>
+              <p className="text-xs text-teal-600 mt-1 leading-relaxed">{suggestion.raison}</p>
+              <button
+                onClick={() => {
+                  setSelectedId(suggestion.agentId)
+                  setExcludedIds(prev => prev.filter(i => i !== suggestion.agentId))
+                  setSuggestion(null)
+                }}
+                className="mt-2 text-xs font-semibold text-teal-700 underline hover:text-teal-900"
+              >
+                Appliquer la suggestion
+              </button>
+            </div>
           )}
         </div>
 
@@ -198,9 +257,10 @@ export default function AgentAttitreModal({ residence, onClose, onSaved }: Props
               <div className="space-y-2">
                 {entries.map(entry => {
                   if (entry.type === 'solo') {
-                    const a          = entry.agent
-                    const isAttitré  = selectedId === a.id
-                    const isExclu    = excludedIds.includes(a.id)
+                    const a           = entry.agent
+                    const isAttitré   = selectedId === a.id
+                    const isExclu     = excludedIds.includes(a.id)
+                    const isSuggested = suggestion?.agentId === a.id
                     return (
                       <div
                         key={a.id}
@@ -210,7 +270,9 @@ export default function AgentAttitreModal({ residence, onClose, onSaved }: Props
                             ? 'border-slate-100 bg-slate-50 opacity-50 cursor-not-allowed'
                             : isAttitré
                               ? 'border-[#0BBFBF] bg-[#0BBFBF]/5 cursor-pointer'
-                              : 'border-slate-100 hover:border-slate-300 cursor-pointer'
+                              : isSuggested
+                                ? 'border-purple-300 bg-purple-50 cursor-pointer'
+                                : 'border-slate-100 hover:border-slate-300 cursor-pointer'
                         }`}
                       >
                         {/* Avatar */}
@@ -225,6 +287,9 @@ export default function AgentAttitreModal({ residence, onClose, onSaved }: Props
                             <p className="text-sm font-semibold text-slate-800">{a.prenom} {a.nom}</p>
                             {isAttitré && (
                               <span className="px-2 py-0.5 bg-[#0BBFBF]/20 text-[#0A6060] text-xs rounded-full font-semibold">Attitré ✓</span>
+                            )}
+                            {isSuggested && !isAttitré && (
+                              <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full font-semibold">✦ Suggéré IA</span>
                             )}
                             {a.vehicule && <span className="text-xs text-slate-400" title="Véhiculé">🚗</span>}
                           </div>
@@ -257,7 +322,8 @@ export default function AgentAttitreModal({ residence, onClose, onSaved }: Props
 
                   // ── Entrée binôme ─────────────────────────────────────────
                   const { primary, secondary } = entry
-                  const isAttitré = selectedId === primary.id || selectedId === secondary.id
+                  const isAttitré   = selectedId === primary.id || selectedId === secondary.id
+                  const isSuggestedBinome = suggestion?.agentId === primary.id || suggestion?.agentId === secondary.id
                   return (
                     <div
                       key={`binome-${primary.id}`}
@@ -265,7 +331,9 @@ export default function AgentAttitreModal({ residence, onClose, onSaved }: Props
                       className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all cursor-pointer ${
                         isAttitré
                           ? 'border-[#0BBFBF] bg-[#0BBFBF]/5'
-                          : 'border-slate-100 hover:border-[#0BBFBF]/40'
+                          : isSuggestedBinome
+                            ? 'border-purple-300 bg-purple-50'
+                            : 'border-slate-100 hover:border-[#0BBFBF]/40'
                       }`}
                     >
                       {/* Double avatar */}
@@ -284,6 +352,9 @@ export default function AgentAttitreModal({ residence, onClose, onSaved }: Props
                           </span>
                           {isAttitré && (
                             <span className="px-2 py-0.5 bg-[#0BBFBF]/20 text-[#0A6060] text-xs rounded-full font-semibold">Attitré ✓</span>
+                          )}
+                          {isSuggestedBinome && !isAttitré && (
+                            <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full font-semibold">✦ Suggéré IA</span>
                           )}
                         </div>
                         {entry.absences.map((ab, i) => (

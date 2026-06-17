@@ -42,6 +42,7 @@ absences, conges, tournees, tournees_etapes, distances_cache
 Vues calculées (ne pas stocker de données dedans) :
 - v_charge_agent : taux de remplissage hebdo par agent
 - v_etat_residence : état calculé (a_configurer / prete / planning_actif)
+- v_conflits_planning : détection chevauchements horaires par agent
 
 ## Champs ajoutés en session 16/06/2026
 
@@ -111,24 +112,34 @@ L'état se calcule automatiquement, aucun champ à maintenir.
 ✅ Tâche "Mise en place" 5 min sur toutes les résidences
 ✅ Durées tâches template corrigées (5 min par défaut)
 ✅ Génération planning depuis creneaux_acceptes + jours_semaine taches_template
-✅ Idempotence régénération planning (DELETE + INSERT)
-✅ Rafraîchissement immédiat après régénération (router.refresh + useEffect)
+✅ Idempotence régénération planning — transaction PostgreSQL planifier_interventions
+✅ Optimistic update badge résidence après génération (window.location.href)
+✅ Fix camelCase/snake_case dans TacheModal (duree_minutes, frequence_type…)
+✅ Vue v_conflits_planning — détection automatique des chevauchements horaires par agent
+✅ Vues Jour/Semaine/Mois sur /manager/planning avec navigation ← →
+✅ Correction v_etat_residence — lit interventions (plus interventions_planifiees legacy)
+✅ Génération planning corrigée — aucun jour exclu par défaut,
+   seuls jours_interdits du contrat font foi
 
 ## Bugs connus à corriger
 🐛 Agents démo à 0% sur /manager/charge (pas d'interventions assignées)
    → injecter interventions de test pour valider les couleurs
 
 ## À faire Phase 1 (dans l'ordre)
-1. Interventions de test sur agents démo
-2. Moteur IA proposition d'agent à la création d'un contrat
+1. Moteur IA proposition d'agent à la création d'un contrat
    → Edge Function Supabase + API Anthropic claude-sonnet-4-6
    → top 3 agents, taux après ajout, surcoût trajet, explication
-3. Moteur IA réorganisation planning sur absence/congé
-4. Validation tâches avec photo obligatoire (iPhone)
-5. Rapport final agent + envoi manager
-6. Dashboard manager temps réel (Supabase Realtime)
-7. Alertes 15 min (Edge Function + cron)
-8. Dashboard directeur KPIs
+2. Moteur IA résolution conflits planning (absence/congé)
+   → interventions orphelines + capacité disponible agents
+3. Interventions de test sur agents démo
+   → valider couleurs /manager/charge
+4. Page /manager/charge/[agentId]
+   → détail hebdomadaire, liste interventions, congés
+5. Validation tâches avec photo obligatoire (iPhone)
+6. Rapport final agent + envoi manager
+7. Dashboard manager temps réel (Supabase Realtime)
+8. Alertes 15 min (Edge Function + cron)
+9. Dashboard directeur KPIs
 
 ## À faire Phase 2
 - Optimisation tournées (Leaflet + OSRM)

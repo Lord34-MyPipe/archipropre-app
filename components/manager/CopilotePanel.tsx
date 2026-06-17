@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 
 interface Message {
   id: string
@@ -44,6 +45,7 @@ interface Props {
 }
 
 export default function CopilotePanel({ open, onClose }: Props) {
+  const router                  = useRouter()
   const [messages, setMessages] = useState<Message[]>([MESSAGE_ACCUEIL])
   const [input, setInput]       = useState('')
   const [loading, setLoading]   = useState(false)
@@ -107,20 +109,40 @@ export default function CopilotePanel({ open, onClose }: Props) {
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, applyState: 'applying' } : m))
 
     const interventions = actions.interventions ?? []
-    const results = await Promise.allSettled(
-      interventions.map(a =>
-        fetch(`/api/interventions/${a.intervention_id}`, {
+    const errors: string[] = []
+
+    await Promise.allSettled(
+      interventions.map(async a => {
+        const res = await fetch(`/api/interventions/${a.intervention_id}`, {
           method:  'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ agentId: a.nouvel_agent_id }),
         })
-      )
+        console.log(
+          'PATCH intervention', a.intervention_id,
+          'nouvel agent:', a.nouvel_agent_id,
+          'status:', res.status,
+        )
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          errors.push(`intervention ${a.intervention_id} : ${data.error ?? res.statusText}`)
+        }
+      })
     )
 
-    const allOk = results.every(r => r.status === 'fulfilled')
-    setMessages(prev => prev.map(m =>
-      m.id === msgId ? { ...m, applyState: allOk ? 'done' : 'error' } : m
-    ))
+    if (errors.length > 0) {
+      setMessages(prev => [
+        ...prev.map(m => m.id === msgId ? { ...m, applyState: 'error' as const } : m),
+        {
+          id:      genId(),
+          role:    'assistant' as const,
+          content: `⚠️ ${errors.length} action(s) ont échoué :\n${errors.join('\n')}`,
+        },
+      ])
+    } else {
+      setMessages(prev => prev.map(m => m.id === msgId ? { ...m, applyState: 'done' as const } : m))
+      router.refresh()
+    }
   }
 
   return (

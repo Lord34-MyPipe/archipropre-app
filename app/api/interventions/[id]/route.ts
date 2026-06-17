@@ -36,8 +36,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.heureFin   !== undefined) updates.heure_fin_prevue   = body.heureFin  || null
   if (body.agentId    !== undefined) updates.agent_id           = body.agentId   || null
 
+  if (body.agentId !== undefined)
+    console.log(`[PATCH /interventions/${id}] agent_id → ${body.agentId}`)
+
   const { error } = await admin.from('interventions').update(updates).eq('id', id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+  if (error) {
+    console.error(`[PATCH /interventions/${id}] Supabase error:`, error)
+    return NextResponse.json({ error: error.message }, { status: 400 })
+  }
 
   return NextResponse.json({ ok: true })
 }

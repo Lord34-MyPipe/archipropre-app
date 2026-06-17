@@ -196,17 +196,9 @@ export async function POST(req: NextRequest) {
   // ── 6b. Interventions miroir pour le binôme ──────────────────────────────────
   let allRows = [...rowsFuturs]
   if (res.agent_secondaire_id) {
-    const { data: agentProfile } = await admin
-      .from('profiles').select('facteur_binome').eq('id', res.agent_prefere_id).single()
-    const facteur = Number(agentProfile?.facteur_binome ?? 0.60)
-    const mirrorRows = rowsFuturs.map(r => {
-      const [fh, fm] = r.heure_debut_prevue.split(':').map(Number)
-      const [th, tm] = r.heure_fin_prevue.split(':').map(Number)
-      const dureeBinome = Math.round(((th * 60 + tm) - (fh * 60 + fm)) * facteur)
-      return { ...r, agent_id: res.agent_secondaire_id!, heure_fin_prevue: addMinutes(r.heure_debut_prevue, dureeBinome) }
-    })
+    const mirrorRows = rowsFuturs.map(r => ({ ...r, agent_id: res.agent_secondaire_id! }))
     allRows = [...rowsFuturs, ...mirrorRows]
-    console.log(`[generer] binôme ${res.agent_secondaire_id} : ${mirrorRows.length} interventions miroir (facteur ${facteur})`)
+    console.log(`[generer] binôme ${res.agent_secondaire_id} : ${mirrorRows.length} interventions miroir (horaires identiques)`)
   }
 
   // ── 7. DELETE + INSERT atomique via RPC PostgreSQL ──────────────────────────

@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
 
     agentIds.length > 0
       ? admin.from('interventions')
-          .select('id, agent_id, residence_id, date_prevue, heure_debut_prevue, heure_fin_prevue, statut, residences(nom, lat, lng), profiles(nom, prenom, mode_deplacement, depart_lat, depart_lng)')
+          .select('id, agent_id, residence_id, date_prevue, heure_debut_prevue, heure_fin_prevue, statut, residences(nom, lat, lng), profiles(nom, prenom, mode_deplacement)')
           .in('agent_id', agentIds)
           .gte('date_prevue', semaine.debut)
           .lte('date_prevue', semaine.fin)

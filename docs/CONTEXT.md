@@ -138,24 +138,27 @@ L'état se calcule automatiquement, aucun champ à maintenir.
 ✅ Mode tramway forfaitaire : marche→arrêt + forfait_tram (param) + arrêt→destination
 ✅ Trajets résidence→résidence intégrés à la génération de planning et au copilote IA
 ✅ Copilote IA recalcule les horaires avec les vrais temps de trajet OSRM
+✅ Interventions de test sur 4 agents démo (vert/orange/rouge validés)
+✅ Page /manager/charge enrichie : ratio heures programmées / contractuelles
+   (ex. 42h / 35h) + heures libres affichés
+✅ Barre de charge échelle 0→125% : repère contrat à 80%, heures sup
+   en rouge foncé au-delà du contrat, label fusionné "Xh (+Xh sup)" si dépassement
+✅ v_charge_agent expose les heures programmées en valeur absolue
+✅ Cartes KPI page charge : agents, remplissage moyen, capacité libre, en surcharge
 
 ## Bugs connus à corriger
-🐛 Agents démo à 0% sur /manager/charge (pas d'interventions assignées)
-   → injecter interventions de test pour valider les couleurs
 ℹ️ depart_lat/lng de Marie Dupont (agent test) à null — point par défaut siège
    à renseigner si on active un jour le choix d'agent le plus proche.
 
 ## À faire Phase 1 (dans l'ordre)
-1. Tester et affiner le copilote IA (qualité des réponses, edge cases)
-2. Interventions de test sur agents démo (valider barres de charge colorées)
-3. Page /manager/charge/[agentId] — détail hebdomadaire, liste interventions, congés
-4. Moteur IA réorganisation sur absence/congé
+1. Page détail agent /manager/charge/[id] (clic sur le chevron)
+2. Moteur IA réorganisation sur absence/congé
    → interventions orphelines + capacité disponible agents
-5. Validation tâches avec photo obligatoire (iPhone)
-6. Rapport final agent + envoi manager
-7. Dashboard manager temps réel (Supabase Realtime)
-8. Alertes 15 min (Edge Function + cron)
-9. Dashboard directeur KPIs
+3. Validation tâches avec photo obligatoire (iPhone)
+4. Rapport final agent + envoi manager
+5. Dashboard manager temps réel (Supabase Realtime)
+6. Alertes 15 min (Edge Function + cron)
+7. Dashboard directeur KPIs
 
 ## À faire Phase 2
 - Gestion agents spécialisés (poubelles, vitres, façades…)

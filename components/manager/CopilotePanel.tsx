@@ -26,6 +26,17 @@ interface PropositionClient {
   erreur?:            string
 }
 
+interface PropositionIntervention {
+  residence_id:       string
+  residence_nom:      string
+  agent_id:           string
+  agent_nom:          string
+  date_prevue:        string
+  heure_debut_prevue: string | null
+  heure_fin_prevue:   string | null
+  tache_libelle:      string
+}
+
 interface Message {
   id: string
   role: 'user' | 'assistant'
@@ -34,6 +45,8 @@ interface Message {
   applyState?: 'idle' | 'applying' | 'done' | 'error'
   propositionClient?: PropositionClient | null
   createState?: 'idle' | 'creating' | 'done' | 'error'
+  propositionIntervention?: PropositionIntervention | null
+  interventionState?: 'idle' | 'creating' | 'done' | 'error'
 }
 
 interface ActionReassigner {
@@ -136,8 +149,10 @@ export default function CopilotePanel({ open, onClose, semaine }: Props) {
         content:          res.ok ? data.reponse : (data.error ?? 'Erreur inconnue'),
         actions:          res.ok ? data.actions : null,
         applyState:       'idle',
-        propositionClient: res.ok ? (data.propositionClient ?? null) : null,
-        createState:      'idle',
+        propositionClient:       res.ok ? (data.propositionClient ?? null) : null,
+        createState:             'idle',
+        propositionIntervention: res.ok ? (data.propositionIntervention ?? null) : null,
+        interventionState:       'idle',
       }
       setMessages(prev => [...prev, assistantMsg])
     } catch {
@@ -228,6 +243,39 @@ export default function CopilotePanel({ open, onClose, semaine }: Props) {
         {
           id: genId(), role: 'assistant' as const,
           content: `✅ Client **${pc.nom}** créé (ID : \`${residence.id}\`). Rendez-vous sur la page Résidences pour configurer le contrat et affecter un agent.`,
+        },
+      ])
+      router.refresh()
+    }
+  }
+
+  async function applyIntervention(msgId: string, pi: PropositionIntervention) {
+    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, interventionState: 'creating' as const } : m))
+    const res = await fetch('/api/interventions/creer-ponctuelle', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        residence_id:       pi.residence_id,
+        agent_id:           pi.agent_id,
+        date_prevue:        pi.date_prevue,
+        heure_debut_prevue: pi.heure_debut_prevue ?? undefined,
+        heure_fin_prevue:   pi.heure_fin_prevue   ?? undefined,
+        tache_libelle:      pi.tache_libelle,
+      }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      setMessages(prev => [
+        ...prev.map(m => m.id === msgId ? { ...m, interventionState: 'error' as const } : m),
+        { id: genId(), role: 'assistant' as const, content: `⚠️ Erreur création intervention : ${data.error ?? res.statusText}` },
+      ])
+    } else {
+      const intervention = await res.json()
+      setMessages(prev => [
+        ...prev.map(m => m.id === msgId ? { ...m, interventionState: 'done' as const } : m),
+        {
+          id: genId(), role: 'assistant' as const,
+          content: `✅ Intervention créée le **${pi.date_prevue}** pour **${pi.agent_nom}** à **${pi.residence_nom}** (ID : \`${intervention.id}\`).`,
         },
       ])
       router.refresh()
@@ -373,6 +421,64 @@ export default function CopilotePanel({ open, onClose, semaine }: Props) {
                         </div>
                       )}
                       {msg.createState === 'error' && (
+                        <div className="px-4 py-3 border-t border-slate-100">
+                          <p className="text-xs font-semibold text-red-600">⚠ Erreur lors de la création</p>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+
+                {/* Carte proposition intervention */}
+                {msg.role === 'assistant' && msg.propositionIntervention && (() => {
+                  const pi = msg.propositionIntervention
+                  return (
+                    <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
+                      <div className="px-4 py-3 border-b border-slate-100" style={{ background: '#F0F4FF' }}>
+                        <p className="text-xs font-bold text-[#1A3A6A] flex items-center gap-1.5">
+                          <span>🗓️</span> Intervention ponctuelle à créer
+                        </p>
+                      </div>
+                      <div className="px-4 py-3 space-y-1.5">
+                        <p className="text-xs text-slate-800">
+                          <span className="font-semibold">Résidence :</span> {pi.residence_nom}
+                        </p>
+                        <p className="text-xs text-slate-800">
+                          <span className="font-semibold">Agent :</span> {pi.agent_nom}
+                        </p>
+                        <p className="text-xs text-slate-800">
+                          <span className="font-semibold">Date :</span> {pi.date_prevue}
+                          {pi.heure_debut_prevue && ` · ${pi.heure_debut_prevue}${pi.heure_fin_prevue ? ` → ${pi.heure_fin_prevue}` : ''}`}
+                        </p>
+                        <p className="text-xs text-slate-800">
+                          <span className="font-semibold">Tâche :</span> {pi.tache_libelle}
+                        </p>
+                      </div>
+                      {msg.interventionState !== 'done' && (
+                        <div className="px-4 py-3 border-t border-slate-100 flex gap-2">
+                          <button
+                            onClick={() => applyIntervention(msg.id, pi)}
+                            disabled={msg.interventionState === 'creating'}
+                            className="flex-1 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-60 transition-opacity"
+                            style={{ background: '#1A5FA8' }}
+                          >
+                            {msg.interventionState === 'creating' ? 'Création…' : '✓ Créer l\'intervention'}
+                          </button>
+                          <button
+                            onClick={() => setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, propositionIntervention: null } : m))}
+                            disabled={msg.interventionState === 'creating'}
+                            className="px-3 py-2 rounded-xl text-xs font-medium text-slate-500 border border-slate-200 hover:bg-slate-50 transition-colors disabled:opacity-60"
+                          >
+                            Annuler
+                          </button>
+                        </div>
+                      )}
+                      {msg.interventionState === 'done' && (
+                        <div className="px-4 py-3 border-t border-slate-100">
+                          <p className="text-xs font-semibold text-[#1A3A6A]">✓ Intervention créée</p>
+                        </div>
+                      )}
+                      {msg.interventionState === 'error' && (
                         <div className="px-4 py-3 border-t border-slate-100">
                           <p className="text-xs font-semibold text-red-600">⚠ Erreur lors de la création</p>
                         </div>

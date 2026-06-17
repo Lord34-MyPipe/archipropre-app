@@ -208,6 +208,12 @@ export async function POST(req: NextRequest) {
   const trajetsStr = trajetsLignes.length > 0 ? trajetsLignes.join('\n') : 'Aucun trajet inter-résidences calculé (GPS manquants ou interventions isolées)'
 
   const systemPrompt = `Tu es le copilote planning d'Archipropre Services.
+
+RÈGLE ABSOLUE — ANTI-HALLUCINATION :
+Tu ne dois JAMAIS affirmer avoir créé, modifié, affecté ou supprimé quoi que ce soit en base de données.
+Tu ne fais que PROPOSER. Toute action réelle passe obligatoirement par une validation explicite du manager via un bouton dans l'interface.
+N'écris jamais "c'est créé", "c'est fait", "intervention enregistrée", "client ajouté" ni aucune formulation similaire.
+Si tu ne peux pas matérialiser une demande par une proposition structurée (bloc [ACTIONS], [PROPOSITION_CLIENT] ou [PROPOSITION_INTERVENTION]), dis-le clairement au lieu d'inventer un succès.
 Tu as accès en temps réel aux données suivantes (semaine du ${semaine.debut} au ${semaine.fin}) :
 
 AGENTS ET CHARGE :
@@ -272,7 +278,20 @@ Si le manager demande de créer un nouveau client, une nouvelle résidence ou un
 [/PROPOSITION_CLIENT]
 
 5. Expliquer brièvement que tu vas vérifier l'adresse et que la fiche sera soumise à validation avant création.
-6. Ne jamais inclure un bloc [ACTIONS] en même temps qu'un bloc [PROPOSITION_CLIENT].`
+6. Ne jamais inclure un bloc [ACTIONS] en même temps qu'un bloc [PROPOSITION_CLIENT].
+
+INTERVENTION PONCTUELLE :
+Si le manager demande de créer, ajouter ou planifier une intervention ponctuelle (hors récurrence), tu dois :
+1. Identifier la résidence (utilise le nom pour trouver le residence_id dans INTERVENTIONS ou demande si ambigu), l'agent, la date, le créneau horaire et le libellé de la tâche.
+2. Si une information clé manque (résidence, date, créneau), demande-la avant d'émettre le bloc.
+3. Terminer ta réponse par un bloc [PROPOSITION_INTERVENTION], format strict SANS markdown autour :
+
+[PROPOSITION_INTERVENTION]
+{"residence_id":"<uuid-complet>","residence_nom":"<nom affiché>","agent_id":"<uuid-complet>","agent_nom":"<nom affiché>","date_prevue":"<YYYY-MM-DD>","heure_debut_prevue":"<HH:MM>","heure_fin_prevue":"<HH:MM>","tache_libelle":"<libellé de la tâche>"}
+[/PROPOSITION_INTERVENTION]
+
+4. Résumer la proposition en une phrase avant le bloc.
+5. Ne jamais inclure [ACTIONS] ou [PROPOSITION_CLIENT] en même temps qu'un [PROPOSITION_INTERVENTION].`
 
   const messages: Anthropic.MessageParam[] = [
     ...historique.map(h => ({ role: h.role, content: h.content } as Anthropic.MessageParam)),
@@ -345,5 +364,42 @@ Si le manager demande de créer un nouveau client, une nouvelle résidence ou un
     }
   }
 
-  return NextResponse.json({ reponse, actions, propositionClient })
+  // ── Parser le bloc [PROPOSITION_INTERVENTION] ─────────────────────────────────
+  const interventionMatch = reponse.match(/\[PROPOSITION_INTERVENTION\]([\s\S]*?)\[\/PROPOSITION_INTERVENTION\]/)
+  let propositionIntervention: Record<string, unknown> | null = null
+
+  if (interventionMatch) {
+    reponse = reponse.replace(/\[PROPOSITION_INTERVENTION\][\s\S]*?\[\/PROPOSITION_INTERVENTION\]/, '').trim()
+    try {
+      const raw = JSON.parse(
+        interventionMatch[1].replace(/```json/gi, '').replace(/```/g, '').trim()
+      ) as {
+        residence_id?:       string
+        residence_nom?:      string
+        agent_id?:           string
+        agent_nom?:          string
+        date_prevue?:        string
+        heure_debut_prevue?: string
+        heure_fin_prevue?:   string
+        tache_libelle?:      string
+      }
+
+      if (raw.residence_id && raw.agent_id && raw.date_prevue && raw.tache_libelle) {
+        propositionIntervention = {
+          residence_id:       raw.residence_id,
+          residence_nom:      raw.residence_nom ?? raw.residence_id,
+          agent_id:           raw.agent_id,
+          agent_nom:          raw.agent_nom ?? raw.agent_id,
+          date_prevue:        raw.date_prevue,
+          heure_debut_prevue: raw.heure_debut_prevue ?? null,
+          heure_fin_prevue:   raw.heure_fin_prevue ?? null,
+          tache_libelle:      raw.tache_libelle,
+        }
+      }
+    } catch (e) {
+      console.error('[copilote] Échec parsing PROPOSITION_INTERVENTION:', e)
+    }
+  }
+
+  return NextResponse.json({ reponse, actions, propositionClient, propositionIntervention })
 }

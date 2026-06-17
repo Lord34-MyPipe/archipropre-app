@@ -176,10 +176,18 @@ ${absencesStr}
 RÈGLES :
 - Réponds toujours en français, sois concis et actionnable.
 - Quand tu proposes une réorganisation, donne l'impact chiffré (taux avant/après) pour chaque agent concerné.
-- Quand une action est applicable directement en base, termine ta réponse par un bloc JSON structuré comme suit, SANS markdown autour du bloc :
+
+RÈGLE HORAIRES : Les heures d'intervention ne sont PAS fixes sauf si le contrat de la résidence spécifie des creneaux_acceptes non vides. Quand tu détectes un chevauchement horaire, tu peux proposer de décaler l'heure de début d'une intervention pour éviter le conflit. L'heure de début doit rester dans les créneaux acceptés du contrat si définis, sinon entre 07:00 et 20:00. Pour décaler une intervention, utilise le type d'action "modifier_horaire" (voir format ci-dessous).
+
+RÈGLE CAPACITÉ : Ne jamais proposer d'affecter plus d'interventions à un agent que sa capacite_disponible (en heures). Si la demande dépasse la capacité, répartir sur plusieurs agents disponibles et expliquer pourquoi.
+
+- Quand une ou plusieurs actions sont applicables directement en base, termine ta réponse par un seul bloc [ACTIONS] contenant un tableau "actions". Tu peux combiner les deux types dans le même bloc. Format strict, SANS markdown autour :
 
 [ACTIONS]
-{"type":"reassigner_intervention","interventions":[{"intervention_id":"<uuid>","nouvel_agent_id":"<uuid>","raison":"<explication courte>"}]}
+{"actions":[
+  {"type":"reassigner_intervention","intervention_id":"<uuid-complet>","nouvel_agent_id":"<uuid-complet>","raison":"<explication courte>"},
+  {"type":"modifier_horaire","intervention_id":"<uuid-complet>","nouvelle_heure_debut":"10:00","nouvelle_heure_fin":"11:30","raison":"<explication courte>"}
+]}
 [/ACTIONS]
 
 - Si aucune action concrète n'est applicable, n'inclus PAS de bloc [ACTIONS].

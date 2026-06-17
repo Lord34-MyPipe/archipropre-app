@@ -12,15 +12,29 @@ interface Message {
   applyState?: 'idle' | 'applying' | 'done' | 'error'
 }
 
-interface ActionIntervention {
+interface ActionReassigner {
+  type: 'reassigner_intervention'
   intervention_id: string
   nouvel_agent_id: string
   raison: string
 }
 
+interface ActionModifierHoraire {
+  type: 'modifier_horaire'
+  intervention_id: string
+  nouvelle_heure_debut: string
+  nouvelle_heure_fin: string
+  raison: string
+}
+
+type Action = ActionReassigner | ActionModifierHoraire
+
 interface ActionsPayload {
-  type: string
-  interventions?: ActionIntervention[]
+  // Format unifié : { actions: [...] }
+  actions?: Action[]
+  // Ancien format de compatibilité : { type, interventions: [...] }
+  type?: string
+  interventions?: Array<{ intervention_id: string; nouvel_agent_id: string; raison: string }>
 }
 
 const RACCOURCIS = [
@@ -106,27 +120,42 @@ export default function CopilotePanel({ open, onClose }: Props) {
     }
   }
 
-  async function applyActions(msgId: string, actions: ActionsPayload) {
+  async function applyActions(msgId: string, payload: ActionsPayload) {
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, applyState: 'applying' } : m))
 
-    const interventions = actions.interventions ?? []
+    // Normaliser : nouveau format { actions: [...] } ou ancien { type, interventions: [...] }
+    const actions: Action[] = payload.actions ?? (
+      payload.interventions?.map(i => ({
+        type:            'reassigner_intervention' as const,
+        intervention_id: i.intervention_id,
+        nouvel_agent_id: i.nouvel_agent_id,
+        raison:          i.raison,
+      })) ?? []
+    )
+
     const errors: string[] = []
 
     await Promise.allSettled(
-      interventions.map(async a => {
+      actions.map(async a => {
+        let body: Record<string, string>
+        if (a.type === 'reassigner_intervention') {
+          body = { agentId: a.nouvel_agent_id }
+          console.log('PATCH intervention', a.intervention_id, 'nouvel agent:', a.nouvel_agent_id)
+        } else {
+          body = { heureDebut: a.nouvelle_heure_debut, heureFin: a.nouvelle_heure_fin }
+          console.log('PATCH intervention', a.intervention_id, 'horaire:', a.nouvelle_heure_debut, '→', a.nouvelle_heure_fin)
+        }
+
         const res = await fetch(`/api/interventions/${a.intervention_id}`, {
           method:  'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ agentId: a.nouvel_agent_id }),
+          body:    JSON.stringify(body),
         })
-        console.log(
-          'PATCH intervention', a.intervention_id,
-          'nouvel agent:', a.nouvel_agent_id,
-          'status:', res.status,
-        )
+        console.log('  status:', res.status)
+
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
-          errors.push(`intervention ${a.intervention_id} : ${data.error ?? res.statusText}`)
+          errors.push(`${a.type} ${a.intervention_id} : ${data.error ?? res.statusText}`)
         }
       })
     )
@@ -218,7 +247,7 @@ export default function CopilotePanel({ open, onClose }: Props) {
                 </div>
 
                 {/* Carte actions */}
-                {msg.role === 'assistant' && msg.actions?.interventions?.length ? (
+                {msg.role === 'assistant' && (msg.actions?.actions?.length || msg.actions?.interventions?.length) ? (
                   <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
                     <div className="px-4 py-3 border-b border-slate-100" style={{ background: '#F0FBFB' }}>
                       <p className="text-xs font-bold text-[#0A6060] flex items-center gap-1.5">
@@ -226,9 +255,11 @@ export default function CopilotePanel({ open, onClose }: Props) {
                       </p>
                     </div>
                     <div className="px-4 py-3 space-y-2">
-                      {msg.actions.interventions.map((a, i) => (
+                      {(msg.actions.actions ?? msg.actions.interventions ?? []).map((a, i) => (
                         <p key={i} className="text-xs text-slate-600 leading-relaxed">
-                          • {a.raison}
+                          {'type' in a && a.type === 'modifier_horaire'
+                            ? `• 🕐 ${a.raison}`
+                            : `• 🔄 ${a.raison}`}
                         </p>
                       ))}
                     </div>

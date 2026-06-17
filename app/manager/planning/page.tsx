@@ -19,7 +19,7 @@ interface Intervention {
   residence_nom: string
 }
 
-interface AgentRow { id: string; nom: string; prenom: string }
+interface AgentRow { id: string; nom: string; prenom: string; binome_agent_id?: string | null }
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const MOIS_FR = ['janvier','février','mars','avril','mai','juin','juillet',
@@ -112,7 +112,7 @@ export default async function ManagerPlanning({ searchParams }: Props) {
   if (!user) redirect('/login')
 
   const { data: agentsRaw } = await supabase
-    .from('profiles').select('id,nom,prenom')
+    .from('profiles').select('id,nom,prenom,binome_agent_id')
     .eq('manager_id', user.id).eq('actif', true).order('nom')
 
   const agents: AgentRow[] = agentsRaw ?? []
@@ -266,6 +266,55 @@ function VueSemaine({ dates, inters, agents, congeKeys, congeMotifs, todayStr }:
   congeMotifs: Record<string, string>
   todayStr: string
 }) {
+  // ── Groupage binômes ─────────────────────────────────────────────────────
+  type RowEntry =
+    | { kind: 'solo';             agent: AgentRow }
+    | { kind: 'binome-primary';   agent: AgentRow; partner: AgentRow }
+    | { kind: 'binome-secondary'; agent: AgentRow }
+
+  const agentMap = new Map(agents.map(a => [a.id, a]))
+  const done     = new Set<string>()
+  const allRows: RowEntry[] = []
+
+  for (const agent of agents) {
+    if (done.has(agent.id)) continue
+    const partner = agent.binome_agent_id ? agentMap.get(agent.binome_agent_id) : undefined
+    if (partner && !done.has(partner.id)) {
+      const [primary, secondary] = agent.nom.localeCompare(partner.nom) <= 0
+        ? [agent, partner] : [partner, agent]
+      allRows.push({ kind: 'binome-primary',   agent: primary, partner: secondary })
+      allRows.push({ kind: 'binome-secondary',  agent: secondary })
+      done.add(primary.id); done.add(secondary.id)
+    } else {
+      allRows.push({ kind: 'solo', agent })
+      done.add(agent.id)
+    }
+  }
+
+  // Agents actifs cette semaine (avec intervention ou congé)
+  const activeIds = new Set<string>()
+  agents.forEach(a => {
+    if (dates.some(d =>
+      inters.some(i => i.agent_id === a.id && i.date_prevue === d) ||
+      congeKeys.has(`${a.id}|${d}`)
+    )) activeIds.add(a.id)
+  })
+
+  // Binôme : afficher la paire si l'UN des deux est actif
+  const shownIds = new Set<string>()
+  allRows.forEach(r => {
+    if (r.kind === 'solo') {
+      if (activeIds.has(r.agent.id)) shownIds.add(r.agent.id)
+    } else if (r.kind === 'binome-primary') {
+      if (activeIds.has(r.agent.id) || activeIds.has(r.partner.id)) {
+        shownIds.add(r.agent.id); shownIds.add(r.partner.id)
+      }
+    }
+  })
+
+  const visibleRows    = allRows.filter(r => shownIds.has(r.agent.id))
+  const inactiveAgents = agents.filter(a => !shownIds.has(a.id))
+
   const hasData = inters.length > 0 ||
     dates.some(d => agents.some(a => congeKeys.has(`${a.id}|${d}`)))
 
@@ -291,7 +340,7 @@ function VueSemaine({ dates, inters, agents, congeKeys, congeMotifs, todayStr }:
         <table className="w-full min-w-[640px]">
           <thead>
             <tr className="border-b border-slate-100">
-              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 w-32 sticky left-0 bg-white">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 w-36 sticky left-0 bg-white">
                 Agent
               </th>
               {dates.map((dateStr, i) => {
@@ -314,24 +363,43 @@ function VueSemaine({ dates, inters, agents, congeKeys, congeMotifs, todayStr }:
               })}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-50">
-            {agents.map(agent => {
-              const hasAnything = dates.some(d =>
-                inters.some(i => i.agent_id === agent.id && i.date_prevue === d) ||
-                congeKeys.has(`${agent.id}|${d}`)
-              )
-              if (!hasAnything) return null
+          <tbody>
+            {visibleRows.map((row, rowIdx) => {
+              const agent       = row.agent
+              const isPrimary   = row.kind === 'binome-primary'
+              const isSecondary = row.kind === 'binome-secondary'
+              const isBinome    = isPrimary || isSecondary
+              // Supprimer le séparateur entre primary et secondary
+              const nextRow     = visibleRows[rowIdx + 1]
+              const noBottomBorder = isPrimary && nextRow?.kind === 'binome-secondary'
 
               return (
-                <tr key={agent.id}>
-                  <td className="px-4 py-3 sticky left-0 bg-white border-r border-slate-50">
+                <tr
+                  key={agent.id}
+                  className={`${noBottomBorder ? '' : 'border-b border-slate-50'} ${isBinome ? 'bg-[#f5fffe]' : ''}`}
+                >
+                  {/* Colonne agent */}
+                  <td className={`px-4 py-3 sticky left-0 border-r border-slate-50 ${
+                    isBinome
+                      ? 'bg-[#f5fffe] border-l-[3px] border-l-[#0BBFBF]'
+                      : 'bg-white'
+                  }`}>
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-[#1A5FA8] flex items-center justify-center text-white text-xs font-bold shrink-0">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ${
+                        isBinome ? 'bg-[#0BBFBF]' : 'bg-[#1A5FA8]'
+                      }`}>
                         {agent.prenom[0]}{agent.nom[0]}
                       </div>
-                      <span className="text-sm font-medium text-slate-700 truncate">{agent.prenom}</span>
+                      <div className="min-w-0">
+                        <span className="text-sm font-medium text-slate-700 truncate block">{agent.prenom}</span>
+                        {isPrimary && (
+                          <span className="text-[9px] text-[#0BBFBF] font-semibold leading-none">👥 Binôme</span>
+                        )}
+                      </div>
                     </div>
                   </td>
+
+                  {/* Colonnes jours */}
                   {dates.map((dateStr, j) => {
                     const dayInters   = inters.filter(i => i.agent_id === agent.id && i.date_prevue === dateStr)
                     const isOnLeave   = congeKeys.has(`${agent.id}|${dateStr}`)
@@ -349,13 +417,15 @@ function VueSemaine({ dates, inters, agents, congeKeys, congeMotifs, todayStr }:
                             </div>
                           )}
                           {dayInters.map(i => (
-                            <div key={i.id}
-                              className={`px-1.5 py-1.5 rounded-lg text-[10px] font-medium leading-tight border ${
-                                isOnLeave
-                                  ? 'bg-red-50 text-red-800 border-red-300'
-                                  : (STATUT_BG[i.statut] ?? 'bg-slate-100 text-slate-600 border-slate-200')
-                              }`}>
-                              <div className="truncate font-semibold">{i.residence_nom}</div>
+                            <div key={i.id} className={`relative px-1.5 py-1.5 rounded-lg text-[10px] font-medium leading-tight border ${
+                              isOnLeave
+                                ? 'bg-red-50 text-red-800 border-red-300'
+                                : (STATUT_BG[i.statut] ?? 'bg-slate-100 text-slate-600 border-slate-200')
+                            }`}>
+                              {isBinome && (
+                                <span className="absolute top-0.5 right-0.5 text-[8px] leading-none opacity-70">👥</span>
+                              )}
+                              <div className="truncate font-semibold pr-3">{i.residence_nom}</div>
                               {i.heure_debut_prevue && (
                                 <div className="text-[9px] opacity-70 mt-0.5">
                                   {i.heure_debut_prevue.slice(0,5)}
@@ -372,14 +442,10 @@ function VueSemaine({ dates, inters, agents, congeKeys, congeMotifs, todayStr }:
                 </tr>
               )
             })}
-            {/* Agents sans activité */}
-            {agents.filter(agent =>
-              !dates.some(d =>
-                inters.some(i => i.agent_id === agent.id && i.date_prevue === d) ||
-                congeKeys.has(`${agent.id}|${d}`)
-              )
-            ).map(agent => (
-              <tr key={`empty-${agent.id}`}>
+
+            {/* Agents sans activité cette semaine */}
+            {inactiveAgents.map(agent => (
+              <tr key={`empty-${agent.id}`} className="border-b border-slate-50">
                 <td className="px-4 py-3 sticky left-0 bg-white border-r border-slate-50">
                   <div className="flex items-center gap-2 opacity-35">
                     <div className="w-7 h-7 rounded-full bg-slate-300 flex items-center justify-center text-white text-xs font-bold shrink-0">

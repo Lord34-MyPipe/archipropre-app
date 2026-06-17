@@ -164,37 +164,31 @@ export async function POST(req: NextRequest) {
     current.setDate(current.getDate() + 1)
   }
 
-  console.log(`[generer] ${rows.length} interventions à insérer (${dateDebut} → ${dateFin})`)
+  // ── 6. Filtrer les dates passées (le DELETE ne couvre que >= aujourd'hui) ────
+  const today = new Date().toISOString().split('T')[0]
+  const rowsFuturs = rows.filter(r => r.date_prevue >= today)
 
-  if (!rows.length)
+  console.log(`[generer] ${rows.length} interventions générées, ${rowsFuturs.length} futures (>= ${today})`)
+
+  if (!rowsFuturs.length)
     return NextResponse.json(
-      { error: 'Aucune intervention générée sur la période du contrat.' },
+      { error: 'Aucune intervention future générée sur la période du contrat.' },
       { status: 400 }
     )
 
-  // ── 6. Suppression ardoise propre — toutes les interventions futures non réalisées ──
-  const today = new Date().toISOString().split('T')[0]
-  const { error: delErr } = await admin.from('interventions')
-    .delete()
-    .eq('residence_id', residenceId)
-    .gte('date_prevue', today)
-    .neq('statut', 'terminee')
-    .neq('statut', 'en_cours')
-  if (delErr) console.warn('[generer] suppression avant régénération:', delErr.message)
-
-  // ── 7. INSERT par batches de 500 ────────────────────────────────────────────
-  const BATCH = 500
-  for (let i = 0; i < rows.length; i += BATCH) {
-    const { error: insErr } = await admin.from('interventions').insert(rows.slice(i, i + BATCH))
-    if (insErr) {
-      console.error('[generer] ❌ INSERT échoué:', insErr.message, insErr.details ?? '')
-      return NextResponse.json({ error: insErr.message }, { status: 400 })
-    }
+  // ── 7. DELETE + INSERT atomique via RPC PostgreSQL ──────────────────────────
+  const { data: insertedCount, error: rpcErr } = await admin.rpc('planifier_interventions', {
+    p_residence_id: residenceId,
+    p_lignes:       rowsFuturs,
+  })
+  if (rpcErr) {
+    console.error('[generer] ❌ RPC planifier_interventions échoué:', rpcErr.message)
+    return NextResponse.json({ error: rpcErr.message }, { status: 400 })
   }
 
-  console.log(`[generer] ✅ ${rows.length} interventions insérées dans la table interventions`)
+  console.log(`[generer] ✅ ${insertedCount} interventions insérées (transaction atomique)`)
 
-  const interventionsForUI = rows.map(r => ({
+  const interventionsForUI = rowsFuturs.map(r => ({
     date:       r.date_prevue,
     dayName:    DAY_NAMES[new Date(r.date_prevue + 'T00:00:00').getDay()],
     heureDebut: r.heure_debut_prevue,
@@ -206,7 +200,7 @@ export async function POST(req: NextRequest) {
   }))
 
   return NextResponse.json({
-    count:         rows.length,
+    count:         insertedCount as number,
     interventions: interventionsForUI,
     agentId:       res.agent_prefere_id,
   })

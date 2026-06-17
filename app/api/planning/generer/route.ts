@@ -72,6 +72,7 @@ export async function POST(req: NextRequest) {
   console.log('[generer] contrat:', contrat
     ? `${contrat.date_debut} → ${contrat.date_fin} | creneaux=${JSON.stringify(contrat.creneaux_acceptes)}`
     : 'AUCUN contrat actif')
+  console.log('Contrat trouvé:', contrat?.id, 'creneaux:', contrat?.creneaux_acceptes)
   if (!contrat)
     return NextResponse.json({ error: 'Aucun contrat actif pour cette résidence.' }, { status: 400 })
 
@@ -92,6 +93,7 @@ export async function POST(req: NextRequest) {
   console.log('[generer] taches hebdo:', taches?.length ?? 0,
     tachesErr ? `ERREUR: ${tachesErr.message}` : '',
     taches?.map(t => `"${t.libelle}"[${(t.jours_semaine ?? []).join(',')}]`).join(', '))
+  console.log('Tâches hebdo:', taches?.length, JSON.stringify(taches?.map(t => t.jours_semaine)))
 
   if (!taches?.length)
     return NextResponse.json(
@@ -183,6 +185,7 @@ export async function POST(req: NextRequest) {
   const rowsFuturs = rows.filter(r => r.date_prevue >= today)
 
   console.log(`[generer] ${rows.length} interventions générées, ${rowsFuturs.length} futures (>= ${today})`)
+  console.log('Interventions à créer:', rows?.length)
 
   if (!rowsFuturs.length)
     return NextResponse.json(
@@ -195,6 +198,7 @@ export async function POST(req: NextRequest) {
     p_residence_id: residenceId,
     p_lignes:       rowsFuturs,
   })
+  console.log('RPC result:', rpcErr, insertedCount)
   if (rpcErr) {
     console.error('[generer] ❌ RPC planifier_interventions échoué:', rpcErr.message)
     return NextResponse.json({ error: rpcErr.message }, { status: 400 })

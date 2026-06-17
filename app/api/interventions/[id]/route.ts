@@ -33,7 +33,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const updates: Record<string, string | null> = {}
   if (body.heureDebut !== undefined) updates.heure_debut_prevue = body.heureDebut || null
-  if (body.heureFin  !== undefined) updates.heure_fin_prevue   = body.heureFin  || null
+  if (body.heureFin   !== undefined) updates.heure_fin_prevue   = body.heureFin  || null
+  if (body.agentId    !== undefined) updates.agent_id           = body.agentId   || null
 
   const { error } = await admin.from('interventions').update(updates).eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })

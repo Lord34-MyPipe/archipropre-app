@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
 import ManagerNav from '@/components/manager/ManagerNav'
+import CopiloteWrapper from '@/components/manager/CopiloteWrapper'
 
 export default async function ManagerLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -16,6 +17,7 @@ export default async function ManagerLayout({ children }: { children: React.Reac
     <div className="min-h-screen bg-slate-100 flex">
       <ManagerNav />
       <main className="flex-1 ml-0 md:ml-64 min-h-screen">{children}</main>
+      <CopiloteWrapper />
     </div>
   )
 }

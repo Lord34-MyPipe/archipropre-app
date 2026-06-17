@@ -42,12 +42,19 @@ export async function POST(req: NextRequest) {
   const admin    = await createAdminClient()
   const semaine  = semaineDe(semaineParam)
 
-  // ── Date du jour côté serveur (source de vérité pour le copilote) ─────────────
-  const maintenant    = new Date()
-  const joursFR       = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi']
-  const moisFR        = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
-  const dateJourISO   = maintenant.toISOString().split('T')[0]  // YYYY-MM-DD
-  const dateJourLisible = `${joursFR[maintenant.getDay()]} ${maintenant.getDate()} ${moisFR[maintenant.getMonth()]} ${maintenant.getFullYear()}`
+  // ── Date du jour côté serveur, fuseau Europe/Paris ───────────────────────────
+  // toISOString() est UTC — en pleine nuit française on obtiendrait la veille.
+  // On passe par Intl pour obtenir la date locale réelle à Montpellier.
+  const maintenant  = new Date()
+  const TZ          = 'Europe/Paris'
+  // YYYY-MM-DD en heure Paris
+  const dateJourISO = new Intl.DateTimeFormat('fr-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(maintenant)
+  // "demain" : on incrémente à partir de la date Paris, pas UTC
+  const [pyear, pmonth, pday] = dateJourISO.split('-').map(Number)
+  const demainParis = new Date(pyear, pmonth - 1, pday + 1)  // objet local JS — on n'utilise que les champs numériques
+  const demainISO   = `${demainParis.getFullYear()}-${String(demainParis.getMonth() + 1).padStart(2, '0')}-${String(demainParis.getDate()).padStart(2, '0')}`
+  // Libellé lisible en français
+  const dateJourLisible = new Intl.DateTimeFormat('fr-FR', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(maintenant)
 
   // ── Récupérer les agents du manager ──────────────────────────────────────────
   const { data: agentProfiles } = await admin
@@ -236,10 +243,8 @@ export async function POST(req: NextRequest) {
 
   const systemPrompt = `Tu es le copilote planning d'Archipropre Services.
 
-DATE DU JOUR : ${dateJourLisible} (${dateJourISO})
-Quand le manager dit "aujourd'hui", utilise ${dateJourISO}. "Demain" = ${
-    (() => { const d = new Date(maintenant); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0] })()
-  }. Ne jamais inventer une date passée ou future arbitraire.
+DATE DU JOUR : ${dateJourLisible} (${dateJourISO}) — fuseau Europe/Paris
+Quand le manager dit "aujourd'hui", utilise ${dateJourISO}. "Demain" = ${demainISO}. Ne jamais inventer une date passée ou future arbitraire.
 
 RÈGLE ABSOLUE — ANTI-HALLUCINATION :
 Tu ne dois JAMAIS affirmer avoir créé, modifié, affecté ou supprimé quoi que ce soit en base de données.

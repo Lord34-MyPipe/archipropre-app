@@ -42,6 +42,13 @@ export async function POST(req: NextRequest) {
   const admin    = await createAdminClient()
   const semaine  = semaineDe(semaineParam)
 
+  // ── Date du jour côté serveur (source de vérité pour le copilote) ─────────────
+  const maintenant    = new Date()
+  const joursFR       = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi']
+  const moisFR        = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
+  const dateJourISO   = maintenant.toISOString().split('T')[0]  // YYYY-MM-DD
+  const dateJourLisible = `${joursFR[maintenant.getDay()]} ${maintenant.getDate()} ${moisFR[maintenant.getMonth()]} ${maintenant.getFullYear()}`
+
   // ── Récupérer les agents du manager ──────────────────────────────────────────
   const { data: agentProfiles } = await admin
     .from('profiles')
@@ -59,6 +66,7 @@ export async function POST(req: NextRequest) {
     { data: interventionsData },
     { data: absencesData },
     { data: congesData },
+    { data: residencesData },
   ] = await Promise.all([
     agentIds.length > 0
       ? admin.from('v_charge_agent').select('*').in('agent_id', agentIds)
@@ -98,6 +106,12 @@ export async function POST(req: NextRequest) {
           .gte('date_fin', semaine.debut)
           .eq('statut', 'approuve')
       : Promise.resolve({ data: [] }),
+
+    // Toutes les résidences du manager (même sans planning actif)
+    admin.from('residences')
+      .select('id, nom, adresse, lat, lng, actif')
+      .eq('manager_id', user.id)
+      .order('nom'),
   ])
 
   // ── Formater les données pour le system prompt ────────────────────────────────
@@ -125,11 +139,16 @@ export async function POST(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     profiles: any
   }
+  type ResidenceRow = {
+    id: string; nom: string; adresse: string | null
+    lat: number | null; lng: number | null; actif: boolean
+  }
 
   const agents        = (chargeData       ?? []) as ChargeRow[]
   const conflits      = (conflitsData     ?? []) as ConflitRow[]
   const interventions = (interventionsData ?? []) as unknown as InterventionRow[]
   const absences      = [...(absencesData ?? []), ...(congesData ?? [])] as unknown as AbsenceRow[]
+  const residences    = (residencesData   ?? []) as ResidenceRow[]
 
   const agentsStr = agents.length > 0
     ? agents.map(a =>
@@ -163,6 +182,14 @@ export async function POST(req: NextRequest) {
         return `${nom} : absent(e) du ${a.date_debut} au ${a.date_fin}`
       }).join('\n')
     : 'Aucune absence en cours'
+
+  const residencesStr = residences.length > 0
+    ? residences.map(r => {
+        const gps   = (r.lat != null && r.lng != null) ? `lat=${r.lat},lng=${r.lng}` : 'GPS manquant'
+        const etat  = r.actif ? 'actif' : 'inactif'
+        return `residence_id=${r.id} | ${r.nom} | ${r.adresse ?? 'adresse inconnue'} | ${gps} | ${etat}`
+      }).join('\n')
+    : 'Aucune résidence'
 
   // ── Temps de trajet réels entre interventions consécutives ───────────────────
   // Grouper par (agent_id, date_prevue), trier par heure_debut, calculer trajets
@@ -209,12 +236,20 @@ export async function POST(req: NextRequest) {
 
   const systemPrompt = `Tu es le copilote planning d'Archipropre Services.
 
+DATE DU JOUR : ${dateJourLisible} (${dateJourISO})
+Quand le manager dit "aujourd'hui", utilise ${dateJourISO}. "Demain" = ${
+    (() => { const d = new Date(maintenant); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0] })()
+  }. Ne jamais inventer une date passée ou future arbitraire.
+
 RÈGLE ABSOLUE — ANTI-HALLUCINATION :
 Tu ne dois JAMAIS affirmer avoir créé, modifié, affecté ou supprimé quoi que ce soit en base de données.
 Tu ne fais que PROPOSER. Toute action réelle passe obligatoirement par une validation explicite du manager via un bouton dans l'interface.
 N'écris jamais "c'est créé", "c'est fait", "intervention enregistrée", "client ajouté" ni aucune formulation similaire.
 Si tu ne peux pas matérialiser une demande par une proposition structurée (bloc [ACTIONS], [PROPOSITION_CLIENT] ou [PROPOSITION_INTERVENTION]), dis-le clairement au lieu d'inventer un succès.
 Tu as accès en temps réel aux données suivantes (semaine du ${semaine.debut} au ${semaine.fin}) :
+
+RÉSIDENCES DU MANAGER (liste complète — utilise ces residence_id pour toute proposition) :
+${residencesStr}
 
 AGENTS ET CHARGE :
 ${agentsStr}
@@ -282,7 +317,7 @@ Si le manager demande de créer un nouveau client, une nouvelle résidence ou un
 
 INTERVENTION PONCTUELLE :
 Si le manager demande de créer, ajouter ou planifier une intervention ponctuelle (hors récurrence), tu dois :
-1. Identifier la résidence (utilise le nom pour trouver le residence_id dans INTERVENTIONS ou demande si ambigu), l'agent, la date, le créneau horaire et le libellé de la tâche.
+1. Identifier la résidence (cherche son nom dans la section RÉSIDENCES DU MANAGER ci-dessus pour obtenir le residence_id réel — ne jamais inventer un UUID), l'agent, la date, le créneau horaire et le libellé de la tâche.
 2. Si une information clé manque (résidence, date, créneau), demande-la avant d'émettre le bloc.
 3. Terminer ta réponse par un bloc [PROPOSITION_INTERVENTION], format strict SANS markdown autour :
 

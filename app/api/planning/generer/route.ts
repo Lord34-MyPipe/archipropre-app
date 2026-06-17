@@ -100,18 +100,32 @@ export async function POST(req: NextRequest) {
     )
 
   // ── 4. Jours actifs ──────────────────────────────────────────────────────────
-  const joursFromTaches = [...new Set(taches.flatMap(t => t.jours_semaine ?? []))]
-  const joursBase = joursObliges.length > 0 ? joursObliges : joursFromTaches
-  const joursActifs = joursBase.filter(j => !joursInterdits.includes(j))
+  const JOURS_FR: Record<string, string> = {
+    lundi: 'Lundi', mardi: 'Mardi', mercredi: 'Mercredi',
+    jeudi: 'Jeudi', vendredi: 'Vendredi', samedi: 'Samedi', dimanche: 'Dimanche',
+  }
 
+  const joursFromTaches = [...new Set(taches.flatMap(t => t.jours_semaine ?? []))]
+  const joursBase       = joursObliges.length > 0 ? joursObliges : joursFromTaches
+  const joursSkipped    = joursBase.filter(j => joursInterdits.includes(j))
+  const joursActifs     = joursBase.filter(j => !joursInterdits.includes(j))
+
+  joursSkipped.forEach(j =>
+    console.log(`[generer] Jour "${j}" ignoré car interdit par le contrat`)
+  )
   console.log('[generer] jours actifs:', joursActifs,
     `(source: ${joursObliges.length > 0 ? 'jours_obliges du contrat' : 'taches_template'})`)
 
-  if (!joursActifs.length)
-    return NextResponse.json(
-      { error: 'Aucun jour disponible (tous interdits ou liste vide).' },
-      { status: 400 }
-    )
+  if (!joursActifs.length) {
+    const detail = joursSkipped.length > 0
+      ? `Tous les jours (${joursSkipped.map(j => JOURS_FR[j] ?? j).join(', ')}) sont interdits par le contrat. Modifiez les tâches ou les jours interdits.`
+      : 'Aucun jour disponible (liste vide).'
+    return NextResponse.json({ error: `Impossible de générer : ${detail}` }, { status: 400 })
+  }
+
+  const warnings: string[] = joursSkipped.map(
+    j => `${JOURS_FR[j] ?? j} ignoré (jour interdit par le contrat)`
+  )
 
   // Durée totale par jour (somme des duree_minutes des tâches actives ce jour)
   const dureePourJour = new Map<string, number>()
@@ -203,6 +217,7 @@ export async function POST(req: NextRequest) {
     count:         insertedCount as number,
     interventions: interventionsForUI,
     agentId:       res.agent_prefere_id,
+    warnings,
   })
 }
 

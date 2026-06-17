@@ -136,6 +136,7 @@ export default function ResidenceCard({ residence: initial }: Props) {
   const [genConfirm, setGenConfirm]     = useState(false)
   const [genLoading, setGenLoading]     = useState(false)
   const [genError, setGenError]         = useState('')
+  const [genWarnings, setGenWarnings]   = useState<string[]>([])
   const [regenLoading, setRegenLoading] = useState(false)
   const [regenError, setRegenError]     = useState('')
   const [toggling, setToggling]         = useState(false)
@@ -201,7 +202,16 @@ export default function ResidenceCard({ residence: initial }: Props) {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Erreur de génération')
       setGenConfirm(false)
-      router.push(`/manager/residences/${initial.id}/planning`)
+      const warns: string[] = json.warnings ?? []
+      if (warns.length > 0) {
+        setGenWarnings(warns)
+        setTimeout(() => {
+          setGenWarnings([])
+          router.push(`/manager/residences/${initial.id}/planning`)
+        }, 5000)
+      } else {
+        router.push(`/manager/residences/${initial.id}/planning`)
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Erreur inconnue'
       setGenError(msg)
@@ -458,6 +468,15 @@ export default function ResidenceCard({ residence: initial }: Props) {
           <p className="mt-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
             Erreur : {genError}
           </p>
+        )}
+
+        {/* Warnings génération planning */}
+        {genWarnings.length > 0 && (
+          <div className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 space-y-0.5">
+            {genWarnings.map((w, i) => (
+              <p key={i}>⚠️ {w}</p>
+            ))}
+          </div>
         )}
 
         {/* Token QR (caché par défaut) */}

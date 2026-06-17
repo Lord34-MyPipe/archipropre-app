@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import type { Profile } from '@/lib/types'
 import AgentFormModal from './AgentFormModal'
 import AgentAbsenceDrawer from './AgentAbsenceDrawer'
@@ -15,32 +15,158 @@ interface AgentWithStats extends Profile {
   stats: { total: number; terminees: number }
 }
 
+type RenderItem =
+  | { type: 'solo';   agent: AgentWithStats }
+  | { type: 'binome'; primary: AgentWithStats; secondary: AgentWithStats }
+
 interface Props {
   agents: AgentWithStats[]
 }
 
+// ── Carte agent individuelle ──────────────────────────────────────────────────
+
+function AgentCard({
+  agent,
+  isLoading,
+  onEdit,
+  onToggle,
+  onCongés,
+}: {
+  agent: AgentWithStats
+  isLoading: boolean
+  onEdit: () => void
+  onToggle: () => void
+  onCongés: () => void
+}) {
+  const dispo = agent.disponibilites as Record<string, boolean> | null
+  const joursActifs = Object.entries(dispo ?? {}).filter(([, v]) => v).map(([k]) => k)
+
+  return (
+    <div className={`bg-white rounded-2xl border border-slate-100 p-5 transition-opacity ${!agent.actif ? 'opacity-60' : ''}`}>
+      <div className="flex items-start gap-4">
+        {/* Avatar */}
+        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-lg shrink-0 ${
+          agent.actif ? 'bg-[#1A5FA8]' : 'bg-slate-300'
+        }`}>
+          {agent.prenom?.[0]}{agent.nom?.[0]}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-semibold text-slate-800">{agent.prenom} {agent.nom}</h3>
+            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-medium">Agent</span>
+            {agent.vehicule && <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded-full">🚗</span>}
+            {!agent.actif && <span className="px-2 py-0.5 bg-slate-100 text-slate-400 text-xs rounded-full">Inactif</span>}
+          </div>
+          <p className="text-sm text-slate-500 mt-0.5 truncate">{agent.email}</p>
+          {agent.telephone && (
+            <a href={`tel:${agent.telephone}`} className="text-sm text-[#0BBFBF] font-medium hover:underline mt-0.5 block">
+              {agent.telephone}
+            </a>
+          )}
+        </div>
+
+        {/* Toggle actif */}
+        <button onClick={onToggle} disabled={isLoading}
+          className={`relative w-11 h-6 rounded-full transition-colors shrink-0 disabled:opacity-50 ${
+            agent.actif ? 'bg-[#0BBFBF]' : 'bg-slate-300'
+          }`}>
+          {isLoading
+            ? <span className="absolute inset-0 flex items-center justify-center">
+                <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"/>
+              </span>
+            : <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${agent.actif ? 'translate-x-5' : ''}`}/>
+          }
+        </button>
+      </div>
+
+      {/* Stats jour */}
+      <div className="mt-4 grid grid-cols-3 gap-3">
+        {[
+          { label: "Aujourd'hui", value: agent.stats.total },
+          { label: 'Terminées',   value: agent.stats.terminees },
+          { label: 'Taux',        value: agent.stats.total ? `${Math.round(agent.stats.terminees / agent.stats.total * 100)}%` : '—' },
+        ].map(s => (
+          <div key={s.label} className="text-center bg-slate-50 rounded-xl py-2">
+            <p className="text-lg font-bold text-[#1A5FA8]">{s.value}</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Tags */}
+      {((agent.competences ?? []).length > 0 || (agent.zones_geo ?? []).length > 0) && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {(agent.zones_geo ?? []).map(z => (
+            <span key={z} className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs rounded-full">{z}</span>
+          ))}
+          {(agent.competences ?? []).map(c => (
+            <span key={c} className="px-2 py-0.5 bg-purple-50 text-purple-700 text-xs rounded-full">{c}</span>
+          ))}
+        </div>
+      )}
+
+      {/* Disponibilités */}
+      {joursActifs.length > 0 && (
+        <div className="mt-3 flex gap-1.5">
+          {['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'].map(j => (
+            <div key={j}
+              className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold ${
+                joursActifs.includes(j) ? 'bg-[#1A5FA8] text-white' : 'bg-slate-100 text-slate-300'
+              }`}>
+              {JOURS_LABELS[j]}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="mt-4 flex gap-2 pt-3 border-t border-slate-100">
+        <button onClick={onEdit}
+          className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-200 transition-colors">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125"/>
+          </svg>
+          Modifier
+        </button>
+        <button onClick={onCongés}
+          className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 text-amber-700 rounded-xl text-sm font-medium hover:bg-amber-100 transition-colors">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5m-9-6h.008v.008H12V9zm0 3.75h.008v.008H12v-.008zm0 3.75h.008v.008H12v-.008z"/>
+          </svg>
+          Congés
+        </button>
+        <a href={`/manager/planning?agent=${agent.id}`}
+          className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-200 transition-colors">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5"/>
+          </svg>
+          Planning
+        </a>
+        <span className="ml-auto text-xs text-slate-400 self-center">{agent.contrat_heures_hebdo}h/sem</span>
+      </div>
+    </div>
+  )
+}
+
+// ── Composant principal ───────────────────────────────────────────────────────
+
 export default function AgentsClient({ agents: initial }: Props) {
   const router = useRouter()
-  const [agents, setAgents] = useState(initial)
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editing, setEditing] = useState<Profile | null>(null)
+  const [agents, setAgents]               = useState(initial)
+  const [modalOpen, setModalOpen]         = useState(false)
+  const [editing, setEditing]             = useState<Profile | null>(null)
   const [confirmDeactivate, setConfirmDeactivate] = useState<Profile | null>(null)
-  const [loading, setLoading] = useState<string | null>(null)
+  const [loading, setLoading]             = useState<string | null>(null)
   const [absenceDrawerAgent, setAbsenceDrawerAgent] = useState<Profile | null>(null)
 
   function openCreate() { setEditing(null); setModalOpen(true) }
   function openEdit(a: Profile) { setEditing(a); setModalOpen(true) }
 
-  function onSaved() {
-    setModalOpen(false)
-    router.refresh()
-  }
+  function onSaved() { setModalOpen(false); router.refresh() }
 
   async function toggleActif(agent: Profile) {
-    if (agent.actif) {
-      setConfirmDeactivate(agent)
-      return
-    }
+    if (agent.actif) { setConfirmDeactivate(agent); return }
     setLoading(agent.id)
     await fetch('/api/agents', {
       method: 'PATCH',
@@ -64,6 +190,32 @@ export default function AgentsClient({ agents: initial }: Props) {
     router.refresh()
   }
 
+  // ── Groupage binômes ──────────────────────────────────────────────────────
+  const renderItems = useMemo<RenderItem[]>(() => {
+    const agentMap = new Map(agents.map(a => [a.id, a]))
+    const done = new Set<string>()
+    const items: RenderItem[] = []
+
+    for (const agent of agents) {
+      if (done.has(agent.id)) continue
+      const partnerId = agent.binome_agent_id
+      const partner = partnerId ? agentMap.get(partnerId) : undefined
+
+      if (partner && !done.has(partner.id)) {
+        // Afficher une seule fois : primary = UUID lexicalement plus petit
+        const primary   = agent.id < partner.id ? agent : partner
+        const secondary = agent.id < partner.id ? partner : agent
+        items.push({ type: 'binome', primary, secondary })
+        done.add(agent.id)
+        done.add(partner.id)
+      } else {
+        items.push({ type: 'solo', agent })
+        done.add(agent.id)
+      }
+    }
+    return items
+  }, [agents])
+
   return (
     <>
       <div className="p-4 md:p-8 pb-24 md:pb-8 space-y-4">
@@ -79,120 +231,66 @@ export default function AgentsClient({ agents: initial }: Props) {
           </button>
         </div>
 
-        {/* Liste des agents */}
+        {/* Liste */}
         <div className="space-y-3">
-          {agents.map(agent => {
-            const dispo = agent.disponibilites as Record<string, boolean> | null
-            const joursActifs = Object.entries(dispo ?? {}).filter(([, v]) => v).map(([k]) => k)
-            const isLoading = loading === agent.id
+          {renderItems.map(item => {
+            if (item.type === 'solo') {
+              return (
+                <AgentCard
+                  key={item.agent.id}
+                  agent={item.agent}
+                  isLoading={loading === item.agent.id}
+                  onEdit={() => openEdit(item.agent)}
+                  onToggle={() => toggleActif(item.agent)}
+                  onCongés={() => setAbsenceDrawerAgent(item.agent)}
+                />
+              )
+            }
+
+            // Carte binôme englobante
+            const { primary, secondary } = item
+            const facteur = primary.facteur_binome ?? 0.60
+            const gainPct = Math.round((1 - facteur) * 100)
 
             return (
-              <div key={agent.id}
-                className={`bg-white rounded-2xl border border-slate-100 p-5 transition-opacity ${!agent.actif ? 'opacity-60' : ''}`}>
-                <div className="flex items-start gap-4">
-                  {/* Avatar */}
-                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-lg shrink-0 ${
-                    agent.actif ? 'bg-[#1A5FA8]' : 'bg-slate-300'
-                  }`}>
-                    {agent.prenom?.[0]}{agent.nom?.[0]}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-semibold text-slate-800">{agent.prenom} {agent.nom}</h3>
-                      <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-medium">Agent</span>
-                      {agent.vehicule && <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded-full">🚗</span>}
-                      {!agent.actif && <span className="px-2 py-0.5 bg-slate-100 text-slate-400 text-xs rounded-full">Inactif</span>}
-                    </div>
-                    <p className="text-sm text-slate-500 mt-0.5 truncate">{agent.email}</p>
-                    {agent.telephone && (
-                      <a href={`tel:${agent.telephone}`} className="text-sm text-[#0BBFBF] font-medium hover:underline mt-0.5 block">
-                        {agent.telephone}
-                      </a>
-                    )}
-                  </div>
-
-                  {/* Toggle actif */}
-                  <button onClick={() => toggleActif(agent)} disabled={isLoading}
-                    className={`relative w-11 h-6 rounded-full transition-colors shrink-0 disabled:opacity-50 ${
-                      agent.actif ? 'bg-[#0BBFBF]' : 'bg-slate-300'
-                    }`}>
-                    {isLoading
-                      ? <span className="absolute inset-0 flex items-center justify-center">
-                          <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"/>
-                        </span>
-                      : <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${agent.actif ? 'translate-x-5' : ''}`}/>
-                    }
-                  </button>
+              <div key={`binome-${primary.id}`}
+                className="rounded-2xl border-2 border-[#0BBFBF]/30 bg-[#0BBFBF]/5 p-3 space-y-2">
+                {/* Header binôme */}
+                <div className="flex items-center gap-2 px-1">
+                  <span className="flex items-center gap-1.5 px-2.5 py-1 bg-[#0BBFBF] text-white text-xs font-semibold rounded-full">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/>
+                    </svg>
+                    Binôme
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    {primary.prenom} {primary.nom} &amp; {secondary.prenom} {secondary.nom}
+                  </span>
                 </div>
 
-                {/* Stats jour */}
-                <div className="mt-4 grid grid-cols-3 gap-3">
-                  {[
-                    { label: "Aujourd'hui", value: agent.stats.total },
-                    { label: 'Terminées', value: agent.stats.terminees },
-                    { label: 'Taux', value: agent.stats.total ? `${Math.round(agent.stats.terminees / agent.stats.total * 100)}%` : '—' },
-                  ].map(s => (
-                    <div key={s.label} className="text-center bg-slate-50 rounded-xl py-2">
-                      <p className="text-lg font-bold text-[#1A5FA8]">{s.value}</p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">{s.label}</p>
-                    </div>
-                  ))}
-                </div>
+                {/* Agent principal */}
+                <AgentCard
+                  agent={primary}
+                  isLoading={loading === primary.id}
+                  onEdit={() => openEdit(primary)}
+                  onToggle={() => toggleActif(primary)}
+                  onCongés={() => setAbsenceDrawerAgent(primary)}
+                />
 
-                {/* Tags compétences + zones */}
-                {((agent.competences ?? []).length > 0 || (agent.zones_geo ?? []).length > 0) && (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {(agent.zones_geo ?? []).map(z => (
-                      <span key={z} className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs rounded-full">{z}</span>
-                    ))}
-                    {(agent.competences ?? []).map(c => (
-                      <span key={c} className="px-2 py-0.5 bg-purple-50 text-purple-700 text-xs rounded-full">{c}</span>
-                    ))}
-                  </div>
-                )}
+                {/* Agent secondaire */}
+                <AgentCard
+                  agent={secondary}
+                  isLoading={loading === secondary.id}
+                  onEdit={() => openEdit(secondary)}
+                  onToggle={() => toggleActif(secondary)}
+                  onCongés={() => setAbsenceDrawerAgent(secondary)}
+                />
 
-                {/* Disponibilités */}
-                {joursActifs.length > 0 && (
-                  <div className="mt-3 flex gap-1.5">
-                    {['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'].map(j => (
-                      <div key={j}
-                        className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold ${
-                          joursActifs.includes(j)
-                            ? 'bg-[#1A5FA8] text-white'
-                            : 'bg-slate-100 text-slate-300'
-                        }`}>
-                        {JOURS_LABELS[j]}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Actions */}
-                <div className="mt-4 flex gap-2 pt-3 border-t border-slate-100">
-                  <button onClick={() => openEdit(agent)}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-200 transition-colors">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125"/>
-                    </svg>
-                    Modifier
-                  </button>
-                  <button onClick={() => setAbsenceDrawerAgent(agent)}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 text-amber-700 rounded-xl text-sm font-medium hover:bg-amber-100 transition-colors">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5m-9-6h.008v.008H12V9zm0 3.75h.008v.008H12v-.008zm0 3.75h.008v.008H12v-.008z"/>
-                    </svg>
-                    Congés
-                  </button>
-                  <a href={`/manager/planning?agent=${agent.id}`}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-200 transition-colors">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5"/>
-                    </svg>
-                    Planning
-                  </a>
-                  <span className="ml-auto text-xs text-slate-400 self-center">
-                    {agent.contrat_heures_hebdo}h/sem
+                {/* Footer vitesse */}
+                <div className="flex items-center gap-2 px-2 pt-1">
+                  <span className="text-xs text-[#0BBFBF]">
+                    ⚡ Vitesse binôme : ×{facteur.toFixed(2)}
+                    {gainPct > 0 ? ` (${gainPct}% plus rapide à deux)` : ' (aucun gain)'}
                   </span>
                 </div>
               </div>

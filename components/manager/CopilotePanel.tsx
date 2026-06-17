@@ -3,6 +3,19 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
+import dynamic from 'next/dynamic'
+
+const MiniMapMarqueur = dynamic(
+  () => import('@/components/manager/MiniMapMarqueur'),
+  {
+    ssr:     false,
+    loading: () => (
+      <div className="h-[200px] bg-slate-100 rounded-lg flex items-center justify-center text-slate-400 text-xs">
+        Chargement de la carte…
+      </div>
+    ),
+  }
+)
 
 interface PropositionClient {
   nom:                string
@@ -221,6 +234,14 @@ export default function CopilotePanel({ open, onClose, semaine }: Props) {
     }
   }
 
+  function handleMarkerMove(msgId: string, lat: number, lng: number) {
+    setMessages(prev => prev.map(m =>
+      m.id === msgId && m.propositionClient
+        ? { ...m, propositionClient: { ...m.propositionClient, lat, lng } }
+        : m
+    ))
+  }
+
   return (
     <>
       {/* Overlay mobile */}
@@ -302,7 +323,7 @@ export default function CopilotePanel({ open, onClose, semaine }: Props) {
                           <span>🏢</span> Nouveau client à créer
                         </p>
                       </div>
-                      <div className="px-4 py-3 space-y-1">
+                      <div className="px-4 py-3 space-y-2">
                         {pc.erreur ? (
                           <p className="text-xs text-red-600">{pc.erreur}</p>
                         ) : (
@@ -310,9 +331,19 @@ export default function CopilotePanel({ open, onClose, semaine }: Props) {
                             <p className="text-xs font-semibold text-slate-800">{pc.nom}</p>
                             <p className="text-xs text-slate-500">{pc.adresse_normalisee}</p>
                             {pc.lat != null && pc.lng != null && (
-                              <p className="text-xs text-slate-400">
-                                GPS : {pc.lat.toFixed(5)}, {pc.lng.toFixed(5)}
-                              </p>
+                              <>
+                                <MiniMapMarqueur
+                                  lat={pc.lat}
+                                  lng={pc.lng}
+                                  onMove={(lat, lng) => handleMarkerMove(msg.id, lat, lng)}
+                                />
+                                <p className="text-[10px] text-slate-400 text-center">
+                                  Déplacez le marqueur pour corriger la position
+                                </p>
+                                <p className="text-[10px] text-slate-500 text-center font-mono">
+                                  {pc.lat.toFixed(5)}, {pc.lng.toFixed(5)}
+                                </p>
+                              </>
                             )}
                           </>
                         )}

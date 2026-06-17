@@ -383,17 +383,37 @@ export default function AgentFormModal({ agent, agents = [], onClose, onSaved }:
                 </select>
               </div>
 
-              {/* Info symétrique */}
+              {/* Vérification contrat + info symétrique */}
               {form.binome_agent_id && (() => {
                 const binome = agents.find(a => a.id === form.binome_agent_id)
-                return binome ? (
-                  <div className="mb-4 flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs">
-                    <span className="shrink-0">⚠️</span>
-                    <span>
-                      {agent?.prenom} sera automatiquement affecté·e avec {binome.prenom} {binome.nom} sur toutes ses résidences
-                    </span>
+                if (!binome) return null
+                const hA = Number(form.contrat_heures_hebdo)
+                const hB = binome.contrat_heures_hebdo
+                const coherent = hA === hB
+                return (
+                  <div className="mb-4 space-y-2">
+                    {coherent ? (
+                      <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-xs">
+                        <span className="shrink-0">✓</span>
+                        <span>Contrats cohérents ({hA}h/sem)</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs">
+                        <span className="shrink-0">⚠️</span>
+                        <span>
+                          Incohérence : {agent?.prenom} travaille {hA}h/sem mais {binome.prenom} travaille {hB}h/sem.
+                          En binôme indissociable, ils doivent avoir le même contrat horaire. Ajustez l&apos;un des deux contrats.
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex items-start gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-600 text-xs">
+                      <span className="shrink-0">ℹ️</span>
+                      <span>
+                        {agent?.prenom} sera automatiquement affecté·e avec {binome.prenom} {binome.nom} sur toutes ses résidences
+                      </span>
+                    </div>
                   </div>
-                ) : null
+                )
               })()}
 
               {/* Facteur vitesse */}

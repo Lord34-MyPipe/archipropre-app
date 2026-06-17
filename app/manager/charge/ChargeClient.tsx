@@ -194,9 +194,18 @@ export default function ChargeClient({ agents }: Props) {
                       <span className="text-xs px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded-full">Indisponible</span>
                     )}
                   </div>
-                  {agent.binome_nom && (
-                    <p className="text-xs text-[#0BBFBF] mb-1">Binôme · {agent.nom_complet.split(' ')[0]} + {agent.binome_nom.split(' ')[0]}</p>
-                  )}
+                  {agent.binome_nom && (() => {
+                    const contratsOk = agent.binome_heures_hebdo === Math.round(agent.capacite_theorique)
+                    return contratsOk ? (
+                      <p className="text-xs text-[#0BBFBF] mb-1">
+                        Binôme · {agent.nom_complet.split(' ')[0]} + {agent.binome_nom.split(' ')[0]}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-amber-600 mb-1">
+                        ⚠️ Contrats différents ({Math.round(agent.capacite_theorique)}h vs {agent.binome_heures_hebdo}h)
+                      </p>
+                    )
+                  })()}
 
                   {/* Barre de progression */}
                   <div className="relative h-2.5 bg-slate-100 rounded-full overflow-visible">

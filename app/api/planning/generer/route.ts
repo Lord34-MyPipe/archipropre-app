@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
 
   // ── 2. Contrat actif ─────────────────────────────────────────────────────────
   const { data: contrat } = await admin.from('contrats_residences')
-    .select('date_debut, date_fin, jours_obliges, jours_interdits, creneaux_acceptes')
+    .select('id, date_debut, date_fin, jours_obliges, jours_interdits, creneaux_acceptes')
     .eq('residence_id', residenceId).eq('actif', true)
     .order('created_at', { ascending: false }).limit(1).maybeSingle()
 

@@ -204,16 +204,15 @@ export default function ResidenceCard({ residence: initial }: Props) {
       if (!res.ok) throw new Error(json.error ?? 'Erreur de génération')
       setGenConfirm(false)
       setEtatLocal('planning_actif')
-      router.refresh()
       const warns: string[] = json.warnings ?? []
       if (warns.length > 0) {
         setGenWarnings(warns)
         setTimeout(() => {
           setGenWarnings([])
-          router.push(`/manager/residences/${initial.id}/planning`)
+          window.location.href = `/manager/residences/${initial.id}/planning`
         }, 5000)
       } else {
-        router.push(`/manager/residences/${initial.id}/planning`)
+        window.location.href = `/manager/residences/${initial.id}/planning`
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Erreur inconnue'

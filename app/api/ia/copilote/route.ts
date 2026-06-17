@@ -11,15 +11,15 @@ interface HistoriqueMessage {
   content: string
 }
 
-function semaineCourante(): { debut: string; fin: string } {
-  const now   = new Date()
-  const day   = now.getDay() === 0 ? 7 : now.getDay()
-  const lundi = new Date(now)
-  lundi.setDate(now.getDate() - (day - 1))
-  const vendredi = new Date(lundi)
-  vendredi.setDate(lundi.getDate() + 6)
+function semaineDe(dateRef?: string | null): { debut: string; fin: string } {
+  const base  = dateRef ? new Date(dateRef + 'T12:00:00') : new Date()
+  const day   = base.getDay() === 0 ? 7 : base.getDay()
+  const lundi = new Date(base)
+  lundi.setDate(base.getDate() - (day - 1))
+  const dimanche = new Date(lundi)
+  dimanche.setDate(lundi.getDate() + 6)
   const fmt = (d: Date) => d.toISOString().split('T')[0]
-  return { debut: fmt(lundi), fin: fmt(vendredi) }
+  return { debut: fmt(lundi), fin: fmt(dimanche) }
 }
 
 export async function POST(req: NextRequest) {
@@ -30,11 +30,15 @@ export async function POST(req: NextRequest) {
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   if (profile?.role !== 'manager') return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
 
-  const { message, historique = [] }: { message: string; historique: HistoriqueMessage[] } = await req.json()
+  const { message, historique = [], semaine: semaineParam }: {
+    message: string
+    historique: HistoriqueMessage[]
+    semaine?: string | null
+  } = await req.json()
   if (!message?.trim()) return NextResponse.json({ error: 'Message vide' }, { status: 400 })
 
   const admin    = await createAdminClient()
-  const semaine  = semaineCourante()
+  const semaine  = semaineDe(semaineParam)
 
   // ── Récupérer les agents du manager ──────────────────────────────────────────
   const { data: agentProfiles } = await admin

@@ -1,10 +1,13 @@
 'use client'
 
 import { useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import CopilotePanel from './CopilotePanel'
 
 export default function CopiloteWrapper() {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen]   = useState(false)
+  const searchParams       = useSearchParams()
+  const dateParam          = searchParams.get('date')
 
   return (
     <>
@@ -19,7 +22,7 @@ export default function CopiloteWrapper() {
         <span className="text-white text-2xl leading-none">🤖</span>
       </button>
 
-      <CopilotePanel open={open} onClose={() => setOpen(false)} />
+      <CopilotePanel open={open} onClose={() => setOpen(false)} semaine={dateParam} />
     </>
   )
 }

@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
 import ManagerNav from '@/components/manager/ManagerNav'
@@ -17,7 +18,9 @@ export default async function ManagerLayout({ children }: { children: React.Reac
     <div className="min-h-screen bg-slate-100 flex">
       <ManagerNav />
       <main className="flex-1 ml-0 md:ml-64 min-h-screen">{children}</main>
-      <CopiloteWrapper />
+      <Suspense fallback={null}>
+        <CopiloteWrapper />
+      </Suspense>
     </div>
   )
 }

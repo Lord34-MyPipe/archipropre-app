@@ -57,9 +57,10 @@ function genId() {
 interface Props {
   open: boolean
   onClose: () => void
+  semaine?: string | null
 }
 
-export default function CopilotePanel({ open, onClose }: Props) {
+export default function CopilotePanel({ open, onClose, semaine }: Props) {
   const router                  = useRouter()
   const [messages, setMessages] = useState<Message[]>([MESSAGE_ACCUEIL])
   const [input, setInput]       = useState('')
@@ -102,7 +103,7 @@ export default function CopilotePanel({ open, onClose }: Props) {
       const res  = await fetch('/api/ia/copilote', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ message: text, historique }),
+        body:    JSON.stringify({ message: text, historique, semaine: semaine ?? null }),
       })
       const data = await res.json()
       const assistantMsg: Message = {

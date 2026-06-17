@@ -100,16 +100,11 @@ export async function calculerTrajet(
       duree += forfait
     }
 
-    // ── Écriture cache ───────────────────────────────────────────────────────
-    await admin.from('distances_cache').insert({
-      origine_lat: oLat,
-      origine_lng: oLng,
-      dest_lat:    dLat,
-      dest_lng:    dLng,
-      mode,
-      duree_min:   duree,
-      distance_km: distance,
-    })
+    // ── Écriture cache (ON CONFLICT DO NOTHING : idempotent si race condition) ─
+    await admin.from('distances_cache').upsert(
+      { origine_lat: oLat, origine_lng: oLng, dest_lat: dLat, dest_lng: dLng, mode, duree_min: duree, distance_km: distance },
+      { onConflict: 'origine_lat,origine_lng,dest_lat,dest_lng,mode', ignoreDuplicates: true },
+    )
 
     return { duree_minutes: duree, distance_km: distance, depuis_cache: false }
   } catch (err) {

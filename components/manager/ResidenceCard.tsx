@@ -119,7 +119,8 @@ interface Props {
 
 export default function ResidenceCard({ residence: initial }: Props) {
   const router     = useRouter()
-  const etat       = initial._etat?.etat ?? 'a_configurer'
+  const [etatLocal, setEtatLocal] = useState<ResidenceEtat | null>(null)
+  const etat: ResidenceEtat       = etatLocal ?? (initial._etat?.etat ?? 'a_configurer')
   const etatCfg    = ETAT_CONFIG[etat]
 
   const [token, setToken]               = useState(initial.qr_code_token)
@@ -202,6 +203,7 @@ export default function ResidenceCard({ residence: initial }: Props) {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Erreur de génération')
       setGenConfirm(false)
+      setEtatLocal('planning_actif')
       router.refresh()
       const warns: string[] = json.warnings ?? []
       if (warns.length > 0) {

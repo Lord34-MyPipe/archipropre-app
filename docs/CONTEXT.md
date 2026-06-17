@@ -114,27 +114,33 @@ L'état se calcule automatiquement, aucun champ à maintenir.
 ✅ Génération planning depuis creneaux_acceptes + jours_semaine taches_template
 ✅ Idempotence régénération planning — transaction PostgreSQL planifier_interventions
 ✅ Optimistic update badge résidence après génération (window.location.href)
-✅ Fix camelCase/snake_case dans TacheModal (duree_minutes, frequence_type…)
 ✅ Vue v_conflits_planning — détection automatique des chevauchements horaires par agent
 ✅ Vues Jour/Semaine/Mois sur /manager/planning avec navigation ← →
 ✅ Correction v_etat_residence — lit interventions (plus interventions_planifiees legacy)
 ✅ Génération planning corrigée — aucun jour exclu par défaut,
    seuls jours_interdits du contrat font foi
+✅ Binôme d'agents — configuration, affectation automatique,
+   interventions miroir, badge visuel sur planning et agents
+✅ Alerte incohérence contrat horaire entre binômes
+✅ Moteur IA suggestion d'agent (POST /api/residences/suggest-agent)
+   avec GPS, charge, disponibilités, bouton "✨ Obtenir une suggestion IA"
+   dans AgentAttitreModal
+✅ Copilote IA conversationnel (POST /api/ia/copilote)
+   — panneau slide-in 420px, contextuel par semaine (?date= URL),
+   raccourcis rapides, réassignation + décalage horaire en langage naturel,
+   application directe en base, rendu Markdown, router.refresh() après action
+✅ Fix camelCase/snake_case TacheModal (duree_minutes, frequence_type…)
 
 ## Bugs connus à corriger
 🐛 Agents démo à 0% sur /manager/charge (pas d'interventions assignées)
    → injecter interventions de test pour valider les couleurs
 
 ## À faire Phase 1 (dans l'ordre)
-1. Moteur IA proposition d'agent à la création d'un contrat
-   → Edge Function Supabase + API Anthropic claude-sonnet-4-6
-   → top 3 agents, taux après ajout, surcoût trajet, explication
-2. Moteur IA résolution conflits planning (absence/congé)
+1. Tester et affiner le copilote IA (qualité des réponses, edge cases)
+2. Interventions de test sur agents démo (valider barres de charge colorées)
+3. Page /manager/charge/[agentId] — détail hebdomadaire, liste interventions, congés
+4. Moteur IA réorganisation sur absence/congé
    → interventions orphelines + capacité disponible agents
-3. Interventions de test sur agents démo
-   → valider couleurs /manager/charge
-4. Page /manager/charge/[agentId]
-   → détail hebdomadaire, liste interventions, congés
 5. Validation tâches avec photo obligatoire (iPhone)
 6. Rapport final agent + envoi manager
 7. Dashboard manager temps réel (Supabase Realtime)
@@ -142,6 +148,9 @@ L'état se calcule automatiquement, aucun champ à maintenir.
 9. Dashboard directeur KPIs
 
 ## À faire Phase 2
+- OSRM pour calcul temps de trajet réel entre résidences (remplace l'estimation 20%)
+- Gestion agents spécialisés (poubelles, vitres, façades…)
+- Gestion binôme solitaire sur absence (réaffecter automatiquement)
 - Optimisation tournées (Leaflet + OSRM)
 - Analytics directeur
 - Export PDF planning par agent

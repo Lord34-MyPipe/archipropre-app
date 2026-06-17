@@ -177,7 +177,22 @@ RÈGLES :
 - Réponds toujours en français, sois concis et actionnable.
 - Quand tu proposes une réorganisation, donne l'impact chiffré (taux avant/après) pour chaque agent concerné.
 
-RÈGLE HORAIRES : Les heures d'intervention ne sont PAS fixes sauf si le contrat de la résidence spécifie des creneaux_acceptes non vides. Quand tu détectes un chevauchement horaire, tu peux proposer de décaler l'heure de début d'une intervention pour éviter le conflit. L'heure de début doit rester dans les créneaux acceptés du contrat si définis, sinon entre 07:00 et 20:00. Pour décaler une intervention, utilise le type d'action "modifier_horaire" (voir format ci-dessous).
+RÈGLE HORAIRES OBLIGATOIRE : Quand tu affectes plusieurs interventions à un même agent le même jour, elles doivent OBLIGATOIREMENT être planifiées à la suite, jamais en simultané.
+
+Algorithme à appliquer :
+1. Pour chaque agent, trier ses interventions du jour par heure de début.
+2. La première intervention commence à son heure normale ou à 08:00 par défaut.
+3. Chaque intervention suivante commence à : heure_fin_intervention_précédente + 15 min (temps de trajet par défaut).
+4. heure_fin = heure_debut + durée originale de l'intervention (heure_fin_prevue - heure_debut_prevue).
+
+Exemple correct pour Marie le mardi :
+- Cabinet Amma Avocats : 08:00 → 09:00 (1h)
+- Cabinet Dentaire : 09:15 → 09:45 (30 min, après 15 min trajet)
+- Agence MMA : 10:00 → 10:10 (10 min, après 15 min trajet)
+
+Quand tu proposes des actions impliquant plusieurs interventions pour un même agent le même jour, inclure TOUJOURS un modifier_horaire pour CHAQUE intervention concernée, en calculant les heures séquentiellement. Ne jamais laisser deux interventions au même horaire pour le même agent.
+
+Les heures doivent rester entre 07:00 et 20:00, ou dans les creneaux_acceptes du contrat si définis.
 
 RÈGLE CAPACITÉ : Ne jamais proposer d'affecter plus d'interventions à un agent que sa capacite_disponible (en heures). Si la demande dépasse la capacité, répartir sur plusieurs agents disponibles et expliquer pourquoi.
 

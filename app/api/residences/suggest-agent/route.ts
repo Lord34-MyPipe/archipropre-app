@@ -103,23 +103,58 @@ CONSIGNES :
     messages: [{ role: 'user', content: prompt }],
   })
 
+  console.log('Réponse brute Claude:', JSON.stringify(message.content, null, 2))
+
   const textBlock = message.content.find(b => b.type === 'text')
-  if (!textBlock || textBlock.type !== 'text') {
-    return NextResponse.json({ error: 'Réponse IA invalide' }, { status: 500 })
+  const rawText = textBlock?.type === 'text' ? textBlock.text : ''
+
+  if (!rawText) {
+    console.error('[suggest-agent] Aucun bloc text dans la réponse Claude')
+    return NextResponse.json({ error: 'Réponse IA invalide (pas de texte)' }, { status: 500 })
   }
 
-  let parsed: { agentId: string; raison: string }
+  const cleanText = rawText
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .trim()
+
+  let raw: Record<string, unknown>
   try {
-    parsed = JSON.parse(textBlock.text.trim())
-  } catch {
-    const match = textBlock.text.match(/\{[^}]+\}/)
-    if (!match) return NextResponse.json({ error: 'Format IA invalide' }, { status: 500 })
-    parsed = JSON.parse(match[0])
+    raw = JSON.parse(cleanText)
+  } catch (e1) {
+    // Tentative : extraire le premier objet JSON {...} de la chaîne
+    const match = cleanText.match(/\{[\s\S]*\}/)
+    if (!match) {
+      console.error('[suggest-agent] Impossible de parser la réponse Claude:', e1, '\nTexte brut:', rawText)
+      return NextResponse.json({ error: 'Format IA invalide — impossible de parser la réponse' }, { status: 500 })
+    }
+    try {
+      raw = JSON.parse(match[0])
+    } catch (e2) {
+      console.error('[suggest-agent] Échec du parsing même après extraction:', e2, '\nExtrait:', match[0])
+      return NextResponse.json({ error: 'Format IA invalide — JSON malformé' }, { status: 500 })
+    }
   }
 
-  if (!parsed.agentId || !parsed.raison) {
+  // Normaliser : format simple { agentId, raison } ou liste { suggestions: [{agentId, raison}] }
+  let agentId: string
+  let raison: string
+
+  if (typeof raw.agentId === 'string' && typeof raw.raison === 'string') {
+    agentId = raw.agentId
+    raison  = raw.raison
+  } else if (Array.isArray(raw.suggestions) && raw.suggestions.length > 0) {
+    const first = raw.suggestions[0] as Record<string, unknown>
+    agentId = String(first.agentId ?? '')
+    raison  = String(first.raison ?? '')
+  } else {
+    console.error('[suggest-agent] Structure inattendue:', JSON.stringify(raw))
     return NextResponse.json({ error: 'Champs manquants dans la réponse IA' }, { status: 500 })
   }
 
-  return NextResponse.json({ agentId: parsed.agentId, raison: parsed.raison })
+  if (!agentId || !raison) {
+    return NextResponse.json({ error: 'Champs manquants dans la réponse IA' }, { status: 500 })
+  }
+
+  return NextResponse.json({ agentId, raison })
 }

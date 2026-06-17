@@ -64,7 +64,7 @@ Vues calculées (ne pas stocker de données dedans) :
 - Capacité théorique = contrat_heures_hebdo (figé)
 - Capacité disponible = théorique − congés − absences − déjà affecté
 - Pendant un congé complet : capacité disponible = 0 (verrou)
-- Trajets estimés provisoirement à 20% du nettoyage (à remplacer par OSRM)
+- Trajets résidence→résidence calculés via OSRM (lib/trajet.ts), fallback 20% si OSRM indisponible
 - Seuil cible individuel : vert < seuil, orange entre seuil et 95%, rouge > 95%
 
 ## Logique d'état des résidences (v_etat_residence)
@@ -130,16 +130,20 @@ L'état se calcule automatiquement, aucun champ à maintenir.
    raccourcis rapides, réassignation + décalage horaire en langage naturel,
    application directe en base, rendu Markdown, router.refresh() après action
 ✅ Fix camelCase/snake_case TacheModal (duree_minutes, frequence_type…)
-✅ Intégration OSRM temps de trajet réel (router.project-osrm.org)
-   — lib/trajet.ts : calculerTrajet + lireCacheTrajet + fallback 20%
-   — Cache Supabase distances_cache (lat/lng + mode, index spatial)
-   — Mode tramway : profil foot OSRM + forfait_tram paramétrable
-   — Réchauffage cache domicile→résidence à la génération de planning
-   — Copilote IA : trajets réels inter-résidences injectés dans le contexte
+✅ Calcul temps de trajet réel via OSRM (serveur public router.project-osrm.org)
+   — service lib/trajet.ts, profils driving/foot/bike
+✅ Cache distances_cache par coordonnées lat/lng + mode (évite appels OSRM répétés)
+✅ Contrainte UNIQUE (origine_lat, origine_lng, dest_lat, dest_lng, mode)
+   + upsert ON CONFLICT DO NOTHING — doublons structurellement impossibles
+✅ Mode tramway forfaitaire : marche→arrêt + forfait_tram (param) + arrêt→destination
+✅ Trajets résidence→résidence intégrés à la génération de planning et au copilote IA
+✅ Copilote IA recalcule les horaires avec les vrais temps de trajet OSRM
 
 ## Bugs connus à corriger
 🐛 Agents démo à 0% sur /manager/charge (pas d'interventions assignées)
    → injecter interventions de test pour valider les couleurs
+ℹ️ depart_lat/lng de Marie Dupont (agent test) à null — point par défaut siège
+   à renseigner si on active un jour le choix d'agent le plus proche.
 
 ## À faire Phase 1 (dans l'ordre)
 1. Tester et affiner le copilote IA (qualité des réponses, edge cases)
@@ -184,6 +188,13 @@ Output : redistribution proposée respectant contraintes dures
 - Licence : 99 € socle + 4,50 €/site
 - Archipropre : 499 €/mois (tarif lancement)
 - Engagement : 12 mois minimum
+
+## Règles métier (direction Archipropre)
+- Trajets : SEULS les trajets entre résidences comptent dans le planning et la charge.
+  Le trajet domicile→1re résidence et dernière résidence→domicile NE comptent PAS.
+- depart_lat/lng des agents : conservés mais n'influencent PAS le calcul des horaires
+  (réservés à un usage futur : choix de l'agent le plus proche pour une affectation).
+- Agent sans domicile : point par défaut = siège Archipropre (à renseigner).
 
 ## Règles de développement
 - Interface en français uniquement

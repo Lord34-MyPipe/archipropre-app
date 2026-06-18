@@ -134,18 +134,14 @@ function ScanPageInner() {
       }
 
       if (tachesDuJour.length > 0) {
-        await supabase
-          .from('taches_intervention')
-          .delete()
-          .eq('intervention_id', inter.id)
-
-        await supabase.from('taches_intervention').insert(
+        await supabase.from('taches_intervention').upsert(
           tachesDuJour.map(t => ({
             intervention_id:   inter.id,
             tache_template_id: t.id,
             libelle:           t.libelle,
             zone_nom:          t.zone_id ? (zoneMap[t.zone_id] ?? null) : null,
-          }))
+          })),
+          { onConflict: 'intervention_id,tache_template_id', ignoreDuplicates: true }
         )
       }
 

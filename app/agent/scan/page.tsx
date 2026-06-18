@@ -118,6 +118,12 @@ function ScanPageInner() {
         !t.jours_semaine?.length || t.jours_semaine.includes(jourCourant)
       )
 
+      console.log('DEBUG zones:', tachesDuJour.map(t => ({
+        libelle: t.libelle,
+        zones_residence: t.zones_residence,
+        zone_nom_extrait: (t.zones_residence as unknown as { nom?: string })?.nom ?? null,
+      })))
+
       if (tachesDuJour.length > 0) {
         await supabase.from('taches_intervention').insert(
           tachesDuJour.map(t => ({

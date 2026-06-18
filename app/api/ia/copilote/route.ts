@@ -55,6 +55,13 @@ export async function POST(req: NextRequest) {
   const demainISO   = `${demainParis.getFullYear()}-${String(demainParis.getMonth() + 1).padStart(2, '0')}-${String(demainParis.getDate()).padStart(2, '0')}`
   // Libellé lisible en français
   const dateJourLisible = new Intl.DateTimeFormat('fr-FR', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(maintenant)
+  // Table date→jour pour les 28 prochains jours — ANA lit, ne calcule jamais
+  const fmtWeekday = new Intl.DateTimeFormat('fr-FR', { timeZone: TZ, weekday: 'long' })
+  const calStr = Array.from({ length: 28 }, (_, i) => {
+    const d = new Date(pyear, pmonth - 1, pday + i)
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    return `${iso} = ${fmtWeekday.format(d)}`
+  }).join(', ')
 
   // ── Récupérer les agents du manager (avec info binôme) ───────────────────────
   const { data: agentProfiles } = await admin
@@ -265,6 +272,10 @@ export async function POST(req: NextRequest) {
 
 DATE DU JOUR : ${dateJourLisible} (${dateJourISO}) — fuseau Europe/Paris
 Quand le manager dit "aujourd'hui", utilise ${dateJourISO}. "Demain" = ${demainISO}. Ne jamais inventer une date passée ou future arbitraire.
+
+CORRESPONDANCES DATE → JOUR DE LA SEMAINE (28 prochains jours, calculées côté serveur) :
+${calStr}
+RÈGLE CALENDRIER STRICTE : Tu ne dois JAMAIS calculer ou deviner toi-même le jour de la semaine correspondant à une date. Utilise uniquement cette table ci-dessus. Si une date n'y figure pas, n'indique pas de jour de la semaine. Quand l'utilisateur dit "vendredi", "ce lundi", etc., résous la date via cette table, pas par calcul.
 
 RÈGLE ABSOLUE — ANTI-HALLUCINATION :
 Tu ne dois JAMAIS affirmer avoir créé, modifié, annulé ou supprimé quoi que ce soit sans confirmation technique réelle revenue de la base.

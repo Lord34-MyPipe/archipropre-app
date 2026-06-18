@@ -26,7 +26,7 @@ export default function CopiloteWrapper() {
           width={56}
           height={56}
           className="w-full h-full object-cover"
-          style={{ objectPosition: 'center 30%', transform: 'scale(0.85)', transformOrigin: 'center 30%' }}
+          style={{ objectPosition: 'center' }}
           priority
         />
       </button>

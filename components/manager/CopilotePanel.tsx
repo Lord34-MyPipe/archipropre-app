@@ -366,7 +366,7 @@ export default function CopilotePanel({ open, onClose, semaine }: Props) {
                   src="/ana-avatar.png"
                   alt="ANA"
                   className="w-full h-full object-cover"
-                  style={{ objectPosition: 'center 30%', transform: 'scale(0.85)', transformOrigin: 'center 30%' }}
+                  style={{ objectPosition: 'center' }}
                 />
               </div>
               <div>

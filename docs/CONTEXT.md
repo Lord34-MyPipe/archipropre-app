@@ -185,18 +185,33 @@ L'état se calcule automatiquement, aucun champ à maintenir.
    congés/absences à venir, navigation semaine ← → (?date=)
 ✅ Avatar ANA : photo (usage autorisé), cercle, remplace l'icône robot
    (en-tête panneau + bouton flottant)
+✅ Parcours agent terrain (mobile-first iPhone) — Bloc A + B :
+   - Scan QR → intervention du jour (fuseau Europe/Paris corrigé)
+   - Tâches groupées par zone (fix jointure PostgREST double requête)
+   - Statut 3 états par tâche : a_faire / realisee / non_realisee
+   - Commentaire possible sur toute tâche (réalisée ou non)
+   - Bouton "Valider toute la zone" en plus de la validation individuelle
+   - Photo par zone (1 minimum obligatoire, plusieurs autorisées)
+   - Table photos_zone (signed URLs, bucket privé) + RLS
+   - Table zones_intervention (heure_cloture auto = temps par zone)
+   - Table zones_intervention + RLS
+   - Règle clôture zone : toutes tâches traitées + ≥1 photo
+   - Compteur zones complètes + barre de progression
+   - Rapport agent : tâches + photos uniquement (durée masquée)
+   - Temps par zone calculé automatiquement (heure_scan → heure_cloture)
+   - Protection anti-doublon au scan (DELETE avant INSERT)
+   - Migration 008 : statut_tache + commentaire sur taches_intervention
+   - Migration 009 : table zones_intervention + RLS
 
 ## Bugs connus à corriger
 ℹ️ depart_lat/lng de Marie Dupont (agent test) à null — point par défaut siège
    à renseigner si on active un jour le choix d'agent le plus proche.
 
 ## À faire Phase 1 (dans l'ordre)
-1. Moteur IA réorganisation sur absence/congé
-   → interventions orphelines + capacité disponible agents
-2. Parcours agent terrain (scan + tâches par zone + validation photo)
-6. Dashboard manager temps réel (Supabase Realtime)
-7. Alertes 15 min (Edge Function + cron)
-8. Dashboard directeur KPIs
+- Bloc C parcours agent : rapport final + envoi manager + consultation
+  photos/tâches par résidence côté manager (voir aussi vision multi-niveaux
+  dans Phase 2 : futur rôle client)
+- Moteur IA réorganisation sur absence/congé
 
 ## À faire Phase 2
 - Gestion agents spécialisés (poubelles, vitres, façades…)

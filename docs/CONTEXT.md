@@ -156,20 +156,34 @@ L'état se calcule automatiquement, aucun champ à maintenir.
    sans confirmation technique réelle (proposition + bouton obligatoire)
 ✅ Contexte copilote enrichi : liste complète des résidences du manager (tous états)
    + date du jour réelle injectée en fuseau Europe/Paris (fix décalage UTC)
+✅ Gestion binôme dans intervention ponctuelle : agent en binôme jamais proposé seul,
+   binome_agent_id + facteur_binome injectés dans le contexte ANA,
+   durée réduite (durée × facteur_binome, ex. 1h × 0,5 = 30 min),
+   2 interventions miroir créées avec rollback si échec
+✅ Renommage copilote → "ANA" (Assistant Numérique d'Accompagnement),
+   tooltip bouton flottant "Ask ANA the Boss"
 
 ## Bugs connus à corriger
 ℹ️ depart_lat/lng de Marie Dupont (agent test) à null — point par défaut siège
    à renseigner si on active un jour le choix d'agent le plus proche.
+⚠️ ANA affiche "Actions appliquées avec succès" pour une ANNULATION d'intervention
+   alors qu'aucune route d'annulation n'existe → faux succès. La règle anti-hallucination
+   couvre la création mais pas l'annulation/suppression. À corriger : étendre la règle
+   à TOUTES les actions (création, modification, annulation, suppression).
+⚠️ facteur_binome PAS appliqué aux durées dans le planning RÉCURRENT (seulement dans
+   l'intervention ponctuelle) → incohérence à corriger.
 
 ## À faire Phase 1 (dans l'ordre)
-1. Page détail agent /manager/charge/[id] (clic sur le chevron)
-2. Moteur IA réorganisation sur absence/congé
+1. Route d'annulation/suppression d'intervention (POST /api/interventions/annuler)
+   avec garde-fou bouton, + étendre la règle anti-hallucination d'ANA à l'annulation
+2. Page détail agent /manager/charge/[id] (clic sur le chevron)
+3. Moteur IA réorganisation sur absence/congé
    → interventions orphelines + capacité disponible agents
-3. Validation tâches avec photo obligatoire (iPhone)
-4. Rapport final agent + envoi manager
-5. Dashboard manager temps réel (Supabase Realtime)
-6. Alertes 15 min (Edge Function + cron)
-7. Dashboard directeur KPIs
+4. Validation tâches avec photo obligatoire (iPhone)
+5. Rapport final agent + envoi manager
+6. Dashboard manager temps réel (Supabase Realtime)
+7. Alertes 15 min (Edge Function + cron)
+8. Dashboard directeur KPIs
 
 ## À faire Phase 2
 - Gestion agents spécialisés (poubelles, vitres, façades…)

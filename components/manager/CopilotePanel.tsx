@@ -86,7 +86,7 @@ const RACCOURCIS = [
 const MESSAGE_ACCUEIL: Message = {
   id: 'accueil',
   role: 'assistant',
-  content: 'Bonjour ! Je suis votre copilote planning. Je peux analyser les conflits, identifier les agents sous-chargés, proposer des réorganisations et les appliquer directement. Comment puis-je vous aider ?',
+  content: 'Bonjour ! Je suis ANA, votre Assistant Numérique d\'Accompagnement. Je peux analyser les conflits, identifier les agents sous-chargés, proposer des réorganisations et les appliquer directement. Comment puis-je vous aider ?',
 }
 
 function genId() {
@@ -324,8 +324,8 @@ export default function CopilotePanel({ open, onClose, semaine }: Props) {
                 <span className="text-white text-lg">🤖</span>
               </div>
               <div>
-                <p className="text-white font-bold text-sm">Copilote planning</p>
-                <p className="text-slate-300 text-xs">Analyse le planning en temps réel</p>
+                <p className="text-white font-bold text-sm">ANA</p>
+                <p className="text-slate-300 text-xs">Assistant Numérique d'Accompagnement</p>
               </div>
             </div>
             <button

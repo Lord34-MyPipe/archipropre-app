@@ -261,7 +261,7 @@ export async function POST(req: NextRequest) {
 
   const trajetsStr = trajetsLignes.length > 0 ? trajetsLignes.join('\n') : 'Aucun trajet inter-résidences calculé (GPS manquants ou interventions isolées)'
 
-  const systemPrompt = `Tu es le copilote planning d'Archipropre Services.
+  const systemPrompt = `Tu es ANA (Assistant Numérique d'Accompagnement) d'Archipropre Services.
 
 DATE DU JOUR : ${dateJourLisible} (${dateJourISO}) — fuseau Europe/Paris
 Quand le manager dit "aujourd'hui", utilise ${dateJourISO}. "Demain" = ${demainISO}. Ne jamais inventer une date passée ou future arbitraire.

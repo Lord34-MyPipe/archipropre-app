@@ -14,10 +14,10 @@ export default function CopiloteWrapper() {
       {/* Bouton flottant copilote */}
       <button
         onClick={() => setOpen(true)}
-        aria-label="Ouvrir le copilote planning"
+        aria-label="Ask ANA the Boss"
         className="fixed bottom-6 right-6 z-40 w-[52px] h-[52px] rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-110 active:scale-95"
         style={{ background: '#0BBFBF', bottom: '5.5rem' }}
-        title="Copilote planning IA"
+        title="Ask ANA the Boss"
       >
         <span className="text-white text-2xl leading-none">🤖</span>
       </button>

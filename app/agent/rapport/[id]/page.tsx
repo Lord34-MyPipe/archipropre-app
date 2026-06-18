@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
-import type { Intervention, Residence, TacheIntervention } from '@/lib/types'
+import type { Intervention, Residence, TacheIntervention, Profile } from '@/lib/types'
 
 type FullIntervention = Intervention & { residences: Residence }
 
@@ -12,6 +12,7 @@ export default function RapportPage() {
   const router = useRouter()
   const [inter,    setInter]    = useState<FullIntervention | null>(null)
   const [taches,   setTaches]   = useState<TacheIntervention[]>([])
+  const [profile,  setProfile]  = useState<Profile | null>(null)
   const [nbPhotos, setNbPhotos] = useState(0)
   const [comment,  setComment]  = useState('')
   const [sending,  setSending]  = useState(false)
@@ -19,15 +20,27 @@ export default function RapportPage() {
 
   useEffect(() => {
     const supabase = createClient()
-    Promise.all([
-      supabase.from('interventions').select('*, residences(*)').eq('id', params.id).single(),
-      supabase.from('taches_intervention').select('*').eq('intervention_id', params.id).order('heure_validation'),
-      supabase.from('photos_zone').select('id', { count: 'exact', head: true }).eq('intervention_id', params.id),
-    ]).then(([{ data: i }, { data: t }, { count }]) => {
+    async function load() {
+      const [
+        { data: i },
+        { data: t },
+        { count },
+        { data: { user } },
+      ] = await Promise.all([
+        supabase.from('interventions').select('*, residences(*)').eq('id', params.id).single(),
+        supabase.from('taches_intervention').select('*').eq('intervention_id', params.id).order('heure_validation'),
+        supabase.from('photos_zone').select('id', { count: 'exact', head: true }).eq('intervention_id', params.id),
+        supabase.auth.getUser(),
+      ])
       setInter(i as FullIntervention | null)
       setTaches(t ?? [])
       setNbPhotos(count ?? 0)
-    })
+      if (user) {
+        const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+        setProfile(p as Profile | null)
+      }
+    }
+    load()
   }, [params.id])
 
   async function handleEnvoyer() {
@@ -35,12 +48,28 @@ export default function RapportPage() {
     setSending(true)
     const supabase = createClient()
 
-    const managerId = inter.residences?.manager_id
+    // 1. S'assurer que l'intervention est bien terminée (défensif)
+    if (inter.statut !== 'terminee') {
+      const now = new Date().toISOString()
+      const disponible = inter.heure_fin_prevue
+        ? new Date(now) < new Date(`${inter.date_prevue}T${inter.heure_fin_prevue}`)
+        : false
+      await supabase.from('interventions').update({
+        statut:               'terminee',
+        heure_fin:            now,
+        disponible_apres_fin: disponible,
+      }).eq('id', params.id)
+    }
+
+    // 2. Alerte manager — destinataire depuis profiles.manager_id de l'agent
+    const managerId = profile?.manager_id ?? inter.residences?.manager_id
     if (managerId) {
+      const nomAgent = profile ? `${profile.prenom} ${profile.nom}` : 'un agent'
+      const nomResidence = inter.residences?.nom ?? 'une résidence'
       await supabase.from('alertes').insert({
         intervention_id: params.id,
         type:            'rapport_soumis',
-        message:         `Rapport soumis pour ${inter.residences?.nom ?? 'une résidence'}${comment ? ' : ' + comment : ''}`,
+        message:         `Rapport soumis par ${nomAgent} — ${nomResidence}${comment ? ' : ' + comment : ''}`,
         destinataire_id: managerId,
         lue:             false,
       })
@@ -69,7 +98,6 @@ export default function RapportPage() {
     </div>
   )
 
-  // Tâches traitées triées par heure_validation
   const traitees = taches
     .filter(t => t.statut_tache === 'realisee' || t.statut_tache === 'non_realisee')
     .sort((a, b) => (a.heure_validation ?? '').localeCompare(b.heure_validation ?? ''))

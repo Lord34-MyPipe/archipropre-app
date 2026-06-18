@@ -26,6 +26,19 @@ function addMinutes(heure: string, minutes: number): string {
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
 }
 
+/**
+ * Réduit heure_fin selon facteur_binome.
+ * Entrée : "HH:MM" (déjà normalisé par normalizeTime — les "HH:MM:SS" de la DB sont strippés en amont).
+ * Ex : ("08:00", "09:00", 0.5) → dureeMin=60 → dureeReduite=30 → "08:30"
+ */
+function reduireHeureFin(hDebut: string, hFin: string, facteur: number): string {
+  const [dh, dm] = hDebut.split(':').map(Number)
+  const [fh, fm] = hFin.split(':').map(Number)
+  const dureeMin    = (fh * 60 + fm) - (dh * 60 + dm)
+  const dureeReduite = Math.round(dureeMin * facteur)
+  return addMinutes(hDebut, dureeReduite)
+}
+
 interface Creneau {
   jours: string[]
   heure_debut: string
@@ -55,13 +68,23 @@ export async function POST(req: NextRequest) {
 
   // ── 1. Vérification ownership ────────────────────────────────────────────────
   const { data: res } = await admin.from('residences')
-    .select('id, nom, lat, lng, agent_prefere_id, agent_secondaire_id')
+    .select('id, nom, lat, lng, agent_prefere_id')
     .eq('id', residenceId).eq('manager_id', managerId).single()
   console.log('[generer] résidence:', res ? `"${res.nom}" agent=${res.agent_prefere_id ?? 'aucun'}` : 'NON TROUVÉE')
   if (!res) return NextResponse.json({ error: 'Résidence introuvable ou non autorisée' }, { status: 403 })
 
   if (!res.agent_prefere_id)
     return NextResponse.json({ error: 'Aucun agent attitré pour cette résidence.' }, { status: 400 })
+
+  // ── 1b. Binôme + facteur depuis profiles (source de vérité unique) ────────────
+  const { data: agentPref } = await admin
+    .from('profiles')
+    .select('binome_agent_id, facteur_binome')
+    .eq('id', res.agent_prefere_id)
+    .single()
+
+  const binomeAgentId = agentPref?.binome_agent_id ?? null
+  const facteurBinome = (agentPref?.facteur_binome ?? 1) as number
 
   // ── 2. Contrat actif ─────────────────────────────────────────────────────────
   const { data: contrat } = await admin.from('contrats_residences')
@@ -193,12 +216,20 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     )
 
-  // ── 6b. Interventions miroir pour le binôme ──────────────────────────────────
-  let allRows = [...rowsFuturs]
-  if (res.agent_secondaire_id) {
-    const mirrorRows = rowsFuturs.map(r => ({ ...r, agent_id: res.agent_secondaire_id! }))
-    allRows = [...rowsFuturs, ...mirrorRows]
-    console.log(`[generer] binôme ${res.agent_secondaire_id} : ${mirrorRows.length} interventions miroir (horaires identiques)`)
+  // ── 6b. Binôme : durée réduite sur les deux lignes + interventions miroir ─────
+  // Source de vérité : profiles.binome_agent_id (pas residences.agent_secondaire_id)
+  let rowsForUI = rowsFuturs          // aperçu retourné au client
+  let allRows   = [...rowsFuturs]
+
+  if (binomeAgentId) {
+    const rowsReduits = rowsFuturs.map(r => ({
+      ...r,
+      heure_fin_prevue: reduireHeureFin(r.heure_debut_prevue, r.heure_fin_prevue, facteurBinome),
+    }))
+    const mirrorRows = rowsReduits.map(r => ({ ...r, agent_id: binomeAgentId }))
+    allRows   = [...rowsReduits, ...mirrorRows]
+    rowsForUI = rowsReduits   // aperçu cohérent avec ce qui est inséré en base
+    console.log(`[generer] binôme ${binomeAgentId} facteur=${facteurBinome} : ${mirrorRows.length} miroirs, durée réduite`)
   }
 
   // ── 7. DELETE + INSERT atomique via RPC PostgreSQL ──────────────────────────
@@ -214,7 +245,7 @@ export async function POST(req: NextRequest) {
 
   console.log(`[generer] ✅ ${insertedCount} interventions insérées (transaction atomique)`)
 
-  const interventionsForUI = rowsFuturs.map(r => ({
+  const interventionsForUI = rowsForUI.map(r => ({
     date:       r.date_prevue,
     dayName:    DAY_NAMES[new Date(r.date_prevue + 'T00:00:00').getDay()],
     heureDebut: r.heure_debut_prevue,

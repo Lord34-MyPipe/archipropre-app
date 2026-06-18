@@ -179,17 +179,21 @@ L'état se calcule automatiquement, aucun champ à maintenir.
 ✅ profiles.binome_agent_id devient la SEULE source de vérité du binôme à la génération
    (residences.agent_secondaire_id ignoré à la génération, conservé en base pour l'affichage)
 ✅ rowsForUI reflète les heures réduites (aperçu cohérent avec la base)
+✅ Page détail agent /manager/charge/[id] : en-tête (mode déplacement, secteur,
+   contrat, badge binôme cliquable), grande barre de charge cohérente avec la liste,
+   liste interventions de la semaine par jour (badge binôme + durée réduite),
+   congés/absences à venir, navigation semaine ← → (?date=)
+✅ Avatar ANA : photo (usage autorisé), cercle, remplace l'icône robot
+   (en-tête panneau + bouton flottant)
 
 ## Bugs connus à corriger
 ℹ️ depart_lat/lng de Marie Dupont (agent test) à null — point par défaut siège
    à renseigner si on active un jour le choix d'agent le plus proche.
 
 ## À faire Phase 1 (dans l'ordre)
-1. Page détail agent /manager/charge/[id] (clic sur le chevron)
-3. Moteur IA réorganisation sur absence/congé
+1. Moteur IA réorganisation sur absence/congé
    → interventions orphelines + capacité disponible agents
-4. Validation tâches avec photo obligatoire (iPhone)
-5. Rapport final agent + envoi manager
+2. Parcours agent terrain (scan + tâches par zone + validation photo)
 6. Dashboard manager temps réel (Supabase Realtime)
 7. Alertes 15 min (Edge Function + cron)
 8. Dashboard directeur KPIs

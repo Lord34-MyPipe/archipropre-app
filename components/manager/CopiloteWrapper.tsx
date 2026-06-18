@@ -25,7 +25,8 @@ export default function CopiloteWrapper() {
           alt="ANA"
           width={56}
           height={56}
-          className="w-full h-full object-cover object-top"
+          className="w-full h-full object-cover"
+          style={{ objectPosition: 'center 30%' }}
           priority
         />
       </button>

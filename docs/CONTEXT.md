@@ -235,6 +235,14 @@ Le rapport d'intervention (tâches réalisées + photos par zone) doit être con
 Implication dès maintenant : stocker les photos rattachées proprement à
 tâche + zone + intervention + date, dans un format requêtable, pour permettre
 plus tard une vue client filtrée. Séparer données internes (heures) et données montrables.
+
+Points d'accès au rapport côté manager (à implémenter en bloc C) :
+1. Clic sur une intervention dans le planning → ouvre le rapport de cette intervention
+2. Onglet/rubrique "Rapports" sur la fiche résidence → liste des rapports passés
+3. Via les alertes (notification "rapport soumis") → déjà en cours de développement
+Photos : stockées comme preuve de passage (litige client), accessibles mais
+pas mises en avant dans l'interface manager au quotidien.
+
 - Analytics directeur
 - Export PDF planning par agent
 - Export Excel données brutes

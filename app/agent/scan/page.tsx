@@ -109,12 +109,12 @@ function ScanPageInner() {
 
       const { data: taches } = await supabase
         .from('taches_template')
-        .select('id, libelle, zones_residence(nom)')
+        .select('id, libelle, jours_semaine, zones_residence(nom)')
         .eq('residence_id', residence.id)
         .order('ordre')
 
-      type TacheRaw = { id: string; libelle: string; jours_semaine: string[]; zones_residence: { nom: string }[] }
-      const tachesDuJour = (taches as TacheRaw[] ?? []).filter(t =>
+      type TacheRaw = { id: string; libelle: string; jours_semaine: string[]; zones_residence: { nom: string } | null }
+      const tachesDuJour = (taches as unknown as TacheRaw[] ?? []).filter(t =>
         !t.jours_semaine?.length || t.jours_semaine.includes(jourCourant)
       )
 
@@ -124,7 +124,7 @@ function ScanPageInner() {
             intervention_id:   inter.id,
             tache_template_id: t.id,
             libelle:           t.libelle,
-            zone_nom:          t.zones_residence?.[0]?.nom ?? null,
+            zone_nom:          t.zones_residence?.nom ?? null,
           }))
         )
       }

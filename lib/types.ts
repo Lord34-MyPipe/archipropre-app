@@ -131,7 +131,9 @@ export interface TacheIntervention {
   tache_template_id: string | null
   libelle: string
   zone_nom: string | null
-  validee: boolean
+  validee: boolean                                         // conservé en base, non utilisé côté code
+  statut_tache: 'a_faire' | 'realisee' | 'non_realisee'
+  commentaire: string | null
   photo_url: string | null
   heure_validation: string | null
   created_at: string

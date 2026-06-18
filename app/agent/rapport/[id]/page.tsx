@@ -10,20 +10,23 @@ type FullIntervention = Intervention & { residences: Residence }
 export default function RapportPage() {
   const params = useParams<{ id: string }>()
   const router = useRouter()
-  const [inter, setInter]     = useState<FullIntervention | null>(null)
-  const [taches, setTaches]   = useState<TacheIntervention[]>([])
-  const [comment, setComment] = useState('')
-  const [sending, setSending] = useState(false)
-  const [done, setDone]       = useState(false)
+  const [inter,    setInter]    = useState<FullIntervention | null>(null)
+  const [taches,   setTaches]   = useState<TacheIntervention[]>([])
+  const [nbPhotos, setNbPhotos] = useState(0)
+  const [comment,  setComment]  = useState('')
+  const [sending,  setSending]  = useState(false)
+  const [done,     setDone]     = useState(false)
 
   useEffect(() => {
     const supabase = createClient()
     Promise.all([
       supabase.from('interventions').select('*, residences(*)').eq('id', params.id).single(),
       supabase.from('taches_intervention').select('*').eq('intervention_id', params.id).order('heure_validation'),
-    ]).then(([{ data: i }, { data: t }]) => {
+      supabase.from('photos_zone').select('id', { count: 'exact', head: true }).eq('intervention_id', params.id),
+    ]).then(([{ data: i }, { data: t }, { count }]) => {
       setInter(i as FullIntervention | null)
       setTaches(t ?? [])
+      setNbPhotos(count ?? 0)
     })
   }, [params.id])
 
@@ -32,15 +35,14 @@ export default function RapportPage() {
     setSending(true)
     const supabase = createClient()
 
-    // Notifier le manager via la table alertes
     const managerId = inter.residences?.manager_id
     if (managerId) {
       await supabase.from('alertes').insert({
         intervention_id: params.id,
-        type: 'rapport_soumis',
-        message: `Rapport soumis pour ${inter.residences?.nom ?? 'une résidence'}${comment ? ' : ' + comment : ''}`,
+        type:            'rapport_soumis',
+        message:         `Rapport soumis pour ${inter.residences?.nom ?? 'une résidence'}${comment ? ' : ' + comment : ''}`,
         destinataire_id: managerId,
-        lue: false,
+        lue:             false,
       })
     }
 
@@ -67,18 +69,13 @@ export default function RapportPage() {
     </div>
   )
 
-  const nbPhotos  = taches.filter(t => t.photo_url).length
-  const nbTaches  = taches.length
-  const photos    = taches.filter(t => t.photo_url)
-  const validees  = taches.filter(t => t.validee).sort((a, b) =>
-    (a.heure_validation ?? '').localeCompare(b.heure_validation ?? '')
-  )
+  // Tâches traitées triées par heure_validation
+  const traitees = taches
+    .filter(t => t.statut_tache === 'realisee' || t.statut_tache === 'non_realisee')
+    .sort((a, b) => (a.heure_validation ?? '').localeCompare(b.heure_validation ?? ''))
 
-  const heureDebut = inter.heure_scan ? new Date(inter.heure_scan) : null
-  const heureFin   = inter.heure_fin  ? new Date(inter.heure_fin)  : null
-  const dureeMin   = heureDebut && heureFin
-    ? Math.round((heureFin.getTime() - heureDebut.getTime()) / 60000)
-    : null
+  const nbTraitees = traitees.length
+  const nbTotal    = taches.length
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -88,7 +85,7 @@ export default function RapportPage() {
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/>
           </svg>
-          Retour aux tâches
+          Retour
         </button>
         <h1 className="text-xl font-bold text-white">Rapport final</h1>
         <p className="text-blue-200 text-sm mt-0.5 truncate">{inter.residences?.nom}</p>
@@ -100,74 +97,69 @@ export default function RapportPage() {
       </div>
 
       <div className="px-5 py-5 space-y-4 pb-32">
-        {/* Résumé */}
+        {/* Résumé — 2 tuiles, sans durée */}
         <div className="bg-white rounded-2xl border border-slate-100 p-5">
           <h2 className="font-semibold text-slate-800 mb-4">Résumé</h2>
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { n: dureeMin !== null ? `${dureeMin} min` : '—', label: 'Durée', emoji: '⏱️' },
-              { n: String(nbTaches), label: 'Tâches', emoji: '✅' },
-              { n: String(nbPhotos), label: 'Photos', emoji: '📸' },
-            ].map(s => (
-              <div key={s.label} className="text-center bg-slate-50 rounded-xl py-3">
-                <p className="text-xl mb-1">{s.emoji}</p>
-                <p className="text-xl font-bold text-[#1A5FA8]">{s.n}</p>
-                <p className="text-xs text-slate-500 mt-0.5">{s.label}</p>
-              </div>
-            ))}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="text-center bg-slate-50 rounded-xl py-4">
+              <p className="text-xl mb-1">✅</p>
+              <p className="text-xl font-bold text-[#1A5FA8]">{nbTraitees}/{nbTotal}</p>
+              <p className="text-xs text-slate-500 mt-0.5">Tâches traitées</p>
+            </div>
+            <div className="text-center bg-slate-50 rounded-xl py-4">
+              <p className="text-xl mb-1">📸</p>
+              <p className="text-xl font-bold text-[#1A5FA8]">{nbPhotos}</p>
+              <p className="text-xs text-slate-500 mt-0.5">Photos</p>
+            </div>
           </div>
         </div>
 
-        {/* Timeline des tâches validées */}
-        {validees.length > 0 && (
+        {/* Chronologie des tâches traitées */}
+        {traitees.length > 0 && (
           <div className="bg-white rounded-2xl border border-slate-100 p-5">
             <h2 className="font-semibold text-slate-800 mb-4">Chronologie des tâches</h2>
             <div className="relative pl-5">
-              {/* Ligne verticale */}
               <div className="absolute left-1.5 top-2 bottom-2 w-0.5 bg-slate-100"/>
               <div className="space-y-4">
-                {validees.map((t, i) => (
-                  <div key={t.id} className="relative flex items-start gap-3">
-                    <div className={`absolute -left-5 top-1 w-3 h-3 rounded-full border-2 border-white ${
-                      i === validees.length - 1 ? 'bg-green-500' : 'bg-[#0BBFBF]'
-                    }`}/>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-800 truncate">{t.libelle}</p>
-                      {t.zone_nom && <p className="text-xs text-slate-400 mt-0.5">{t.zone_nom}</p>}
+                {traitees.map((t, i) => {
+                  const nonRealisee = t.statut_tache === 'non_realisee'
+                  return (
+                    <div key={t.id} className="relative flex items-start gap-3">
+                      <div className={`absolute -left-5 top-1 w-3 h-3 rounded-full border-2 border-white ${
+                        nonRealisee
+                          ? 'bg-red-400'
+                          : i === traitees.length - 1 ? 'bg-green-500' : 'bg-[#0BBFBF]'
+                      }`}/>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-medium truncate ${
+                          nonRealisee ? 'text-slate-400' : 'text-slate-800'
+                        }`}>
+                          {nonRealisee && <span className="text-red-400 mr-1">✗</span>}
+                          {t.libelle}
+                        </p>
+                        {t.zone_nom && (
+                          <p className="text-xs text-slate-400 mt-0.5">{t.zone_nom}</p>
+                        )}
+                        {t.commentaire && (
+                          <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-2 py-1 mt-1 italic border border-amber-100">
+                            {t.commentaire}
+                          </p>
+                        )}
+                      </div>
+                      {t.heure_validation && (
+                        <span className="text-xs text-slate-400 shrink-0 tabular-nums">
+                          {new Date(t.heure_validation).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
                     </div>
-                    {t.heure_validation && (
-                      <span className="text-xs text-slate-400 shrink-0 tabular-nums">
-                        {new Date(t.heure_validation).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    )}
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           </div>
         )}
 
-        {/* Galerie photos */}
-        {photos.length > 0 && (
-          <div className="bg-white rounded-2xl border border-slate-100 p-5">
-            <h2 className="font-semibold text-slate-800 mb-3">Photos ({photos.length})</h2>
-            <div className="grid grid-cols-3 gap-2">
-              {photos.map(t => (
-                <div key={t.id} className="aspect-square rounded-xl overflow-hidden bg-slate-100 relative group">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={t.photo_url!} alt={t.libelle} className="w-full h-full object-cover"/>
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-end">
-                    <p className="text-[9px] text-white font-medium p-1.5 opacity-0 group-hover:opacity-100 transition-opacity truncate w-full">
-                      {t.libelle}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Commentaire */}
+        {/* Commentaire global */}
         <div className="bg-white rounded-2xl border border-slate-100 p-5">
           <h2 className="font-semibold text-slate-800 mb-3">Commentaire</h2>
           <textarea
@@ -180,15 +172,18 @@ export default function RapportPage() {
         </div>
 
         {/* Bouton envoyer */}
-        <button onClick={handleEnvoyer} disabled={sending}
+        <button
+          onClick={handleEnvoyer}
+          disabled={sending}
           className="w-full h-14 rounded-2xl text-white font-bold text-base active:scale-[0.98] transition-all disabled:opacity-60 shadow-lg"
-          style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}>
-          {sending
-            ? <span className="flex items-center justify-center gap-2">
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"/>
-                Envoi en cours…
-              </span>
-            : '📤 Envoyer au manager'}
+          style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}
+        >
+          {sending ? (
+            <span className="flex items-center justify-center gap-2">
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"/>
+              Envoi en cours…
+            </span>
+          ) : '📤 Envoyer au manager'}
         </button>
 
         <div className="h-4"/>

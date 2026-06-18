@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
       intervention_id:   intervention1.id,
       tache_template_id: null,
       libelle:           tache_libelle.trim(),
-      validee:           false,
+      statut_tache:      'a_faire',
     })
 
   if (errTache1) {
@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
         intervention_id:   intervention2.id,
         tache_template_id: null,
         libelle:           tache_libelle.trim(),
-        validee:           false,
+        statut_tache:      'a_faire',
       })
 
     if (errTache2) {

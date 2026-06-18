@@ -12,7 +12,7 @@ export default function RapportPage() {
   const router = useRouter()
   const [inter,    setInter]    = useState<FullIntervention | null>(null)
   const [taches,   setTaches]   = useState<TacheIntervention[]>([])
-  const [profile,  setProfile]  = useState<Profile | null>(null)
+  const [agentProfile, setAgentProfile] = useState<Profile | null>(null)
   const [nbPhotos, setNbPhotos] = useState(0)
   const [comment,  setComment]  = useState('')
   const [sending,  setSending]  = useState(false)
@@ -37,7 +37,7 @@ export default function RapportPage() {
       setNbPhotos(count ?? 0)
       if (user) {
         const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-        setProfile(p as Profile | null)
+        setAgentProfile(p as Profile | null)
       }
     }
     load()
@@ -62,9 +62,9 @@ export default function RapportPage() {
     }
 
     // 2. Alerte manager — destinataire depuis profiles.manager_id de l'agent
-    const managerId = profile?.manager_id ?? inter.residences?.manager_id
+    const managerId = agentProfile?.manager_id ?? inter.residences?.manager_id
     if (managerId) {
-      const nomAgent = profile ? `${profile.prenom} ${profile.nom}` : 'un agent'
+      const nomAgent = agentProfile ? `${agentProfile.prenom} ${agentProfile.nom}` : 'un agent'
       const nomResidence = inter.residences?.nom ?? 'une résidence'
       await supabase.from('alertes').insert({
         intervention_id: params.id,
@@ -202,7 +202,7 @@ export default function RapportPage() {
         {/* Bouton envoyer */}
         <button
           onClick={handleEnvoyer}
-          disabled={sending}
+          disabled={sending || !agentProfile}
           className="w-full h-14 rounded-2xl text-white font-bold text-base active:scale-[0.98] transition-all disabled:opacity-60 shadow-lg"
           style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}
         >

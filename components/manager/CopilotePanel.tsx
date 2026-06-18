@@ -360,8 +360,13 @@ export default function CopilotePanel({ open, onClose, semaine }: Props) {
         <div className="shrink-0 px-5 py-4 border-b border-slate-100" style={{ background: '#0A2E5A' }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: '#0BBFBF' }}>
-                <span className="text-white text-lg">🤖</span>
+              <div className="w-9 h-9 rounded-full overflow-hidden ring-2 ring-[#0BBFBF] shrink-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/ana-avatar.png"
+                  alt="ANA"
+                  className="w-full h-full object-cover object-top"
+                />
               </div>
               <div>
                 <p className="text-white font-bold text-sm">ANA</p>

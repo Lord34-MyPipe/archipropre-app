@@ -202,6 +202,17 @@ L'état se calcule automatiquement, aucun champ à maintenir.
 - Gestion agents spécialisés (poubelles, vitres, façades…)
 - Gestion binôme solitaire sur absence (réaffecter automatiquement)
 - Optimisation tournées (Leaflet + OSRM)
+
+## Consultation des rapports d'intervention — vision multi-niveaux
+Le rapport d'intervention (tâches réalisées + photos par zone) doit être consultable :
+- MANAGER : accès complet (rapport, photos, tâches, horaires) via notification,
+  fiche résidence, ou clic sur l'intervention dans le planning
+- CLIENT FINAL (futur 4e rôle à créer, après agent/manager/directeur) : accès RESTREINT
+  — voit uniquement le JOUR d'intervention, les tâches effectuées et les photos.
+  PAS les heures, PAS les détails internes (charge, coûts). RLS très restrictive à prévoir.
+Implication dès maintenant : stocker les photos rattachées proprement à
+tâche + zone + intervention + date, dans un format requêtable, pour permettre
+plus tard une vue client filtrée. Séparer données internes (heures) et données montrables.
 - Analytics directeur
 - Export PDF planning par agent
 - Export Excel données brutes

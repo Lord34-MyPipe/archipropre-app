@@ -134,6 +134,11 @@ function ScanPageInner() {
       }
 
       if (tachesDuJour.length > 0) {
+        await supabase
+          .from('taches_intervention')
+          .delete()
+          .eq('intervention_id', inter.id)
+
         await supabase.from('taches_intervention').insert(
           tachesDuJour.map(t => ({
             intervention_id:   inter.id,

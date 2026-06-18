@@ -417,25 +417,37 @@ function VueSemaine({ dates, inters, agents, congeKeys, congeMotifs, todayStr }:
                               <span className="truncate">{hasConflict ? 'Conflit' : leaveLabel}</span>
                             </div>
                           )}
-                          {dayInters.map(i => (
-                            <div key={i.id} className={`relative px-1.5 py-1.5 rounded-lg text-[10px] font-medium leading-tight border ${
+                          {dayInters.map(i => {
+                            const cardCls = `relative px-1.5 py-1.5 rounded-lg text-[10px] font-medium leading-tight border ${
                               isOnLeave
                                 ? 'bg-red-50 text-red-800 border-red-300'
                                 : (STATUT_BG[i.statut] ?? 'bg-slate-100 text-slate-600 border-slate-200')
-                            }`}>
-                              {isBinome && (
-                                <span className="absolute top-0.5 right-0.5 text-[8px] leading-none opacity-70">👥</span>
-                              )}
-                              <div className="truncate font-semibold pr-3">{i.residence_nom}</div>
-                              {i.heure_debut_prevue && (
-                                <div className="text-[9px] opacity-70 mt-0.5">
-                                  {i.heure_debut_prevue.slice(0,5)}
-                                  {i.heure_fin_prevue ? ` → ${i.heure_fin_prevue.slice(0,5)}` : ' → ?'}
-                                </div>
-                              )}
-                              <div className="text-[9px] opacity-60 mt-0.5">{STATUT_LABEL[i.statut] ?? i.statut}</div>
-                            </div>
-                          ))}
+                            }`
+                            const cardContent = (
+                              <>
+                                {isBinome && (
+                                  <span className="absolute top-0.5 right-0.5 text-[8px] leading-none opacity-70">👥</span>
+                                )}
+                                <div className="truncate font-semibold pr-3">{i.residence_nom}</div>
+                                {i.heure_debut_prevue && (
+                                  <div className="text-[9px] opacity-70 mt-0.5">
+                                    {i.heure_debut_prevue.slice(0,5)}
+                                    {i.heure_fin_prevue ? ` → ${i.heure_fin_prevue.slice(0,5)}` : ' → ?'}
+                                  </div>
+                                )}
+                                <div className="text-[9px] opacity-60 mt-0.5">{STATUT_LABEL[i.statut] ?? i.statut}</div>
+                              </>
+                            )
+                            return i.statut === 'terminee' && !isOnLeave ? (
+                              <Link key={i.id} href={`/manager/interventions/${i.id}/rapport`} className={`block ${cardCls}`}>
+                                {cardContent}
+                              </Link>
+                            ) : (
+                              <div key={i.id} className={cardCls}>
+                                {cardContent}
+                              </div>
+                            )
+                          })}
                         </div>
                       </td>
                     )
@@ -518,6 +530,13 @@ function VueSemaine({ dates, inters, agents, congeKeys, congeMotifs, todayStr }:
                       <span className={`px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 border ${STATUT_BG[i.statut] ?? 'bg-slate-100 text-slate-600 border-slate-200'}`}>
                         {STATUT_LABEL[i.statut] ?? i.statut}
                       </span>
+                      {i.statut === 'terminee' && (
+                        <Link href={`/manager/interventions/${i.id}/rapport`}
+                          className="text-xs font-semibold shrink-0 whitespace-nowrap hover:underline"
+                          style={{ color: '#0BBFBF' }}>
+                          Voir →
+                        </Link>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -606,13 +625,13 @@ function VueJour({ dateStr, inters, agents, congeKeys, congeMotifs }: {
                 <div className={`flex-1 ${hasInter ? 'p-2.5 space-y-2' : 'py-1'}`}>
                   {hourInters.map(i => {
                     const isConflict = congeKeys.has(`${i.agent_id}|${dateStr}`)
-                    return (
-                      <div key={i.id}
-                        className={`px-4 py-3 rounded-xl border flex items-start justify-between gap-3 ${
-                          isConflict
-                            ? 'bg-red-50 text-red-800 border-red-300'
-                            : (STATUT_BG[i.statut] ?? 'bg-slate-50 text-slate-700 border-slate-200')
-                        }`}>
+                    const cardCls = `px-4 py-3 rounded-xl border flex items-start justify-between gap-3 ${
+                      isConflict
+                        ? 'bg-red-50 text-red-800 border-red-300'
+                        : (STATUT_BG[i.statut] ?? 'bg-slate-50 text-slate-700 border-slate-200')
+                    }`
+                    const cardContent = (
+                      <>
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <div className="w-6 h-6 rounded-full bg-[#1A5FA8]/10 flex items-center justify-center text-[10px] font-bold text-[#1A5FA8] shrink-0">
@@ -632,6 +651,15 @@ function VueJour({ dateStr, inters, agents, congeKeys, congeMotifs }: {
                           </p>
                           <p className="text-[10px] opacity-60 mt-0.5">{STATUT_LABEL[i.statut] ?? i.statut}</p>
                         </div>
+                      </>
+                    )
+                    return i.statut === 'terminee' && !isConflict ? (
+                      <Link key={i.id} href={`/manager/interventions/${i.id}/rapport`} className={cardCls}>
+                        {cardContent}
+                      </Link>
+                    ) : (
+                      <div key={i.id} className={cardCls}>
+                        {cardContent}
                       </div>
                     )
                   })}
@@ -784,6 +812,13 @@ function VueMois({ debut, fin, inters, todayStr }: {
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border shrink-0 ${STATUT_BG[i.statut] ?? 'bg-slate-100 text-slate-600 border-slate-200'}`}>
                         {STATUT_LABEL[i.statut] ?? i.statut}
                       </span>
+                      {i.statut === 'terminee' && (
+                        <Link href={`/manager/interventions/${i.id}/rapport`}
+                          className="text-[10px] font-semibold shrink-0 whitespace-nowrap hover:underline"
+                          style={{ color: '#0BBFBF' }}>
+                          Voir →
+                        </Link>
+                      )}
                     </div>
                   ))}
                 </div>

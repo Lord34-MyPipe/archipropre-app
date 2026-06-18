@@ -184,7 +184,15 @@ export default function InterventionsDuJourSection({ initialInters, absentIds }:
                 <span className={`px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 ${STATUT_COULEUR[i.statut] ?? 'bg-slate-100 text-slate-600'}`}>
                   {STATUT_LABEL[i.statut] ?? i.statut}
                 </span>
-                {i.statut !== 'terminee' && (
+                {i.statut === 'terminee' ? (
+                  <Link
+                    href={`/manager/interventions/${i.id}/rapport`}
+                    className="shrink-0 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-[#0BBFBF]/30 hover:bg-[#0BBFBF]/10 transition-colors whitespace-nowrap"
+                    style={{ color: '#0BBFBF' }}
+                  >
+                    Voir le rapport →
+                  </Link>
+                ) : (
                   <button
                     onClick={() => setReassignTarget(i)}
                     className="shrink-0 px-2.5 py-1.5 bg-slate-100 text-slate-600 text-xs font-medium rounded-lg hover:bg-[#1A5FA8] hover:text-white transition-colors"

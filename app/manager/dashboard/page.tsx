@@ -116,6 +116,15 @@ export default async function ManagerDashboard() {
                   <p className="font-semibold text-red-800 text-sm">{al.type.replace(/_/g,' ')}</p>
                   <p className="text-red-700 text-sm mt-0.5">{al.message}</p>
                 </div>
+                {al.type === 'rapport_soumis' && al.intervention_id && (
+                  <Link
+                    href={`/manager/interventions/${al.intervention_id}/rapport`}
+                    className="shrink-0 text-sm font-semibold whitespace-nowrap hover:underline"
+                    style={{ color: '#0BBFBF' }}
+                  >
+                    Voir le rapport →
+                  </Link>
+                )}
               </div>
             ))}
           </div>

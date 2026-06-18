@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import type { Residence } from '@/lib/types'
 import { createClient } from '@/lib/supabase'
 import { downloadQRCodePDF } from '@/lib/qr-pdf'
+import { wazeUrl, googleMapsUrl } from '@/lib/navigation'
 import AgentAttitreModal from '@/components/manager/AgentAttitreModal'
 import PlanifierInterventionModal from '@/components/manager/PlanifierInterventionModal'
 import ContratModal from '@/components/manager/ContratModal'
@@ -76,16 +77,6 @@ const ETAT_CONFIG = {
   },
 } as const
 
-// ── Helpers URL ───────────────────────────────────────────────────────────────
-
-function googleMapsUrl(r: Residence) {
-  if (r.lat && r.lng) return `https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}`
-  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(r.adresse + ', Montpellier')}`
-}
-function wazeUrl(r: Residence) {
-  if (r.lat && r.lng) return `https://waze.com/ul?ll=${r.lat},${r.lng}&navigate=yes`
-  return `https://waze.com/ul?q=${encodeURIComponent(r.adresse + ', Montpellier')}&navigate=yes`
-}
 
 function formatDate(iso: string | null) {
   if (!iso) return null

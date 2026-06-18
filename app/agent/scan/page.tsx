@@ -107,22 +107,31 @@ function ScanPageInner() {
       // Copier les tâches template du jour
       const jourCourant = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', weekday: 'long' }).format(new Date())
 
+      // Fetch explicite : zone_id dans taches_template, puis lookup zones_residence séparé
+      // (évite la jointure PostgREST embedded qui échoue silencieusement côté client navigateur)
       const { data: taches } = await supabase
         .from('taches_template')
-        .select('id, libelle, jours_semaine, zones_residence(nom)')
+        .select('id, libelle, jours_semaine, zone_id')
         .eq('residence_id', residence.id)
         .order('ordre')
 
-      type TacheRaw = { id: string; libelle: string; jours_semaine: string[]; zones_residence: { nom: string } | null }
-      const tachesDuJour = (taches as unknown as TacheRaw[] ?? []).filter(t =>
+      type TacheRaw = { id: string; libelle: string; jours_semaine: string[]; zone_id: string | null }
+      const tachesDuJour = (taches as TacheRaw[] ?? []).filter(t =>
         !t.jours_semaine?.length || t.jours_semaine.includes(jourCourant)
       )
 
-      console.log('DEBUG zones:', tachesDuJour.map(t => ({
-        libelle: t.libelle,
-        zones_residence: t.zones_residence,
-        zone_nom_extrait: (t.zones_residence as unknown as { nom?: string })?.nom ?? null,
-      })))
+      // Fetch zones en une seule requête pour les zone_id présents
+      const zoneIds = [...new Set(tachesDuJour.map(t => t.zone_id).filter(Boolean))] as string[]
+      const zoneMap: Record<string, string> = {}
+      if (zoneIds.length > 0) {
+        const { data: zones } = await supabase
+          .from('zones_residence')
+          .select('id, nom')
+          .in('id', zoneIds)
+        for (const z of zones ?? []) {
+          zoneMap[z.id] = z.nom
+        }
+      }
 
       if (tachesDuJour.length > 0) {
         await supabase.from('taches_intervention').insert(
@@ -130,7 +139,7 @@ function ScanPageInner() {
             intervention_id:   inter.id,
             tache_template_id: t.id,
             libelle:           t.libelle,
-            zone_nom:          t.zones_residence?.nom ?? null,
+            zone_nom:          t.zone_id ? (zoneMap[t.zone_id] ?? null) : null,
           }))
         )
       }

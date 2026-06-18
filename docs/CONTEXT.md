@@ -199,13 +199,20 @@ L'état se calcule automatiquement, aucun champ à maintenir.
    - Compteur zones complètes + barre de progression
    - Rapport agent : tâches + photos uniquement (durée masquée)
    - Temps par zone calculé automatiquement (heure_scan → heure_cloture)
-   - Protection anti-doublon au scan (DELETE avant INSERT)
+   - Protection anti-doublon au scan (upsert ignoreDuplicates)
    - Migration 008 : statut_tache + commentaire sur taches_intervention
    - Migration 009 : table zones_intervention + RLS
+✅ Migration 010 : UNIQUE(intervention_id, tache_template_id) sur taches_intervention
+   + upsert ignoreDuplicates au scan (re-scan préserve statut et commentaires)
+✅ Photos par zone : upload + affichage miniature confirmés (signed URLs, bucket privé)
+✅ Écran "Temps passé par zone" supprimé (temps calculé automatiquement)
+✅ Durée masquée côté agent dans le rapport (visible manager/directeur uniquement)
 
 ## Bugs connus à corriger
 ℹ️ depart_lat/lng de Marie Dupont (agent test) à null — point par défaut siège
    à renseigner si on active un jour le choix d'agent le plus proche.
+ℹ️ taches_intervention.validee (booléen) conservé en base mais plus utilisé
+   → peut être supprimé lors d'une future migration de nettoyage
 
 ## À faire Phase 1 (dans l'ordre)
 - Bloc C parcours agent : rapport final + envoi manager + consultation

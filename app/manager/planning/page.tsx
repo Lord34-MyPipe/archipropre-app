@@ -126,6 +126,7 @@ export default async function ManagerPlanning({ searchParams }: Props) {
     supabase.from('interventions')
       .select('id,agent_id,date_prevue,heure_debut_prevue,heure_fin_prevue,statut,residences(nom)')
       .in('agent_id', safeIds).gte('date_prevue', debutStr).lte('date_prevue', finStr)
+      .neq('statut', 'annulee')
       .order('heure_debut_prevue'),
   ])
 

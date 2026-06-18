@@ -267,10 +267,11 @@ DATE DU JOUR : ${dateJourLisible} (${dateJourISO}) — fuseau Europe/Paris
 Quand le manager dit "aujourd'hui", utilise ${dateJourISO}. "Demain" = ${demainISO}. Ne jamais inventer une date passée ou future arbitraire.
 
 RÈGLE ABSOLUE — ANTI-HALLUCINATION :
-Tu ne dois JAMAIS affirmer avoir créé, modifié, affecté ou supprimé quoi que ce soit en base de données.
-Tu ne fais que PROPOSER. Toute action réelle passe obligatoirement par une validation explicite du manager via un bouton dans l'interface.
-N'écris jamais "c'est créé", "c'est fait", "intervention enregistrée", "client ajouté" ni aucune formulation similaire.
-Si tu ne peux pas matérialiser une demande par une proposition structurée (bloc [ACTIONS], [PROPOSITION_CLIENT] ou [PROPOSITION_INTERVENTION]), dis-le clairement au lieu d'inventer un succès.
+Tu ne dois JAMAIS affirmer avoir créé, modifié, annulé ou supprimé quoi que ce soit sans confirmation technique réelle revenue de la base.
+Tu ne fais que PROPOSER. Toute action réelle (création, modification, annulation, suppression) passe obligatoirement par une proposition structurée + un bouton de validation cliqué par l'utilisateur.
+N'écris jamais "c'est créé", "c'est annulé", "c'est fait", "intervention supprimée", "client ajouté", ni aucune formulation impliquant un résultat accompli.
+Fais EXACTEMENT ce qui est demandé : si on te demande d'annuler une intervention, propose une annulation simple. Ne propose un agent remplaçant QUE si l'utilisateur le demande explicitement — n'invente jamais une intention de remplacement.
+Si tu ne peux pas matérialiser une demande par une proposition structurée (bloc [ACTIONS], [PROPOSITION_CLIENT], [PROPOSITION_INTERVENTION] ou [PROPOSITION_ANNULATION]), dis-le clairement au lieu d'inventer un succès.
 Tu as accès en temps réel aux données suivantes (semaine du ${semaine.debut} au ${semaine.fin}) :
 
 RÉSIDENCES DU MANAGER (liste complète — utilise ces residence_id pour toute proposition) :
@@ -366,7 +367,22 @@ Agent en binôme (ajouter binome_agent_id et binome_agent_nom, heure_fin déjà 
 [/PROPOSITION_INTERVENTION]
 
 5. Résumer la proposition en une phrase avant le bloc.
-6. Ne jamais inclure [ACTIONS] ou [PROPOSITION_CLIENT] en même temps qu'un [PROPOSITION_INTERVENTION].`
+6. Ne jamais inclure [ACTIONS] ou [PROPOSITION_CLIENT] en même temps qu'un [PROPOSITION_INTERVENTION].
+
+ANNULATION D'INTERVENTION :
+Si le manager demande d'annuler, supprimer ou retirer une intervention, tu dois :
+1. Identifier l'intervention dans INTERVENTIONS SEMAINE COURANTE (agent + résidence + date). Demande des précisions si ambiguë.
+2. Si l'agent est en binôme (champ "BINÔME avec X" dans AGENTS ET CHARGE), SIGNALE que les deux interventions miroir seront annulées.
+3. Ne jamais proposer de réaffecter ou remplacer l'agent sauf si le manager le demande explicitement.
+4. Terminer ta réponse par un bloc [PROPOSITION_ANNULATION], format strict SANS markdown autour :
+
+[PROPOSITION_ANNULATION]
+{"intervention_id":"<uuid-complet>","agent_nom":"<nom>","residence_nom":"<nom>","date_prevue":"<YYYY-MM-DD>","heure_debut_prevue":"<HH:MM>","heure_fin_prevue":"<HH:MM>","binome":false}
+[/PROPOSITION_ANNULATION]
+
+Si binôme, mettre "binome":true dans le JSON.
+5. Résumer la demande en une phrase (ex. "Intervention de Pavel à Barns Wolf le 18 juin 16h00 → 16h30, et son miroir Elena, seront annulées.") avant le bloc.
+6. Ne jamais inclure [ACTIONS], [PROPOSITION_CLIENT] ou [PROPOSITION_INTERVENTION] en même temps qu'un [PROPOSITION_ANNULATION].`
 
   const messages: Anthropic.MessageParam[] = [
     ...historique.map(h => ({ role: h.role, content: h.content } as Anthropic.MessageParam)),
@@ -480,5 +496,40 @@ Agent en binôme (ajouter binome_agent_id et binome_agent_nom, heure_fin déjà 
     }
   }
 
-  return NextResponse.json({ reponse, actions, propositionClient, propositionIntervention })
+  // ── Parser le bloc [PROPOSITION_ANNULATION] ──────────────────────────────────
+  const annulationMatch = reponse.match(/\[PROPOSITION_ANNULATION\]([\s\S]*?)\[\/PROPOSITION_ANNULATION\]/)
+  let propositionAnnulation: Record<string, unknown> | null = null
+
+  if (annulationMatch) {
+    reponse = reponse.replace(/\[PROPOSITION_ANNULATION\][\s\S]*?\[\/PROPOSITION_ANNULATION\]/, '').trim()
+    try {
+      const raw = JSON.parse(
+        annulationMatch[1].replace(/```json/gi, '').replace(/```/g, '').trim()
+      ) as {
+        intervention_id?:    string
+        agent_nom?:          string
+        residence_nom?:      string
+        date_prevue?:        string
+        heure_debut_prevue?: string
+        heure_fin_prevue?:   string
+        binome?:             boolean
+      }
+
+      if (raw.intervention_id) {
+        propositionAnnulation = {
+          intervention_id:    raw.intervention_id,
+          agent_nom:          raw.agent_nom ?? '',
+          residence_nom:      raw.residence_nom ?? '',
+          date_prevue:        raw.date_prevue ?? '',
+          heure_debut_prevue: raw.heure_debut_prevue ?? null,
+          heure_fin_prevue:   raw.heure_fin_prevue ?? null,
+          binome:             raw.binome ?? false,
+        }
+      }
+    } catch (e) {
+      console.error('[copilote] Échec parsing PROPOSITION_ANNULATION:', e)
+    }
+  }
+
+  return NextResponse.json({ reponse, actions, propositionClient, propositionIntervention, propositionAnnulation })
 }

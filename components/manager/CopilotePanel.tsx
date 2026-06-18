@@ -39,6 +39,16 @@ interface PropositionIntervention {
   tache_libelle:      string
 }
 
+interface PropositionAnnulation {
+  intervention_id:    string
+  agent_nom:          string
+  residence_nom:      string
+  date_prevue:        string
+  heure_debut_prevue: string | null
+  heure_fin_prevue:   string | null
+  binome:             boolean
+}
+
 interface Message {
   id: string
   role: 'user' | 'assistant'
@@ -49,6 +59,8 @@ interface Message {
   createState?: 'idle' | 'creating' | 'done' | 'error'
   propositionIntervention?: PropositionIntervention | null
   interventionState?: 'idle' | 'creating' | 'done' | 'error'
+  propositionAnnulation?: PropositionAnnulation | null
+  annulationState?: 'idle' | 'annulling' | 'done' | 'error'
 }
 
 interface ActionReassigner {
@@ -155,6 +167,8 @@ export default function CopilotePanel({ open, onClose, semaine }: Props) {
         createState:             'idle',
         propositionIntervention: res.ok ? (data.propositionIntervention ?? null) : null,
         interventionState:       'idle',
+        propositionAnnulation:   res.ok ? (data.propositionAnnulation ?? null) : null,
+        annulationState:         'idle',
       }
       setMessages(prev => [...prev, assistantMsg])
     } catch {
@@ -286,6 +300,32 @@ export default function CopilotePanel({ open, onClose, semaine }: Props) {
         {
           id: genId(), role: 'assistant' as const,
           content: `✅ Intervention${isBinome ? 's' : ''} créée${isBinome ? 's' : ''} le **${pi.date_prevue}** pour ${agentsLine} à **${pi.residence_nom}** (ID : ${idLine}).`,
+        },
+      ])
+      router.refresh()
+    }
+  }
+
+  async function applyAnnulation(msgId: string, pa: PropositionAnnulation) {
+    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, annulationState: 'annulling' as const } : m))
+    const res = await fetch('/api/interventions/annuler', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ intervention_id: pa.intervention_id }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      setMessages(prev => [
+        ...prev.map(m => m.id === msgId ? { ...m, annulationState: 'error' as const } : m),
+        { id: genId(), role: 'assistant' as const, content: `⚠️ Erreur annulation : ${data.error ?? res.statusText}` },
+      ])
+    } else {
+      const suffix = data.binome ? ` + intervention miroir binôme` : ''
+      setMessages(prev => [
+        ...prev.map(m => m.id === msgId ? { ...m, annulationState: 'done' as const } : m),
+        {
+          id: genId(), role: 'assistant' as const,
+          content: `✅ Intervention annulée${suffix} — **${pa.agent_nom}** | **${pa.residence_nom}** | ${pa.date_prevue}${pa.heure_debut_prevue ? ` ${pa.heure_debut_prevue}→${pa.heure_fin_prevue ?? '?'}` : ''}.`,
         },
       ])
       router.refresh()
@@ -511,6 +551,67 @@ export default function CopilotePanel({ open, onClose, semaine }: Props) {
                       {msg.interventionState === 'error' && (
                         <div className="px-4 py-3 border-t border-slate-100">
                           <p className="text-xs font-semibold text-red-600">⚠ Erreur lors de la création</p>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+
+                {/* Carte proposition annulation */}
+                {msg.role === 'assistant' && msg.propositionAnnulation && (() => {
+                  const pa = msg.propositionAnnulation
+                  return (
+                    <div className="border border-red-200 rounded-2xl overflow-hidden bg-white shadow-sm">
+                      <div className="px-4 py-3 border-b border-red-100" style={{ background: '#FFF5F5' }}>
+                        <p className="text-xs font-bold text-red-700 flex items-center gap-1.5">
+                          <span>🗑️</span>
+                          {pa.binome ? 'Annulation binôme (2 interventions)' : 'Intervention à annuler'}
+                        </p>
+                      </div>
+                      <div className="px-4 py-3 space-y-1.5">
+                        <p className="text-xs text-slate-800">
+                          <span className="font-semibold">Agent :</span> {pa.agent_nom}
+                        </p>
+                        <p className="text-xs text-slate-800">
+                          <span className="font-semibold">Résidence :</span> {pa.residence_nom}
+                        </p>
+                        <p className="text-xs text-slate-800">
+                          <span className="font-semibold">Date :</span> {pa.date_prevue}
+                          {pa.heure_debut_prevue && ` · ${pa.heure_debut_prevue}${pa.heure_fin_prevue ? ` → ${pa.heure_fin_prevue}` : ''}`}
+                        </p>
+                        {pa.binome && (
+                          <p className="text-[11px] text-red-600 font-medium">
+                            Agent en binôme — les 2 interventions miroir seront annulées
+                          </p>
+                        )}
+                      </div>
+                      {msg.annulationState !== 'done' && (
+                        <div className="px-4 py-3 border-t border-red-100 flex gap-2">
+                          <button
+                            onClick={() => applyAnnulation(msg.id, pa)}
+                            disabled={msg.annulationState === 'annulling'}
+                            className="flex-1 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-60 transition-opacity"
+                            style={{ background: '#DC2626' }}
+                          >
+                            {msg.annulationState === 'annulling' ? 'Annulation…' : '✓ Confirmer l\'annulation'}
+                          </button>
+                          <button
+                            onClick={() => setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, propositionAnnulation: null } : m))}
+                            disabled={msg.annulationState === 'annulling'}
+                            className="px-3 py-2 rounded-xl text-xs font-medium text-slate-500 border border-slate-200 hover:bg-slate-50 transition-colors disabled:opacity-60"
+                          >
+                            Annuler
+                          </button>
+                        </div>
+                      )}
+                      {msg.annulationState === 'done' && (
+                        <div className="px-4 py-3 border-t border-red-100">
+                          <p className="text-xs font-semibold text-red-700">✓ Intervention(s) annulée(s)</p>
+                        </div>
+                      )}
+                      {msg.annulationState === 'error' && (
+                        <div className="px-4 py-3 border-t border-red-100">
+                          <p className="text-xs font-semibold text-red-600">⚠ Erreur lors de l'annulation</p>
                         </div>
                       )}
                     </div>

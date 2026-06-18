@@ -56,15 +56,20 @@ export async function POST(req: NextRequest) {
   // Libellé lisible en français
   const dateJourLisible = new Intl.DateTimeFormat('fr-FR', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(maintenant)
 
-  // ── Récupérer les agents du manager ──────────────────────────────────────────
+  // ── Récupérer les agents du manager (avec info binôme) ───────────────────────
   const { data: agentProfiles } = await admin
     .from('profiles')
-    .select('id')
+    .select('id, nom, prenom, binome_agent_id, facteur_binome')
     .eq('manager_id', user.id)
     .eq('actif', true)
     .eq('role', 'agent')
 
   const agentIds = (agentProfiles ?? []).map(a => a.id)
+
+  // Map id → nom complet pour résoudre les noms des partenaires binôme
+  const agentNomMap = new Map(
+    (agentProfiles ?? []).map(a => [a.id as string, `${a.prenom} ${a.nom}`])
+  )
 
   // ── Données en parallèle ─────────────────────────────────────────────────────
   const [
@@ -122,6 +127,10 @@ export async function POST(req: NextRequest) {
   ])
 
   // ── Formater les données pour le system prompt ────────────────────────────────
+  type AgentProfileRow = {
+    id: string; nom: string; prenom: string
+    binome_agent_id: string | null; facteur_binome: number
+  }
   type ChargeRow = {
     agent_id: string; nom_complet: string; taux_remplissage_pct: number
     capacite_disponible: number; mode_deplacement: string | null; secteur_libelle: string | null
@@ -157,10 +166,21 @@ export async function POST(req: NextRequest) {
   const absences      = [...(absencesData ?? []), ...(congesData ?? [])] as unknown as AbsenceRow[]
   const residences    = (residencesData   ?? []) as ResidenceRow[]
 
+  // Index des profils pour enrichir la charge avec les données binôme
+  const agentProfileIdx = new Map(
+    (agentProfiles as AgentProfileRow[] ?? []).map(p => [p.id, p])
+  )
+
   const agentsStr = agents.length > 0
-    ? agents.map(a =>
-        `agent_id=${a.agent_id} | ${a.nom_complet} | ${Math.round(a.taux_remplissage_pct)}% chargé | ${a.capacite_disponible.toFixed(1)}h libres | ${a.mode_deplacement ?? 'NC'} | ${a.secteur_libelle ?? 'NC'}`
-      ).join('\n')
+    ? agents.map(a => {
+        const prof       = agentProfileIdx.get(a.agent_id)
+        const binomeId   = prof?.binome_agent_id ?? null
+        const binomeNom  = binomeId ? (agentNomMap.get(binomeId) ?? binomeId) : null
+        const binomeInfo = binomeId
+          ? ` | BINÔME avec ${binomeNom} (binome_agent_id=${binomeId}, facteur=${prof?.facteur_binome ?? '?'})`
+          : ' | solo'
+        return `agent_id=${a.agent_id} | ${a.nom_complet} | ${Math.round(a.taux_remplissage_pct)}% chargé | ${a.capacite_disponible.toFixed(1)}h libres | ${a.mode_deplacement ?? 'NC'} | ${a.secteur_libelle ?? 'NC'}${binomeInfo}`
+      }).join('\n')
     : 'Aucun agent'
 
   const conflitsStr = conflits.length > 0
@@ -294,6 +314,14 @@ Les heures doivent rester entre 07:00 et 20:00, ou dans les creneaux_acceptes du
 
 RÈGLE CAPACITÉ : Ne jamais proposer d'affecter plus d'interventions à un agent que sa capacite_disponible (en heures). Si la demande dépasse la capacité, répartir sur plusieurs agents disponibles et expliquer pourquoi.
 
+RÈGLE BINÔME — STRICTE ET PRIORITAIRE :
+Un agent dont la colonne indique "BINÔME avec X" (binome_agent_id non nul) est INDISSOCIABLE de son partenaire.
+- Ne JAMAIS proposer ni affecter un agent en binôme seul, quelle que soit la demande.
+- Toute intervention impliquant un agent en binôme mobilise OBLIGATOIREMENT les deux agents.
+- Quand le manager mentionne un agent en binôme pour une intervention ponctuelle, SIGNALE d'abord le binôme et demande confirmation : "Pavel est en binôme avec Elena. À deux, la tâche de Xh se fait en X×facteur h (ex. 1h×0.50=30 min), comptant X×facteur h de charge pour chacun. Veux-tu affecter le binôme ?"
+- Si le manager confirme : calcule heure_fin = heure_debut + durée_base × facteur_binome. Inclus OBLIGATOIREMENT binome_agent_id et binome_agent_nom dans le bloc [PROPOSITION_INTERVENTION].
+- Les deux agents partagent le même créneau (même heure_debut, même heure_fin réduite).
+
 - Quand une ou plusieurs actions sont applicables directement en base, termine ta réponse par un seul bloc [ACTIONS] contenant un tableau "actions". Tu peux combiner les deux types dans le même bloc. Format strict, SANS markdown autour :
 
 [ACTIONS]
@@ -324,14 +352,21 @@ INTERVENTION PONCTUELLE :
 Si le manager demande de créer, ajouter ou planifier une intervention ponctuelle (hors récurrence), tu dois :
 1. Identifier la résidence (cherche son nom dans la section RÉSIDENCES DU MANAGER ci-dessus pour obtenir le residence_id réel — ne jamais inventer un UUID), l'agent, la date, le créneau horaire et le libellé de la tâche.
 2. Si une information clé manque (résidence, date, créneau), demande-la avant d'émettre le bloc.
-3. Terminer ta réponse par un bloc [PROPOSITION_INTERVENTION], format strict SANS markdown autour :
+3. Si l'agent est en binôme, applique la RÈGLE BINÔME : signale, attends confirmation, puis calcule l'heure_fin avec facteur_binome.
+4. Terminer ta réponse par un bloc [PROPOSITION_INTERVENTION], format strict SANS markdown autour :
 
+Agent seul :
 [PROPOSITION_INTERVENTION]
-{"residence_id":"<uuid-complet>","residence_nom":"<nom affiché>","agent_id":"<uuid-complet>","agent_nom":"<nom affiché>","date_prevue":"<YYYY-MM-DD>","heure_debut_prevue":"<HH:MM>","heure_fin_prevue":"<HH:MM>","tache_libelle":"<libellé de la tâche>"}
+{"residence_id":"<uuid-complet>","residence_nom":"<nom>","agent_id":"<uuid-complet>","agent_nom":"<nom>","date_prevue":"<YYYY-MM-DD>","heure_debut_prevue":"<HH:MM>","heure_fin_prevue":"<HH:MM>","tache_libelle":"<libellé>"}
 [/PROPOSITION_INTERVENTION]
 
-4. Résumer la proposition en une phrase avant le bloc.
-5. Ne jamais inclure [ACTIONS] ou [PROPOSITION_CLIENT] en même temps qu'un [PROPOSITION_INTERVENTION].`
+Agent en binôme (ajouter binome_agent_id et binome_agent_nom, heure_fin déjà réduite par facteur) :
+[PROPOSITION_INTERVENTION]
+{"residence_id":"<uuid-complet>","residence_nom":"<nom>","agent_id":"<uuid-complet>","agent_nom":"<nom>","binome_agent_id":"<uuid-complet>","binome_agent_nom":"<nom>","date_prevue":"<YYYY-MM-DD>","heure_debut_prevue":"<HH:MM>","heure_fin_prevue":"<HH:MM calculée avec facteur>","tache_libelle":"<libellé>"}
+[/PROPOSITION_INTERVENTION]
+
+5. Résumer la proposition en une phrase avant le bloc.
+6. Ne jamais inclure [ACTIONS] ou [PROPOSITION_CLIENT] en même temps qu'un [PROPOSITION_INTERVENTION].`
 
   const messages: Anthropic.MessageParam[] = [
     ...historique.map(h => ({ role: h.role, content: h.content } as Anthropic.MessageParam)),
@@ -418,6 +453,8 @@ Si le manager demande de créer, ajouter ou planifier une intervention ponctuell
         residence_nom?:      string
         agent_id?:           string
         agent_nom?:          string
+        binome_agent_id?:    string
+        binome_agent_nom?:   string
         date_prevue?:        string
         heure_debut_prevue?: string
         heure_fin_prevue?:   string
@@ -430,6 +467,8 @@ Si le manager demande de créer, ajouter ou planifier une intervention ponctuell
           residence_nom:      raw.residence_nom ?? raw.residence_id,
           agent_id:           raw.agent_id,
           agent_nom:          raw.agent_nom ?? raw.agent_id,
+          binome_agent_id:    raw.binome_agent_id  ?? null,
+          binome_agent_nom:   raw.binome_agent_nom ?? null,
           date_prevue:        raw.date_prevue,
           heure_debut_prevue: raw.heure_debut_prevue ?? null,
           heure_fin_prevue:   raw.heure_fin_prevue ?? null,

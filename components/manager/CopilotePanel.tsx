@@ -31,6 +31,8 @@ interface PropositionIntervention {
   residence_nom:      string
   agent_id:           string
   agent_nom:          string
+  binome_agent_id?:   string | null
+  binome_agent_nom?:  string | null
   date_prevue:        string
   heure_debut_prevue: string | null
   heure_fin_prevue:   string | null
@@ -251,12 +253,14 @@ export default function CopilotePanel({ open, onClose, semaine }: Props) {
 
   async function applyIntervention(msgId: string, pi: PropositionIntervention) {
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, interventionState: 'creating' as const } : m))
+    const isBinome = !!pi.binome_agent_id
     const res = await fetch('/api/interventions/creer-ponctuelle', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({
         residence_id:       pi.residence_id,
         agent_id:           pi.agent_id,
+        binome_agent_id:    pi.binome_agent_id  ?? undefined,
         date_prevue:        pi.date_prevue,
         heure_debut_prevue: pi.heure_debut_prevue ?? undefined,
         heure_fin_prevue:   pi.heure_fin_prevue   ?? undefined,
@@ -270,12 +274,18 @@ export default function CopilotePanel({ open, onClose, semaine }: Props) {
         { id: genId(), role: 'assistant' as const, content: `⚠️ Erreur création intervention : ${data.error ?? res.statusText}` },
       ])
     } else {
-      const intervention = await res.json()
+      const data = await res.json()
+      const agentsLine = isBinome
+        ? `**${pi.agent_nom}** + **${pi.binome_agent_nom}** (binôme)`
+        : `**${pi.agent_nom}**`
+      const idLine = isBinome
+        ? `\`${data.intervention1?.id}\` + \`${data.intervention2?.id}\``
+        : `\`${data.id}\``
       setMessages(prev => [
         ...prev.map(m => m.id === msgId ? { ...m, interventionState: 'done' as const } : m),
         {
           id: genId(), role: 'assistant' as const,
-          content: `✅ Intervention créée le **${pi.date_prevue}** pour **${pi.agent_nom}** à **${pi.residence_nom}** (ID : \`${intervention.id}\`).`,
+          content: `✅ Intervention${isBinome ? 's' : ''} créée${isBinome ? 's' : ''} le **${pi.date_prevue}** pour ${agentsLine} à **${pi.residence_nom}** (ID : ${idLine}).`,
         },
       ])
       router.refresh()
@@ -431,25 +441,45 @@ export default function CopilotePanel({ open, onClose, semaine }: Props) {
 
                 {/* Carte proposition intervention */}
                 {msg.role === 'assistant' && msg.propositionIntervention && (() => {
-                  const pi = msg.propositionIntervention
+                  const pi       = msg.propositionIntervention
+                  const isBinome = !!pi.binome_agent_id
                   return (
                     <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm">
-                      <div className="px-4 py-3 border-b border-slate-100" style={{ background: '#F0F4FF' }}>
+                      <div className="px-4 py-3 border-b border-slate-100" style={{ background: isBinome ? '#EEF2FF' : '#F0F4FF' }}>
                         <p className="text-xs font-bold text-[#1A3A6A] flex items-center gap-1.5">
-                          <span>🗓️</span> Intervention ponctuelle à créer
+                          <span>🗓️</span>
+                          {isBinome ? 'Intervention binôme à créer' : 'Intervention ponctuelle à créer'}
                         </p>
                       </div>
                       <div className="px-4 py-3 space-y-1.5">
                         <p className="text-xs text-slate-800">
                           <span className="font-semibold">Résidence :</span> {pi.residence_nom}
                         </p>
-                        <p className="text-xs text-slate-800">
-                          <span className="font-semibold">Agent :</span> {pi.agent_nom}
-                        </p>
+                        {isBinome ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-slate-800">Agents :</span>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium text-white" style={{ background: '#1A5FA8' }}>
+                              {pi.agent_nom}
+                            </span>
+                            <span className="text-xs text-slate-400">+</span>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium text-white" style={{ background: '#0BBFBF' }}>
+                              {pi.binome_agent_nom}
+                            </span>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-800">
+                            <span className="font-semibold">Agent :</span> {pi.agent_nom}
+                          </p>
+                        )}
                         <p className="text-xs text-slate-800">
                           <span className="font-semibold">Date :</span> {pi.date_prevue}
                           {pi.heure_debut_prevue && ` · ${pi.heure_debut_prevue}${pi.heure_fin_prevue ? ` → ${pi.heure_fin_prevue}` : ''}`}
                         </p>
+                        {isBinome && (
+                          <p className="text-[11px] text-indigo-600 font-medium">
+                            Binôme — fait à deux, durée réduite · 2 interventions miroir créées
+                          </p>
+                        )}
                         <p className="text-xs text-slate-800">
                           <span className="font-semibold">Tâche :</span> {pi.tache_libelle}
                         </p>

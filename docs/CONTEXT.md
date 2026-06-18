@@ -162,21 +162,27 @@ L'état se calcule automatiquement, aucun champ à maintenir.
    2 interventions miroir créées avec rollback si échec
 ✅ Renommage copilote → "ANA" (Assistant Numérique d'Accompagnement),
    tooltip bouton flottant "Ask ANA the Boss"
+✅ Annulation d'intervention par ANA (route /api/interventions/annuler, annulation
+   LOGIQUE statut='annulee', PAS de suppression — garde l'historique)
+✅ Annulation binôme : annuler un agent en binôme annule aussi son intervention miroir
+✅ Migration contrainte interventions_statut_check : ajout de 'annulee' aux statuts autorisés
+✅ Règle anti-hallucination ANA étendue à TOUTES les actions (création, modification,
+   annulation, suppression) + "fais exactement ce qui est demandé, pas de remplacement inventé"
+✅ Garde-fou bouton sur annulation (carte 🗑️ + "Confirmer l'annulation", aucune action sans clic)
+✅ ANA fait du "qui est dispo" : recommandation argumentée d'agent (charge, GPS, zone, dispo)
+✅ Table date→jour de la semaine (28 jours, fuseau Europe/Paris) injectée dans le contexte ANA :
+   ANA ne calcule jamais un jour elle-même, elle lit la table (fix erreur "vendredi 20" / "jeudi 19")
+✅ Filtrage statut='annulee' ajouté à la requête de la page planning
+   (les 3 vues v_charge_agent, v_etat_residence, v_conflits_planning filtraient déjà)
 
 ## Bugs connus à corriger
 ℹ️ depart_lat/lng de Marie Dupont (agent test) à null — point par défaut siège
    à renseigner si on active un jour le choix d'agent le plus proche.
-⚠️ ANA affiche "Actions appliquées avec succès" pour une ANNULATION d'intervention
-   alors qu'aucune route d'annulation n'existe → faux succès. La règle anti-hallucination
-   couvre la création mais pas l'annulation/suppression. À corriger : étendre la règle
-   à TOUTES les actions (création, modification, annulation, suppression).
 ⚠️ facteur_binome PAS appliqué aux durées dans le planning RÉCURRENT (seulement dans
    l'intervention ponctuelle) → incohérence à corriger.
 
 ## À faire Phase 1 (dans l'ordre)
-1. Route d'annulation/suppression d'intervention (POST /api/interventions/annuler)
-   avec garde-fou bouton, + étendre la règle anti-hallucination d'ANA à l'annulation
-2. Page détail agent /manager/charge/[id] (clic sur le chevron)
+1. Page détail agent /manager/charge/[id] (clic sur le chevron)
 3. Moteur IA réorganisation sur absence/congé
    → interventions orphelines + capacité disponible agents
 4. Validation tâches avec photo obligatoire (iPhone)

@@ -214,6 +214,12 @@ L'état se calcule automatiquement, aucun champ à maintenir.
    - Dashboard alertes (rapport_soumis → "Voir le rapport →")
    - Planning (clic intervention terminée → rapport, 4 vues)
    - Interventions du jour (bouton "Voir le rapport →" sur terminées)
+✅ Navigation planning agent J→J+7 (flèches ← →, bornée today à today+7,
+   reset sur aujourd'hui à la connexion, dates calculées en Europe/Paris)
+✅ Jours futurs côté agent : aperçu léger lecture seule (résidence + heure + adresse),
+   scan grisé "Scan disponible le jour de l'intervention", tâches/zones/photos masquées
+✅ Bouton Waze par carte d'intervention agent (réutilise lib/navigation.ts)
+✅ lib/navigation.ts : wazeUrl/googleMapsUrl partagées agent + manager (GPS sinon adresse)
 
 ## Bugs connus à corriger
 ℹ️ depart_lat/lng de Marie Dupont (agent test) à null — point par défaut siège

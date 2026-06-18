@@ -72,7 +72,7 @@ function ScanPageInner() {
 
     // 3. Trouver l'intervention du jour
     const { data: { user } } = await supabase.auth.getUser()
-    const today = new Date().toISOString().split('T')[0]
+    const today = new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' })
 
     setMessage('Recherche de l\'intervention…')
 
@@ -105,8 +105,7 @@ function ScanPageInner() {
       }).eq('id', inter.id)
 
       // Copier les tâches template du jour
-      const joursSemaine = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi']
-      const jourCourant  = joursSemaine[new Date().getDay()]
+      const jourCourant = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', weekday: 'long' }).format(new Date())
 
       const { data: taches } = await supabase
         .from('taches_template')

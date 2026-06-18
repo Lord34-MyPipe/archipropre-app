@@ -15,7 +15,7 @@ export default async function AgentResidences() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' })
 
   const [{ data: profile }, { data: todayInterventions }] = await Promise.all([
     supabase.from('profiles').select('residences_attitrees').eq('id', user.id).single(),

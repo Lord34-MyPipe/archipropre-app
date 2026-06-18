@@ -31,7 +31,7 @@ export default async function AgentDashboard() {
   const { data: profile } = await supabase
     .from('profiles').select('*').eq('id', user.id).single() as { data: Profile | null }
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' })
 
   const { data: interventions } = await supabase
     .from('interventions')
@@ -51,7 +51,7 @@ export default async function AgentDashboard() {
   const terminees  = interventions?.filter(i => i.statut === 'terminee')   ?? []
 
   const prenom   = profile?.prenom ?? 'Agent'
-  const h = new Date().getHours()
+  const h = parseInt(new Date().toLocaleString('fr-FR', { timeZone: 'Europe/Paris', hour: 'numeric', hour12: false }), 10)
   const salut = h < 12 ? 'Bonjour' : h < 18 ? 'Bon après-midi' : 'Bonsoir'
 
   return (

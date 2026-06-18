@@ -207,6 +207,13 @@ L'état se calcule automatiquement, aucun champ à maintenir.
 ✅ Photos par zone : upload + affichage miniature confirmés (signed URLs, bucket privé)
 ✅ Écran "Temps passé par zone" supprimé (temps calculé automatiquement)
 ✅ Durée masquée côté agent dans le rapport (visible manager/directeur uniquement)
+✅ Page /manager/interventions/[id]/rapport : durée totale, temps par zone,
+   chronologie tâches (vert/rouge + commentaires), photos par zone (signed URLs)
+✅ Envoi rapport : statut='terminee' + heure_fin + alerte manager (destinataire_id)
+✅ Liens rapport depuis 3 points d'accès manager :
+   - Dashboard alertes (rapport_soumis → "Voir le rapport →")
+   - Planning (clic intervention terminée → rapport, 4 vues)
+   - Interventions du jour (bouton "Voir le rapport →" sur terminées)
 
 ## Bugs connus à corriger
 ℹ️ depart_lat/lng de Marie Dupont (agent test) à null — point par défaut siège
@@ -215,9 +222,11 @@ L'état se calcule automatiquement, aucun champ à maintenir.
    → peut être supprimé lors d'une future migration de nettoyage
 
 ## À faire Phase 1 (dans l'ordre)
-- Bloc C parcours agent : rapport final + envoi manager + consultation
-  photos/tâches par résidence côté manager (voir aussi vision multi-niveaux
-  dans Phase 2 : futur rôle client)
+- Durée contractuelle par intervention : montant_mensuel ÷ taux_horaire_agent
+  ÷ nb_interventions_mois (données déjà en base, calcul à intégrer dans le
+  rapport manager pour comparaison 3 durées : Contractuelle / Estimée / Réelle)
+- Tableau comparatif durées par zone dans rapport manager
+  (Estimée depuis taches_template.duree_minutes vs Réelle depuis zones_intervention)
 - Moteur IA réorganisation sur absence/congé
 
 ## À faire Phase 2

@@ -174,12 +174,15 @@ L'état se calcule automatiquement, aucun champ à maintenir.
    ANA ne calcule jamais un jour elle-même, elle lit la table (fix erreur "vendredi 20" / "jeudi 19")
 ✅ Filtrage statut='annulee' ajouté à la requête de la page planning
    (les 3 vues v_charge_agent, v_etat_residence, v_conflits_planning filtraient déjà)
+✅ facteur_binome appliqué au planning RÉCURRENT : durée réduite sur les 2 interventions
+   miroir du binôme (cohérent avec l'intervention ponctuelle)
+✅ profiles.binome_agent_id devient la SEULE source de vérité du binôme à la génération
+   (residences.agent_secondaire_id ignoré à la génération, conservé en base pour l'affichage)
+✅ rowsForUI reflète les heures réduites (aperçu cohérent avec la base)
 
 ## Bugs connus à corriger
 ℹ️ depart_lat/lng de Marie Dupont (agent test) à null — point par défaut siège
    à renseigner si on active un jour le choix d'agent le plus proche.
-⚠️ facteur_binome PAS appliqué aux durées dans le planning RÉCURRENT (seulement dans
-   l'intervention ponctuelle) → incohérence à corriger.
 
 ## À faire Phase 1 (dans l'ordre)
 1. Page détail agent /manager/charge/[id] (clic sur le chevron)

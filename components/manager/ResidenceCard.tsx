@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import type { Residence } from '@/lib/types'
 import { downloadQRCodePDF } from '@/lib/qr-pdf'
 import AgentAttitreModal from '@/components/manager/AgentAttitreModal'
@@ -149,6 +150,7 @@ interface Props {
 }
 
 export default function ResidenceCard({ residence: initial }: Props) {
+  const router                                   = useRouter()
   const [etatLocal, setEtatLocal]               = useState<ResidenceEtat | null>(null)
   const etat: ResidenceEtat                      = etatLocal ?? (initial._etat?.etat ?? 'a_configurer')
   const etatCfg                                  = ETAT_CONFIG[etat]
@@ -410,6 +412,7 @@ export default function ResidenceCard({ residence: initial }: Props) {
           onSaved={() => showCardToast('Contrat mis à jour')}
           onSommeiled={(newActif, msg) => {
             setActif(newActif)
+            router.refresh()
             showCardToast(msg ?? (newActif ? 'Résidence réactivée' : 'Résidence mise en sommeil'))
           }}
         />

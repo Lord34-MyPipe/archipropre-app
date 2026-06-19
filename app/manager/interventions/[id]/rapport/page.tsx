@@ -34,6 +34,26 @@ interface TacheEstim {
   taches_template: { duree_minutes: number }[] | { duree_minutes: number } | null
 }
 
+interface TacheZoneRaw {
+  tache_template_id: string | null
+  taches_template: {
+    duree_minutes: number
+    zone_id: string | null
+    zones_residence: { nom: string }[] | { nom: string } | null
+  }[] | {
+    duree_minutes: number
+    zone_id: string | null
+    zones_residence: { nom: string }[] | { nom: string } | null
+  } | null
+}
+
+interface ComparatifZone {
+  nom: string
+  estimee: number | null
+  reelle: number | null
+  ecartZone: number | null
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmt(ts: string | null, opts: Intl.DateTimeFormatOptions) {
@@ -44,6 +64,12 @@ function fmt(ts: string | null, opts: Intl.DateTimeFormatOptions) {
 function minutesBetween(a: string | null, b: string | null): number | null {
   if (!a || !b) return null
   return Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60000)
+}
+
+// PostgREST peut retourner tableau ou objet sur FK many-to-one
+function unwrap<T>(v: T[] | T | null | undefined): T | null {
+  if (v == null) return null
+  return Array.isArray(v) ? (v[0] ?? null) : v
 }
 
 function fmtDuree(min: number | null): string {
@@ -73,6 +99,7 @@ export default async function ManagerRapportPage({ params }: { params: Promise<{
     { data: zones },
     { data: photos },
     { data: tachesEstimRaw },
+    { data: tachesZoneRaw },
   ] = await Promise.all([
     supabase
       .from('interventions')
@@ -94,10 +121,15 @@ export default async function ManagerRapportPage({ params }: { params: Promise<{
       .select('*')
       .eq('intervention_id', id)
       .order('created_at'),
-    // Durée estimée : join FK many-to-one → taches_template retourne un objet
+    // Durée estimée totale : join FK many-to-one → taches_template retourne un objet
     supabase
       .from('taches_intervention')
       .select('tache_template_id, taches_template(duree_minutes)')
+      .eq('intervention_id', id),
+    // Durée estimée par zone : remonte tache → template → zones_residence
+    supabase
+      .from('taches_intervention')
+      .select('tache_template_id, taches_template(duree_minutes, zone_id, zones_residence(nom))')
       .eq('intervention_id', id),
   ])
 
@@ -170,7 +202,48 @@ export default async function ManagerRapportPage({ params }: { params: Promise<{
     return { ...z, dureeMin: minutesBetween(debut, z.heure_cloture) }
   })
 
-  // Écart Réelle vs Estimée
+  // ── Comparatif par zone ───────────────────────────────────────────────────
+
+  // Map estimée : zone_nom → somme duree_minutes (via template → zones_residence)
+  // Tâches sans zone_id → regroupées sous "Général" pour matcher le fallback réel
+  const mapEstime = new Map<string, number>()
+  for (const t of (tachesZoneRaw ?? []) as TacheZoneRaw[]) {
+    const tmpl = unwrap(t.taches_template)
+    if (!tmpl) continue
+    const zr = unwrap(tmpl.zones_residence)
+    const nomZone = zr?.nom ?? 'Général'
+    mapEstime.set(nomZone, (mapEstime.get(nomZone) ?? 0) + tmpl.duree_minutes)
+  }
+
+  // Map réelle : zone_nom → durée (déjà calculée clôture N − clôture N-1)
+  const mapReel = new Map<string, number>()
+  for (const z of zonesAvecDuree) {
+    if (z.dureeMin !== null) mapReel.set(z.zone_nom, z.dureeMin)
+  }
+
+  // UNION des zones — ordre : réelles (heure_cloture), puis estimées-only (alpha), Général en dernier
+  const zonesOrdreReel = zonesAvecDuree.map(z => z.zone_nom)
+  const zonesEstimeeOnly = [...mapEstime.keys()]
+    .filter(n => !mapReel.has(n) && n !== 'Général')
+    .sort((a, b) => a.localeCompare(b, 'fr'))
+  const hasGeneralEstim = mapEstime.has('Général')
+  const hasGeneralReel  = mapReel.has('Général')
+  const showGeneral = (hasGeneralEstim || hasGeneralReel) && !zonesOrdreReel.includes('Général')
+
+  const ordreZones = [
+    ...zonesOrdreReel,
+    ...zonesEstimeeOnly,
+    ...(showGeneral ? ['Général'] : []),
+  ]
+
+  const comparatifZones: ComparatifZone[] = ordreZones.map(nom => {
+    const estimee  = mapEstime.get(nom) ?? null
+    const reelle   = mapReel.get(nom) ?? null
+    const ecartZone = estimee !== null && reelle !== null ? reelle - estimee : null
+    return { nom, estimee, reelle, ecartZone }
+  })
+
+  // ── Écart Réelle vs Estimée ───────────────────────────────────────────────
   const ecart = (dureeMin !== null && dureeEstimeeMin !== null)
     ? dureeMin - dureeEstimeeMin
     : null
@@ -333,6 +406,88 @@ export default async function ManagerRapportPage({ params }: { params: Promise<{
                   </span>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Comparaison par zone : estimée vs réelle ── */}
+        {comparatifZones.length > 0 && (
+          <div className="bg-white rounded-2xl border border-slate-100 p-6">
+            <h2 className="font-semibold text-slate-800 mb-4">Comparaison par zone</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className="text-left py-2 pr-4 text-xs font-semibold text-slate-400 uppercase tracking-wider">Zone</th>
+                    <th className="text-right py-2 px-3 text-xs font-semibold text-amber-400 uppercase tracking-wider">Estimée</th>
+                    <th className="text-right py-2 px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Réelle</th>
+                    <th className="text-right py-2 pl-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Écart</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {comparatifZones.map(z => {
+                    const nonTraitee = z.reelle === null && z.estimee !== null
+                    const horsPlanning = z.reelle !== null && z.estimee === null
+                    const depasse = z.ecartZone !== null && z.ecartZone > 0
+                    const sousTemps = z.ecartZone !== null && z.ecartZone <= 0
+
+                    return (
+                      <tr key={z.nom} className={nonTraitee ? 'bg-orange-50/50' : ''}>
+                        {/* Nom zone */}
+                        <td className="py-3 pr-4">
+                          <div className="flex items-center gap-2">
+                            {nonTraitee && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-orange-400 shrink-0"/>
+                            )}
+                            <span className={`font-medium ${nonTraitee ? 'text-orange-700' : 'text-slate-700'}`}>
+                              {z.nom}
+                            </span>
+                            {horsPlanning && (
+                              <span className="text-[10px] text-slate-400 italic">hors tâches planifiées</span>
+                            )}
+                          </div>
+                          {nonTraitee && (
+                            <p className="text-[10px] text-orange-500 mt-0.5 ml-3.5">non traitée</p>
+                          )}
+                        </td>
+
+                        {/* Estimée */}
+                        <td className="py-3 px-3 text-right tabular-nums">
+                          <span className={z.estimee !== null ? 'text-amber-600 font-medium' : 'text-slate-300'}>
+                            {z.estimee !== null ? fmtDuree(z.estimee) : '—'}
+                          </span>
+                        </td>
+
+                        {/* Réelle */}
+                        <td className="py-3 px-3 text-right tabular-nums">
+                          {z.reelle !== null ? (
+                            <span className={`font-semibold ${depasse ? 'text-red-600' : sousTemps ? 'text-green-600' : 'text-slate-700'}`}>
+                              {fmtDuree(z.reelle)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">—</span>
+                          )}
+                        </td>
+
+                        {/* Écart */}
+                        <td className="py-3 pl-3 text-right tabular-nums">
+                          {z.ecartZone !== null ? (
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                              depasse
+                                ? 'bg-red-50 text-red-500'
+                                : 'bg-green-50 text-green-600'
+                            }`}>
+                              {depasse ? `+${fmtDuree(z.ecartZone)}` : `−${fmtDuree(-z.ecartZone)}`}
+                            </span>
+                          ) : (
+                            <span className="text-slate-200">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         )}

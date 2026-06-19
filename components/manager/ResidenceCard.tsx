@@ -408,9 +408,9 @@ export default function ResidenceCard({ residence: initial }: Props) {
           actif={actif}
           onClose={() => setShowContratModal(false)}
           onSaved={() => showCardToast('Contrat mis à jour')}
-          onSommeiled={(newActif) => {
+          onSommeiled={(newActif, msg) => {
             setActif(newActif)
-            showCardToast(newActif ? 'Résidence réactivée' : 'Résidence mise en sommeil')
+            showCardToast(msg ?? (newActif ? 'Résidence réactivée' : 'Résidence mise en sommeil'))
           }}
         />
       )}

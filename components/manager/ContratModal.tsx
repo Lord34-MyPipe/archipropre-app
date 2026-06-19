@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import type { Residence } from '@/lib/types'
-import { createClient } from '@/lib/supabase'
 
 const JOURS = ['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche']
 const JOURS_LABELS: Record<string, string> = {
@@ -34,7 +33,7 @@ interface Props {
   actif?: boolean
   onClose: () => void
   onSaved?: () => void
-  onSommeiled?: (newActif: boolean) => void
+  onSommeiled?: (newActif: boolean, message?: string) => void
 }
 
 export default function ContratModal({ residence, actif: actifProp = true, onClose, onSaved, onSommeiled }: Props) {
@@ -67,8 +66,10 @@ export default function ContratModal({ residence, actif: actifProp = true, onClo
   const [saving, setSaving]       = useState(false)
   const [saved, setSaved]         = useState(false)
   const [error, setError]         = useState('')
-  const [actifLocal, setActifLocal] = useState(actifProp)
-  const [toggling, setToggling]   = useState(false)
+  const [actifLocal, setActifLocal]             = useState(actifProp)
+  const [toggling, setToggling]                 = useState(false)
+  const [showReactiverConfirm, setShowReactiverConfirm] = useState(false)
+  const [reactiverOption, setReactiverOption]   = useState<'seul' | 'planning'>('planning')
 
   useEffect(() => {
     Promise.all([
@@ -136,16 +137,48 @@ export default function ContratModal({ residence, actif: actifProp = true, onClo
     setSaved(false)
   }
 
-  async function handleToggleSommeil() {
+  async function handleSuspendre() {
     setToggling(true)
-    const supabase = createClient()
-    const { error: err } = await supabase.from('residences').update({ actif: !actifLocal }).eq('id', residence.id)
-    if (!err) {
-      const newActif = !actifLocal
-      setActifLocal(newActif)
-      onSommeiled?.(newActif)
-    }
+    const res = await fetch(`/api/residences/${residence.id}/sommeil`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'suspendre' }),
+    })
+    const json = await res.json()
     setToggling(false)
+    if (!res.ok) return
+    const count: number = json.interventionsAnnulees ?? 0
+    setActifLocal(false)
+    const msg = count > 0
+      ? `Résidence mise en sommeil · ${count} intervention${count > 1 ? 's' : ''} annulée${count > 1 ? 's' : ''}`
+      : 'Résidence mise en sommeil'
+    onSommeiled?.(false, msg)
+  }
+
+  async function handleConfirmReactiver() {
+    setToggling(true)
+    const res = await fetch(`/api/residences/${residence.id}/sommeil`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'reactiver' }),
+    })
+    if (!res.ok) { setToggling(false); return }
+
+    if (reactiverOption === 'planning') {
+      await fetch('/api/planning/generer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ residenceId: residence.id }),
+      })
+    }
+
+    setToggling(false)
+    setShowReactiverConfirm(false)
+    setActifLocal(true)
+    const msg = reactiverOption === 'planning'
+      ? 'Résidence réactivée · Planning régénéré'
+      : 'Résidence réactivée'
+    onSommeiled?.(true, msg)
   }
 
   async function handleSave() {
@@ -460,28 +493,90 @@ export default function ContratModal({ residence, actif: actifProp = true, onClo
                   <span className="text-[9px] text-slate-300 uppercase tracking-widest font-medium">Zone dangereuse</span>
                   <div className="flex-1 border-t border-slate-100"/>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleToggleSommeil}
-                  disabled={toggling}
-                  className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold border transition-all disabled:opacity-50 ${
-                    actifLocal
-                      ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
-                      : 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100'
-                  }`}>
-                  {toggling ? (
-                    <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"/>
-                  ) : actifLocal ? (
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9 9.563C9 9.252 9.252 9 9.563 9h4.874c.311 0 .563.252.563.563v4.874c0 .311-.252.563-.563.563H9.564A.562.562 0 019 14.437V9.564z"/>
-                    </svg>
-                  ) : (
+
+                {/* Flux mise en sommeil */}
+                {actifLocal && (
+                  <button
+                    type="button"
+                    onClick={handleSuspendre}
+                    disabled={toggling}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold border bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100 transition-all disabled:opacity-50">
+                    {toggling ? (
+                      <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"/>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9 9.563C9 9.252 9.252 9 9.563 9h4.874c.311 0 .563.252.563.563v4.874c0 .311-.252.563-.563.563H9.564A.562.562 0 019 14.437V9.564z"/>
+                      </svg>
+                    )}
+                    Mettre en sommeil
+                  </button>
+                )}
+
+                {/* Flux réactivation */}
+                {!actifLocal && !showReactiverConfirm && (
+                  <button
+                    type="button"
+                    onClick={() => setShowReactiverConfirm(true)}
+                    disabled={toggling}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold border bg-green-50 border-green-200 text-green-700 hover:bg-green-100 transition-all disabled:opacity-50">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/>
                     </svg>
-                  )}
-                  {actifLocal ? 'Mettre en sommeil' : 'Réactiver la résidence'}
-                </button>
+                    Réactiver la résidence
+                  </button>
+                )}
+
+                {/* Confirmation réactivation inline */}
+                {!actifLocal && showReactiverConfirm && (
+                  <div className="rounded-2xl border border-green-200 bg-green-50 p-4 space-y-3">
+                    <p className="text-sm font-semibold text-green-800">Réactiver cette résidence ?</p>
+
+                    <div className="space-y-2">
+                      <label className="flex items-start gap-3 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="reactiver_option"
+                          value="seul"
+                          checked={reactiverOption === 'seul'}
+                          onChange={() => setReactiverOption('seul')}
+                          className="mt-0.5 accent-green-600"
+                        />
+                        <span className="text-sm text-green-700">Réactiver uniquement</span>
+                      </label>
+                      <label className="flex items-start gap-3 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="reactiver_option"
+                          value="planning"
+                          checked={reactiverOption === 'planning'}
+                          onChange={() => setReactiverOption('planning')}
+                          className="mt-0.5 accent-green-600"
+                        />
+                        <span className="text-sm text-green-700">Réactiver + régénérer le planning</span>
+                      </label>
+                    </div>
+
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowReactiverConfirm(false)}
+                        disabled={toggling}
+                        className="flex-1 py-2 rounded-xl border border-green-200 text-green-700 text-sm font-medium hover:bg-green-100 disabled:opacity-50">
+                        Annuler
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleConfirmReactiver}
+                        disabled={toggling}
+                        className="flex-1 py-2 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700 disabled:opacity-60 flex items-center justify-center gap-1.5">
+                        {toggling
+                          ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin"/>
+                          : 'Confirmer'
+                        }
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
             </div>

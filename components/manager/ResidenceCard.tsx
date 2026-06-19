@@ -304,7 +304,7 @@ export default function ResidenceCard({ residence: initial }: Props) {
           {/* Ligne 1 : Opérationnel */}
           <div className="grid grid-cols-3 gap-1.5">
             {/* Planning */}
-            {etat === 'planning_actif' ? (
+            {etat !== 'a_configurer' ? (
               <Link href={`/manager/residences/${initial.id}/planning`}
                 className={`${opBtnBase} border-slate-200/70 bg-slate-50 text-[#185FA5] hover:bg-blue-50`}>
                 <IcoCalendar/>

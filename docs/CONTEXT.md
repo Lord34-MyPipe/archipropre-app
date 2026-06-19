@@ -279,10 +279,128 @@ L'état se calcule automatiquement, aucun champ à maintenir.
 
 ## À faire Phase 1 (dans l'ordre)
 
-## À faire Phase 2
-- Gestion agents spécialisés (poubelles, vitres, façades…)
-- Gestion binôme solitaire sur absence (réaffecter automatiquement)
-- Optimisation tournées (Leaflet + OSRM)
+## À faire Phase 2 (dans l'ordre de priorité)
+
+### P2-1 — Refonte tableau de bord manager (priorité absolue)
+Nouveau design from scratch, orienté pilotage en un regard.
+KPIs du jour : interventions en cours / terminées / non démarrées,
+agents n'ayant pas scanné 30 min après l'heure prévue,
+rapports reçus vs attendus, agents en sous/sur-charge,
+commandes produits en attente, alertes prioritaires.
+Supprimer : liste interventions (→ Planning) et liste équipe (→ Agents).
+
+### P2-2 — Commandes produits agents
+Liste globale de produits définie par le directeur.
+Agent coche ce qui manque depuis son app mobile (interface simple,
+cases à cocher, quantité optionnelle).
+Alerte immédiate type 'commande_produit' sur dashboard manager.
+Page dédiée /manager/commandes : liste des demandes en attente,
+historique, validation/traitement par le manager.
+Tables : produits (id, nom, categorie, photo_url),
+commandes_produits (id, agent_id, produit_id, residence_id,
+quantite, statut, created_at).
+
+### P2-3 — Contrat containers / agent spécialisé
+Deux situations à gérer :
+A) Containers inclus dans contrat principal : tâches taggées
+   type='containers', agent dédié avec horaires atypiques (ex. 5h-7h,
+   18h-21h), coût réel isolé même si non facturé séparément.
+   → Permet au directeur de voir la rentabilité cachée par poste.
+B) Contrat containers séparé : 2e contrat sur la résidence
+   (type='containers'), propre agent, propres créneaux, propre tarif.
+   Tâches containers retirées du contrat principal.
+Dans les deux cas : tag 'containers' sur les tâches pour isoler
+le coût réel (23€/h) vs facturation → révèle les pertes cachées.
+Tables à créer/modifier : ajouter type_contrat sur contrats_residences,
+ajouter type_tache sur taches_template.
+
+### P2-4 — Agent obligatoire Annexe 7
+Champs sur residences : agent_obligatoire_id (UUID nullable),
+annexe7 (boolean, motif légal de reprise de contrat).
+Comportement ANA : ne propose jamais un autre agent sauf absence.
+En cas d'absence : ANA signale l'obligation légale explicitement,
+cherche un remplaçant mais le manager doit valider manuellement.
+Badge visuel "Annexe 7" sur la carte résidence et dans le planning.
+Plusieurs résidences peuvent avoir un agent obligatoire.
+
+### P2-5 — Notifications push PWA (intervention ponctuelle)
+Notification push iPhone quand une intervention ponctuelle est créée
+le jour même. Boutons dans la notification : "Accepter" / "Indisponible".
+Si accepté → intervention confirmée au planning.
+Si refusé + raison → ANA relance une suggestion automatiquement,
+même workflow jusqu'à acceptation.
+Facturation ponctuelle déclenchée après validation rapport manager.
+Tech : Web Push API + Service Worker (déjà PWA).
+
+### P2-6 — Découverte des lieux (vidéo résidence)
+Vidéo filmée par le manager, uploadée dans Supabase Storage
+(bucket 'videos_residences').
+Accessible côté agent sur la fiche intervention sous
+"Découvrir les lieux" — affiché uniquement si vidéo disponible
+et si l'agent n'a jamais intervenu sur cette résidence.
+Table : videos_residence (id, residence_id, url, created_by,
+created_at, description).
+
+### P2-7 — Écran temps réel /manager/live
+Page dédiée conçue pour rester affichée en permanence sur écran bureau.
+Manager : avancement chantiers en direct (tâches cochées en temps réel
+via Supabase Realtime), agents sur le terrain, alertes scan manquant.
+Directeur : CA généré mis à jour toutes les heures (tâches terminées
+× taux facturation), coût réel dépensé (heures × 23€/h),
+marge en direct, heures non productives (agent payé mais tâches finies),
+bilan fin de journée automatique.
+Tech : Supabase Realtime (déjà configuré) + polling toutes les 5 min
+pour les KPIs financiers.
+
+### P2-8 — Résilience IA
+Si claude-sonnet indisponible :
+- Message d'erreur explicite sur toutes les fonctions IA
+- Fallback manuel sur TOUTES les fonctions IA :
+  * Suggestion agent → sélecteur manuel avec score affiché
+  * Réorganisation absence → tableau d'affectation manuelle
+  * ANA copilote → message "IA temporairement indisponible,
+    utilisez les actions manuelles"
+- Modèle configurable via variable d'env ANTHROPIC_MODEL
+  (défaut 'claude-sonnet-4-6') → mise à jour sans redéploiement code.
+- Jamais de dépendance bloquante à un modèle spécifique.
+
+## À faire Phase 3
+
+### P3-1 — Espace client (4e rôle)
+Rôle 'client' avec RLS très restrictive (sa résidence uniquement).
+Accès : rapports d'intervention, photos (en ligne uniquement),
+tableau récapitulatif (nb interventions, nb tâches hebdo/mensuel).
+JAMAIS : durées, coûts, données internes.
+
+### P3-2 — Rapport client
+Deux formats générés par le manager :
+A) PDF : tâches réalisées + date, tableau récapitulatif,
+   liste tâches non réalisées avec commentaire validé manager.
+   Jamais de photos dans le PDF (trop lourd).
+B) Lien web sécurisé (token unique, sans auth) :
+   même contenu + photos consultables en ligne.
+Périodicité : journalier, hebdomadaire, mensuel, trimestriel, annuel.
+Pour mensuel+ : pas de photos (volume), uniquement tableaux + stats.
+Envoi par email depuis l'app (SMTP ou Resend).
+
+### P3-3 — Devis + facturation
+Éditeur de devis depuis la fiche résidence.
+Facturation automatique intervention ponctuelle après validation rapport.
+Intégration API Qonto (factures électroniques) à évaluer.
+Remplace PEGASE pour la partie facturation.
+
+### P3-4 — Éditeur de contrat
+Génération de contrat PDF depuis l'app (remplace Organilogue).
+Signature électronique client.
+Archivage dans Supabase Storage.
+
+## Règles métier ajoutées
+
+- Coût réel agent : 23 €/HT/h (frais généraux inclus)
+- Prix de vente : 25 €/h (taux Base société, modifiable par directeur)
+  → fourchette réelle Archipropre : 28-34 €/HT/h (à mettre à jour)
+- Marge brute cible : entre 5 et 11 €/h selon le contrat
+- Tâches containers : toujours isolées pour mesure rentabilité réelle
 
 ## Consultation des rapports d'intervention — vision multi-niveaux
 Le rapport d'intervention (tâches réalisées + photos par zone) doit être consultable :

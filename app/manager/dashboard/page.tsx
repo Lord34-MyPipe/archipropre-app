@@ -29,10 +29,13 @@ export default async function ManagerDashboard() {
   const { data: manager } = await supabase
     .from('profiles').select('prenom, nom').eq('id', user.id).single()
 
-  // Fuseau Europe/Paris — nowTime construit manuellement pour éviter "14 h 25" sur Edge
-  const todayStr  = new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' })
-  const nowParis  = new Date(new Date().toLocaleString('en-CA', { timeZone: 'Europe/Paris' }))
-  const nowTime   = `${String(nowParis.getHours()).padStart(2, '0')}:${String(nowParis.getMinutes()).padStart(2, '0')}`
+  // Fuseau Europe/Paris via Intl.formatToParts — garanti stable sur tous les runtimes
+  const _now = new Date()
+  const _dateFmt = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' })
+  const todayStr  = _dateFmt.format(_now)
+  const _timeFmt  = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false })
+  const _parts    = _timeFmt.formatToParts(_now)
+  const nowTime   = `${_parts.find(p => p.type === 'hour')?.value ?? '00'}:${_parts.find(p => p.type === 'minute')?.value ?? '00'}`
 
   // Récupérer les IDs agents d'abord (nécessaire pour filtrer)
   const { data: agentsRaw } = await supabase

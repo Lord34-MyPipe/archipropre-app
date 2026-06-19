@@ -239,6 +239,14 @@ L'état se calcule automatiquement, aucun champ à maintenir.
    /api/planning/generer) ou réactiver uniquement — choix radio dans le modal Contrat
 ✅ router.refresh() après sommeil/réactivation — badge et compteur mis à jour
    automatiquement sans reload
+✅ Badge "En sommeil" (gris) distinct de "Prête" — calculé depuis residences.actif
+✅ Boutons Planning + Intervention grisés en sommeil, Rapports/Contrat/Tâches/
+   Affectation restent accessibles
+✅ Garde-fou régénération planning : bandeau avertissement + bouton Régénérer
+   désactivé si résidence en sommeil (page planning + route API 403)
+✅ Garde-fou création intervention : routes /api/interventions +
+   /api/interventions/creer-ponctuelle retournent 403 si résidence en sommeil
+✅ ANA refuse de créer une intervention sur une résidence en sommeil
 ✅ Fix bouton Planning : actif sur prete ET planning_actif (etat !== 'a_configurer')
 ✅ Migration 012 : ON DELETE CASCADE sur alertes.intervention_id et
    tournees_etapes.intervention_id — corrige le blocage FK lors de la régénération

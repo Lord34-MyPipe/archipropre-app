@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
           .in('agent_id', agentIds)
           .lte('date_debut', semaine.fin)
           .gte('date_fin', semaine.debut)
-          .eq('statut', 'approuve')
+          .eq('statut', 'valide')
       : Promise.resolve({ data: [] }),
 
     // Toutes les résidences du manager (même sans planning actif)

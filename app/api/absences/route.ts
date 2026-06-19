@@ -16,6 +16,43 @@ async function verifyAgentBelongsToManager(agentId: string, managerId: string) {
   return data?.manager_id === managerId
 }
 
+// Détecte les interventions orphelines et crée l'alerte reorganisation_proposee
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function notifierOrphelines(admin: any, agentId: string, dateDebut: string, dateFin: string) {
+  const { data: orphelines } = await admin
+    .from('interventions')
+    .select('id, date_prevue, heure_debut_prevue, residences(nom)')
+    .eq('agent_id', agentId)
+    .eq('statut', 'planifiee')
+    .gte('date_prevue', dateDebut)
+    .lte('date_prevue', dateFin)
+    .order('date_prevue')
+
+  if (!orphelines?.length) return
+
+  const { data: agentRow } = await admin
+    .from('profiles')
+    .select('manager_id, prenom, nom')
+    .eq('id', agentId)
+    .single()
+
+  if (!agentRow?.manager_id) return
+
+  await admin.from('alertes').insert({
+    type:            'reorganisation_proposee',
+    destinataire_id: agentRow.manager_id,
+    message:         `${agentRow.prenom} ${agentRow.nom} est absent(e) du ${dateDebut} au ${dateFin}. ${orphelines.length} intervention(s) orpheline(s) à redistribuer.`,
+    intervention_id: null,
+    metadata: JSON.stringify({
+      agent_id:         agentId,
+      date_debut:       dateDebut,
+      date_fin:         dateFin,
+      nb_orphelines:    orphelines.length,
+      intervention_ids: orphelines.map((o: { id: string }) => o.id),
+    }),
+  })
+}
+
 // POST — créer une absence ou un congé
 export async function POST(req: NextRequest) {
   const manager = await getManagerUser()
@@ -43,6 +80,10 @@ export async function POST(req: NextRequest) {
       valide:     true,
     }).select().single()
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+    // Absence toujours validée immédiatement → détecter les orphelines
+    await notifierOrphelines(admin, agentId, dateDebut, dateFin)
+
     return NextResponse.json({ data })
   }
 
@@ -58,6 +99,12 @@ export async function POST(req: NextRequest) {
       motif:      motif ?? null,
     }).select().single()
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+    // Congé validé immédiatement → détecter les orphelines
+    if (valideImmediat) {
+      await notifierOrphelines(admin, agentId, dateDebut, dateFin)
+    }
+
     return NextResponse.json({ data })
   }
 
@@ -92,6 +139,9 @@ export async function PATCH(req: NextRequest) {
         motif:      motif ?? null,
       }).eq('id', id)
       if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+      // Absence toujours valide → re-détecter les orphelines sur la nouvelle période
+      await notifierOrphelines(admin, row.agent_id, dateDebut, dateFin)
     } else {
       const newStatut = statut ?? 'en_attente'
       const { error } = await admin.from('conges').update({
@@ -103,6 +153,10 @@ export async function PATCH(req: NextRequest) {
         valide_par: newStatut === 'valide' ? manager.id : null,
       }).eq('id', id)
       if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+      if (newStatut === 'valide') {
+        await notifierOrphelines(admin, row.agent_id, dateDebut, dateFin)
+      }
     }
     return NextResponse.json({ ok: true })
   }
@@ -110,7 +164,11 @@ export async function PATCH(req: NextRequest) {
   // Mise à jour statut seul (valider / refuser un congé)
   if (!statut) return NextResponse.json({ error: 'Champs manquants' }, { status: 400 })
 
-  const { data: conge } = await admin.from('conges').select('agent_id').eq('id', id).single()
+  // Fetch agent_id + dates pour le cas de validation
+  const { data: conge } = await admin.from('conges')
+    .select('agent_id, date_debut, date_fin')
+    .eq('id', id)
+    .single()
   if (!conge) return NextResponse.json({ error: 'Introuvable' }, { status: 404 })
 
   const ok = await verifyAgentBelongsToManager(conge.agent_id, manager.id)
@@ -123,6 +181,12 @@ export async function PATCH(req: NextRequest) {
   }).eq('id', id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+  // Congé passé à 'valide' → détecter les orphelines
+  if (statut === 'valide') {
+    await notifierOrphelines(admin, conge.agent_id, conge.date_debut, conge.date_fin)
+  }
+
   return NextResponse.json({ ok: true })
 }
 

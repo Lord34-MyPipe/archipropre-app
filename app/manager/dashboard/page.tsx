@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import type { Profile, Intervention, Residence, Absence, Conge } from '@/lib/types'
 import InterventionsDuJourSection from '@/components/manager/InterventionsDuJourSection'
+import AlerteReorganisationButton from '@/components/manager/AlerteReorganisationButton'
 
 type InterJoined = Intervention & { residences: Residence; profiles: Profile }
 
@@ -109,24 +110,38 @@ export default async function ManagerDashboard() {
         {/* Alertes */}
         {(alertes?.length ?? 0) > 0 && (
           <div className="space-y-2">
-            {alertes!.map(al => (
-              <div key={al.id} className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-2xl p-4">
-                <span className="text-xl mt-0.5">🚨</span>
-                <div className="flex-1">
-                  <p className="font-semibold text-red-800 text-sm">{al.type.replace(/_/g,' ')}</p>
-                  <p className="text-red-700 text-sm mt-0.5">{al.message}</p>
+            {alertes!.map(al => {
+              if (al.type === 'reorganisation_proposee') {
+                return (
+                  <div key={al.id} className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                    <span className="text-xl mt-0.5">🤖</span>
+                    <div className="flex-1">
+                      <p className="font-semibold text-amber-800 text-sm">Réorganisation requise</p>
+                      <p className="text-amber-700 text-sm mt-0.5">{al.message}</p>
+                    </div>
+                    <AlerteReorganisationButton alerteId={al.id} message={al.message ?? ''} />
+                  </div>
+                )
+              }
+              return (
+                <div key={al.id} className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-2xl p-4">
+                  <span className="text-xl mt-0.5">🚨</span>
+                  <div className="flex-1">
+                    <p className="font-semibold text-red-800 text-sm">{al.type.replace(/_/g,' ')}</p>
+                    <p className="text-red-700 text-sm mt-0.5">{al.message}</p>
+                  </div>
+                  {al.type === 'rapport_soumis' && al.intervention_id && (
+                    <Link
+                      href={`/manager/interventions/${al.intervention_id}/rapport`}
+                      className="shrink-0 text-sm font-semibold whitespace-nowrap hover:underline"
+                      style={{ color: '#0BBFBF' }}
+                    >
+                      Voir le rapport →
+                    </Link>
+                  )}
                 </div>
-                {al.type === 'rapport_soumis' && al.intervention_id && (
-                  <Link
-                    href={`/manager/interventions/${al.intervention_id}/rapport`}
-                    className="shrink-0 text-sm font-semibold whitespace-nowrap hover:underline"
-                    style={{ color: '#0BBFBF' }}
-                  >
-                    Voir le rapport →
-                  </Link>
-                )}
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
 

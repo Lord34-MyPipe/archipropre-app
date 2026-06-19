@@ -214,6 +214,19 @@ L'état se calcule automatiquement, aucun champ à maintenir.
    - Dashboard alertes (rapport_soumis → "Voir le rapport →")
    - Planning (clic intervention terminée → rapport, 4 vues)
    - Interventions du jour (bouton "Voir le rapport →" sur terminées)
+✅ Taux horaire de facturation client : champ taux_horaire_facturation sur
+   contrats_residences (nullable = suit le taux Base société) +
+   taux_horaire_facturation_defaut sur parametres_societe (défaut 25 €/h)
+✅ Modal contrat enrichi : champ "Interventions facturées / mois" (nb_interventions_mois
+   éditable, distinct de la fréquence estimée ~13 calculée à la volée),
+   toggle Base/Spécifique pour le taux horaire, bloc "heures vendues" live
+✅ Rapport manager : comparaison 3 durées (Contractuelle / Estimée / Réelle)
+   — Contractuelle = montant_mensuel ÷ taux_horaire ÷ nb_interventions_mois,
+   fallback taux Base société si contrat à NULL
+✅ Fix bug temps par zone : clôture N − clôture N-1 (était clôture N − heure_scan)
+✅ Tableau comparatif par zone : Estimée (taches_template.duree_minutes via zone_id)
+   vs Réelle (zones_intervention corrigé), écart coloré, zones non traitées en orange,
+   jointure par zones_residence.nom (copie directe au scan, fiable)
 ✅ Navigation planning agent J→J+7 (flèches ← →, bornée today à today+7,
    reset sur aujourd'hui à la connexion, dates calculées en Europe/Paris)
 ✅ Jours futurs côté agent : aperçu léger lecture seule (résidence + heure + adresse),
@@ -228,11 +241,6 @@ L'état se calcule automatiquement, aucun champ à maintenir.
    → peut être supprimé lors d'une future migration de nettoyage
 
 ## À faire Phase 1 (dans l'ordre)
-- Durée contractuelle par intervention : montant_mensuel ÷ taux_horaire_agent
-  ÷ nb_interventions_mois (données déjà en base, calcul à intégrer dans le
-  rapport manager pour comparaison 3 durées : Contractuelle / Estimée / Réelle)
-- Tableau comparatif durées par zone dans rapport manager
-  (Estimée depuis taches_template.duree_minutes vs Réelle depuis zones_intervention)
 - Moteur IA réorganisation sur absence/congé
 
 ## À faire Phase 2

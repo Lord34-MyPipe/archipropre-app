@@ -233,6 +233,16 @@ L'état se calcule automatiquement, aucun champ à maintenir.
    scan grisé "Scan disponible le jour de l'intervention", tâches/zones/photos masquées
 ✅ Bouton Waze par carte d'intervention agent (réutilise lib/navigation.ts)
 ✅ lib/navigation.ts : wazeUrl/googleMapsUrl partagées agent + manager (GPS sinon adresse)
+✅ Mise en sommeil résidence : annulation logique de toutes les interventions
+   futures (statut='annulee') + residences.actif=false via POST /api/residences/[id]/sommeil
+✅ Réactivation : residences.actif=true + option régénérer le planning (appel
+   /api/planning/generer) ou réactiver uniquement — choix radio dans le modal Contrat
+✅ router.refresh() après sommeil/réactivation — badge et compteur mis à jour
+   automatiquement sans reload
+✅ Fix bouton Planning : actif sur prete ET planning_actif (etat !== 'a_configurer')
+✅ Migration 012 : ON DELETE CASCADE sur alertes.intervention_id et
+   tournees_etapes.intervention_id — corrige le blocage FK lors de la régénération
+   de planning (RPC planifier_interventions)
 
 ## Bugs connus à corriger
 ℹ️ depart_lat/lng de Marie Dupont (agent test) à null — point par défaut siège

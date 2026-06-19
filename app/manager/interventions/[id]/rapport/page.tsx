@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import ValiderRapportButton from '@/components/manager/ValiderRapportButton'
 
 interface ZoneIntervention {
   id: string
@@ -281,11 +282,13 @@ export default async function ManagerRapportPage({ params }: { params: Promise<{
             </p>
           </div>
           <span className={`mt-1 shrink-0 px-3 py-1 rounded-full text-xs font-semibold ${
-            inter.statut === 'terminee'
-              ? 'bg-green-500/20 text-green-300'
-              : 'bg-amber-400/20 text-amber-300'
+            inter.statut === 'validee'
+              ? 'bg-emerald-500/20 text-emerald-200'
+              : inter.statut === 'terminee'
+                ? 'bg-green-500/20 text-green-300'
+                : 'bg-amber-400/20 text-amber-300'
           }`}>
-            {inter.statut === 'terminee' ? 'Terminée' : inter.statut}
+            {inter.statut === 'validee' ? 'Validé' : inter.statut === 'terminee' ? 'Terminée' : inter.statut}
           </span>
         </div>
       </div>
@@ -560,6 +563,29 @@ export default async function ManagerRapportPage({ params }: { params: Promise<{
           </div>
         )}
       </div>
+
+      {/* Footer action */}
+      {inter.statut === 'terminee' && (
+        <div className="border-t border-slate-100 px-6 py-4 flex justify-end bg-white">
+          <ValiderRapportButton interventionId={inter.id} />
+        </div>
+      )}
+      {inter.statut === 'validee' && (
+        <div className="border-t border-slate-100 px-6 py-4 flex items-center gap-2 bg-white">
+          <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <span className="text-sm font-semibold" style={{ color: '#3B6D11' }}>Rapport validé</span>
+          {inter.validee_at && (
+            <span className="text-xs text-slate-400">
+              · {new Date(inter.validee_at).toLocaleDateString('fr-FR', {
+                  day: 'numeric', month: 'long', year: 'numeric',
+                  timeZone: 'Europe/Paris',
+                })}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }

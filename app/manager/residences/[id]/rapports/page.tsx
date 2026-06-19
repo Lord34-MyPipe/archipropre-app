@@ -35,9 +35,9 @@ export default async function RapportsPage({ params }: Props) {
 
   const admin = await createAdminClient()
   const { data: interventions } = await admin.from('interventions')
-    .select('id, date_prevue, heure_scan, heure_fin, profiles!interventions_agent_id_fkey(prenom, nom)')
+    .select('id, date_prevue, heure_scan, heure_fin, statut, validee_at, profiles!interventions_agent_id_fkey(prenom, nom)')
     .eq('residence_id', id)
-    .eq('statut', 'terminee')
+    .in('statut', ['terminee', 'validee'])
     .order('date_prevue', { ascending: false })
 
   return (
@@ -99,14 +99,25 @@ export default async function RapportsPage({ params }: Props) {
                       )}
                     </div>
                   </div>
-                  <Link
-                    href={`/manager/interventions/${iv.id}/rapport`}
-                    className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
-                    Voir
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
-                    </svg>
-                  </Link>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {iv.statut === 'validee' ? (
+                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: '#EAF3DE', color: '#3B6D11' }}>
+                        ✓ Validé
+                      </span>
+                    ) : (
+                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: '#FAEEDA', color: '#854F0B' }}>
+                        En attente
+                      </span>
+                    )}
+                    <Link
+                      href={`/manager/interventions/${iv.id}/rapport`}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+                      Voir
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
+                      </svg>
+                    </Link>
+                  </div>
                 </div>
               )
             })}

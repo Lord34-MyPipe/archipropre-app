@@ -68,10 +68,11 @@ export async function POST(req: NextRequest) {
 
   // ── 1. Vérification ownership ────────────────────────────────────────────────
   const { data: res } = await admin.from('residences')
-    .select('id, nom, lat, lng, agent_prefere_id')
+    .select('id, nom, lat, lng, agent_prefere_id, actif')
     .eq('id', residenceId).eq('manager_id', managerId).single()
   console.log('[generer] résidence:', res ? `"${res.nom}" agent=${res.agent_prefere_id ?? 'aucun'}` : 'NON TROUVÉE')
   if (!res) return NextResponse.json({ error: 'Résidence introuvable ou non autorisée' }, { status: 403 })
+  if (!res.actif) return NextResponse.json({ error: 'Résidence en sommeil — réactivez-la avant de régénérer le planning.' }, { status: 403 })
 
   if (!res.agent_prefere_id)
     return NextResponse.json({ error: 'Aucun agent attitré pour cette résidence.' }, { status: 400 })

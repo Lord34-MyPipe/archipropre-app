@@ -135,6 +135,13 @@ const IcoQR = () => (
   </svg>
 )
 
+const IcoPause = () => (
+  <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <rect x="6" y="4" width="4" height="16" rx="1"/>
+    <rect x="14" y="4" width="4" height="16" rx="1"/>
+  </svg>
+)
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string | null) {
@@ -157,6 +164,11 @@ export default function ResidenceCard({ residence: initial }: Props) {
 
   const [token, setToken]                        = useState(initial.qr_code_token)
   const [actif, setActif]                        = useState(initial.actif)
+
+  const enSommeil                                = !actif
+  const planningActif                            = etat !== 'a_configurer' && !enSommeil
+  const interventionActive                       = etat !== 'a_configurer' && !enSommeil
+  const rapportsActif                            = etat !== 'a_configurer'
   const [agentPrefereId, setAgentPrefereId]      = useState(initial.agent_prefere_id)
   const [agentExcluIds, setAgentExcluIds]        = useState<string[]>(initial.agent_exclu_ids ?? [])
   const [agentNomLocal, setAgentNomLocal]        = useState(initial._etat?.nom_agent_attitre ?? null)
@@ -224,8 +236,10 @@ export default function ResidenceCard({ residence: initial }: Props) {
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-lg leading-none">🏢</span>
               <h3 className="font-semibold text-slate-800 leading-snug">{initial.nom}</h3>
-              {!actif && (
-                <span className="px-2 py-0.5 bg-slate-100 text-slate-400 text-[11px] rounded-full font-medium">En sommeil</span>
+              {enSommeil && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full font-medium" style={{ background: '#F1EFE8', color: '#5F5E5A' }}>
+                  <IcoPause/> En sommeil
+                </span>
               )}
             </div>
             <p className="text-sm text-slate-400 mt-1 truncate">📍 {initial.adresse}</p>
@@ -304,7 +318,7 @@ export default function ResidenceCard({ residence: initial }: Props) {
           {/* Ligne 1 : Opérationnel */}
           <div className="grid grid-cols-3 gap-1.5">
             {/* Planning */}
-            {etat !== 'a_configurer' ? (
+            {planningActif ? (
               <Link href={`/manager/residences/${initial.id}/planning`}
                 className={`${opBtnBase} border-slate-200/70 bg-slate-50 text-[#185FA5] hover:bg-blue-50`}>
                 <IcoCalendar/>
@@ -318,7 +332,7 @@ export default function ResidenceCard({ residence: initial }: Props) {
             )}
 
             {/* Intervention */}
-            {etat !== 'a_configurer' ? (
+            {interventionActive ? (
               <button onClick={() => setShowPlanifierModal(true)}
                 className={`${opBtnBase} border-slate-200/70 bg-slate-50 text-[#185FA5] hover:bg-blue-50`}>
                 <IcoPlusCircle/>
@@ -332,7 +346,7 @@ export default function ResidenceCard({ residence: initial }: Props) {
             )}
 
             {/* Rapports */}
-            {etat !== 'a_configurer' ? (
+            {rapportsActif ? (
               <Link href={`/manager/residences/${initial.id}/rapports`}
                 className={`${opBtnBase} border-slate-200/70 bg-slate-50 text-[#0F6E56] hover:bg-emerald-50`}>
                 <IcoClipboard/>

@@ -43,8 +43,9 @@ export async function POST(req: NextRequest) {
 
   // Vérifier que la résidence appartient au manager
   const { data: res } = await admin
-    .from('residences').select('id').eq('id', residenceId).eq('manager_id', managerId).single()
+    .from('residences').select('id, actif').eq('id', residenceId).eq('manager_id', managerId).single()
   if (!res) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
+  if (!res.actif) return NextResponse.json({ error: 'Résidence en sommeil — réactivez-la avant de planifier.' }, { status: 403 })
 
   // Vérifier que l'agent appartient au manager
   const { data: agent } = await admin

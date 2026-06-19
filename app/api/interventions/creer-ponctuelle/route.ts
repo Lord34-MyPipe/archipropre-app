@@ -36,6 +36,11 @@ export async function POST(req: NextRequest) {
   if (!tache_libelle?.trim())  return NextResponse.json({ error: 'tache_libelle manquant' }, { status: 400 })
 
   const admin = await createAdminClient()
+
+  // Guard: résidence en sommeil
+  const { data: residenceRow } = await admin.from('residences').select('actif').eq('id', residence_id).single()
+  if (!residenceRow?.actif) return NextResponse.json({ error: 'Résidence en sommeil — réactivez-la avant de créer une intervention.' }, { status: 403 })
+
   const isBinome = !!binome_agent_id
 
   // ── Création agent principal ──────────────────────────────────────────────────

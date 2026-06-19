@@ -27,7 +27,7 @@ export default async function PlanningPage({ params }: Props) {
 
   // Résidence (ownership)
   const { data: residence } = await supabase.from('residences')
-    .select('id, nom, agent_prefere_id')
+    .select('id, nom, agent_prefere_id, actif')
     .eq('id', id).eq('manager_id', user.id).single()
   if (!residence) redirect('/manager/residences')
 
@@ -86,6 +86,7 @@ export default async function PlanningPage({ params }: Props) {
     <PlanningClient
       residenceId={id}
       residenceNom={residence.nom}
+      residenceActif={residence.actif}
       agentNom={agentNom}
       creneaux={creneaux}
       interventions={interventions}

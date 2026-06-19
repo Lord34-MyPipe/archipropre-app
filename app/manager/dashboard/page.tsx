@@ -29,11 +29,10 @@ export default async function ManagerDashboard() {
   const { data: manager } = await supabase
     .from('profiles').select('prenom, nom').eq('id', user.id).single()
 
-  // Fuseau Europe/Paris pour la comparaison des heures
-  const todayStr = new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' })
-  const nowTime  = new Date().toLocaleTimeString('fr-CA', {
-    timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit',
-  })
+  // Fuseau Europe/Paris — nowTime construit manuellement pour éviter "14 h 25" sur Edge
+  const todayStr  = new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' })
+  const nowParis  = new Date(new Date().toLocaleString('en-CA', { timeZone: 'Europe/Paris' }))
+  const nowTime   = `${String(nowParis.getHours()).padStart(2, '0')}:${String(nowParis.getMinutes()).padStart(2, '0')}`
 
   // Récupérer les IDs agents d'abord (nécessaire pour filtrer)
   const { data: agentsRaw } = await supabase
@@ -156,15 +155,17 @@ export default async function ManagerDashboard() {
         </p>
       </div>
 
-      <div className="px-4 py-6 md:px-8 space-y-4 pb-24 md:pb-6">
+      <div className="px-4 py-6 md:px-8 pb-24 md:pb-6 space-y-4">
         <DashboardKPIs kpis={kpis} />
-        <DashboardAlertes
-          scanManquants={scanManquants}
-          rapportsEnRetard={rapportsEnRetard}
-          alertes={alertes}
-          kpis={kpis}
-        />
-        <DashboardEquipe agents={statutParAgent} />
+        <div className="md:grid md:grid-cols-[3fr_2fr] md:gap-6 space-y-4 md:space-y-0">
+          <DashboardAlertes
+            scanManquants={scanManquants}
+            rapportsEnRetard={rapportsEnRetard}
+            alertes={alertes}
+            kpis={kpis}
+          />
+          <DashboardEquipe agents={statutParAgent} />
+        </div>
       </div>
     </div>
   )

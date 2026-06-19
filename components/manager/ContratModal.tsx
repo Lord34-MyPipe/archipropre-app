@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import type { Residence } from '@/lib/types'
+import { createClient } from '@/lib/supabase'
 
 const JOURS = ['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche']
 const JOURS_LABELS: Record<string, string> = {
@@ -30,11 +31,13 @@ function formatCreneau(c: Creneau): string {
 
 interface Props {
   residence: Residence
+  actif?: boolean
   onClose: () => void
   onSaved?: () => void
+  onSommeiled?: (newActif: boolean) => void
 }
 
-export default function ContratModal({ residence, onClose, onSaved }: Props) {
+export default function ContratModal({ residence, actif: actifProp = true, onClose, onSaved, onSommeiled }: Props) {
   // Contrat fields
   const [contratId, setContratId]                   = useState<string | null>(null)
   const [dateDebut, setDateDebut]                   = useState(todayStr())
@@ -60,10 +63,12 @@ export default function ContratModal({ residence, onClose, onSaved }: Props) {
   const [newFin, setNewFin]           = useState('12:00')
 
   // UI
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving]   = useState(false)
-  const [saved, setSaved]     = useState(false)
-  const [error, setError]     = useState('')
+  const [loading, setLoading]     = useState(true)
+  const [saving, setSaving]       = useState(false)
+  const [saved, setSaved]         = useState(false)
+  const [error, setError]         = useState('')
+  const [actifLocal, setActifLocal] = useState(actifProp)
+  const [toggling, setToggling]   = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -129,6 +134,18 @@ export default function ContratModal({ residence, onClose, onSaved }: Props) {
   function removeCreneau(idx: number) {
     setCreneaux(prev => prev.filter((_, i) => i !== idx))
     setSaved(false)
+  }
+
+  async function handleToggleSommeil() {
+    setToggling(true)
+    const supabase = createClient()
+    const { error: err } = await supabase.from('residences').update({ actif: !actifLocal }).eq('id', residence.id)
+    if (!err) {
+      const newActif = !actifLocal
+      setActifLocal(newActif)
+      onSommeiled?.(newActif)
+    }
+    setToggling(false)
   }
 
   async function handleSave() {
@@ -434,6 +451,37 @@ export default function ContratModal({ residence, onClose, onSaved }: Props) {
                   placeholder="Instructions particulières, accès, codes…"
                   className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0BBFBF]/40 resize-none"
                 />
+              </div>
+
+              {/* Zone dangereuse */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="flex-1 border-t border-slate-100"/>
+                  <span className="text-[9px] text-slate-300 uppercase tracking-widest font-medium">Zone dangereuse</span>
+                  <div className="flex-1 border-t border-slate-100"/>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleToggleSommeil}
+                  disabled={toggling}
+                  className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold border transition-all disabled:opacity-50 ${
+                    actifLocal
+                      ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
+                      : 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100'
+                  }`}>
+                  {toggling ? (
+                    <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"/>
+                  ) : actifLocal ? (
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9 9.563C9 9.252 9.252 9 9.563 9h4.874c.311 0 .563.252.563.563v4.874c0 .311-.252.563-.563.563H9.564A.562.562 0 019 14.437V9.564z"/>
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z"/>
+                    </svg>
+                  )}
+                  {actifLocal ? 'Mettre en sommeil' : 'Réactiver la résidence'}
+                </button>
               </div>
 
             </div>

@@ -43,13 +43,13 @@ async function notifierOrphelines(admin: any, agentId: string, dateDebut: string
     destinataire_id: agentRow.manager_id,
     message:         `${agentRow.prenom} ${agentRow.nom} est absent(e) du ${dateDebut} au ${dateFin}. ${orphelines.length} intervention(s) orpheline(s) à redistribuer.`,
     intervention_id: null,
-    metadata: JSON.stringify({
+    metadata: {
       agent_id:         agentId,
       date_debut:       dateDebut,
       date_fin:         dateFin,
       nb_orphelines:    orphelines.length,
       intervention_ids: orphelines.map((o: { id: string }) => o.id),
-    }),
+    },
   })
 }
 

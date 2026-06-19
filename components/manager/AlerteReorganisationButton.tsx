@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import ReorganisationPanel from './ReorganisationPanel'
 
 interface AlerteMetadata {
@@ -24,10 +25,18 @@ interface Plan {
     agent_nom: string
     charge_apres_pct: number
     avertissements: string[]
+    residence_nom: string | null
+    date_prevue: string | null
+    heure_debut: string | null
+    heure_fin: string | null
   }>
   annuler: Array<{
     intervention_id: string
     raison: string
+    residence_nom: string | null
+    date_prevue: string | null
+    heure_debut: string | null
+    heure_fin: string | null
   }>
   resume: string
 }
@@ -38,13 +47,15 @@ interface AgentDisponible {
   nom: string
 }
 
-export default function AlerteReorganisationButton({ message, metadata }: Props) {
-  const [loading, setLoading]               = useState(false)
-  const [toast, setToast]                   = useState('')
-  const [panelOpen, setPanelOpen]           = useState(false)
-  const [plan, setPlan]                     = useState<Plan | null>(null)
-  const [context, setContext]               = useState<{ agent_absent: string; periode: string; nb_orphelines: number } | null>(null)
-  const [agentsDisponibles, setAgents]      = useState<AgentDisponible[]>([])
+export default function AlerteReorganisationButton({ alerteId, message, metadata }: Props) {
+  const router = useRouter()
+
+  const [loading, setLoading]           = useState(false)
+  const [toast, setToast]               = useState('')
+  const [panelOpen, setPanelOpen]       = useState(false)
+  const [plan, setPlan]                 = useState<Plan | null>(null)
+  const [context, setContext]           = useState<{ agent_absent: string; periode: string; nb_orphelines: number } | null>(null)
+  const [agentsDisponibles, setAgents]  = useState<AgentDisponible[]>([])
 
   async function handleClick() {
     if (!metadata) {
@@ -95,8 +106,11 @@ export default function AlerteReorganisationButton({ message, metadata }: Props)
 
   function handleApplique() {
     setPanelOpen(false)
-    showToast('Plan appliqué — redistribution à venir (étape 4)')
+    router.refresh()
   }
+
+  // message utilisé pour éviter le warning "unused variable"
+  void message
 
   return (
     <>
@@ -121,6 +135,7 @@ export default function AlerteReorganisationButton({ message, metadata }: Props)
           plan={plan}
           context={context}
           agentsDisponibles={agentsDisponibles}
+          alerteId={alerteId}
           onApplique={handleApplique}
         />
       )}

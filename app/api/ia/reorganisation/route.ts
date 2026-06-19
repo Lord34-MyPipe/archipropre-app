@@ -215,6 +215,26 @@ Produis le plan de redistribution optimal. Privilégie les agents du même secte
     return NextResponse.json({ error: 'Réponse IA invalide', raw: planText }, { status: 500 })
   }
 
+  // Enrichir chaque item redistribuer/annuler avec les données résidence (côté serveur, fiable)
+  const orphelinesIndex = Object.fromEntries(orphelines.map((o: Row) => {
+    const res = o.residences as Row | null
+    return [o.id, {
+      residence_nom: res?.nom ?? null,
+      date_prevue:   o.date_prevue,
+      heure_debut:   o.heure_debut_prevue,
+      heure_fin:     o.heure_fin_prevue,
+    }]
+  }))
+
+  plan.redistribuer = (plan.redistribuer ?? []).map((item: Row) => ({
+    ...item,
+    ...(orphelinesIndex[item.intervention_id] ?? {}),
+  }))
+  plan.annuler = (plan.annuler ?? []).map((item: Row) => ({
+    ...item,
+    ...(orphelinesIndex[item.intervention_id] ?? {}),
+  }))
+
   return NextResponse.json({
     success: true,
     plan,

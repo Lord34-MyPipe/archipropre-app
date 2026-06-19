@@ -8,11 +8,19 @@ interface RedistribuerItem {
   agent_nom: string
   charge_apres_pct: number
   avertissements: string[]
+  residence_nom: string | null
+  date_prevue: string | null
+  heure_debut: string | null
+  heure_fin: string | null
 }
 
 interface AnnulerItem {
   intervention_id: string
   raison: string
+  residence_nom: string | null
+  date_prevue: string | null
+  heure_debut: string | null
+  heure_fin: string | null
 }
 
 interface Plan {
@@ -31,7 +39,18 @@ interface ReorganisationPanelProps {
     nb_orphelines: number
   }
   agentsDisponibles: Array<{ id: string; prenom: string; nom: string }>
-  onApplique: (planModifie: Plan) => void
+  alerteId: string
+  onApplique: () => void
+}
+
+function formatDate(d: string | null): string {
+  if (!d) return '?'
+  const dt = new Date(d + 'T12:00:00Z')
+  return dt.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
+}
+
+function formatHeure(h: string | null): string {
+  return h ? h.substring(0, 5) : '?'
 }
 
 export default function ReorganisationPanel({
@@ -40,10 +59,18 @@ export default function ReorganisationPanel({
   plan,
   context,
   agentsDisponibles,
+  alerteId,
   onApplique,
 }: ReorganisationPanelProps) {
-  const [redistribuer, setRedistribuer] = useState<RedistribuerItem[]>(plan.redistribuer)
+  const [redistribuer, setRedistribuer]     = useState<RedistribuerItem[]>(plan.redistribuer)
   const [annulerConfirm, setAnnulerConfirm] = useState<Record<string, boolean>>({})
+  const [applying, setApplying]             = useState(false)
+  const [toast, setToast]                   = useState('')
+
+  function showToast(msg: string) {
+    setToast(msg)
+    setTimeout(() => setToast(''), 4000)
+  }
 
   function handleAgentChange(interventionId: string, newAgentId: string) {
     const agent = agentsDisponibles.find(a => a.id === newAgentId)
@@ -56,11 +83,43 @@ export default function ReorganisationPanel({
     )
   }
 
-  function handleApplique() {
-    onApplique({ ...plan, redistribuer })
+  async function handleApplique() {
+    setApplying(true)
+    try {
+      const annulees = plan.annuler.filter(a => annulerConfirm[a.intervention_id])
+
+      const res = await fetch('/api/ia/reorganisation/appliquer', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          redistribuer: redistribuer.map(r => ({
+            intervention_id:  r.intervention_id,
+            agent_id_propose: r.agent_id_propose,
+          })),
+          annuler:   annulees.map(a => ({ intervention_id: a.intervention_id })),
+          alerte_id: alerteId,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (data.success) {
+        const msg = `✓ ${data.redistribuees} redistribuée${data.redistribuees > 1 ? 's' : ''}${data.annulees > 0 ? `, ${data.annulees} annulée${data.annulees > 1 ? 's' : ''}` : ''}`
+        showToast(msg)
+        setTimeout(() => {
+          onApplique()
+        }, 1200)
+      } else {
+        showToast(data.error ?? "Erreur lors de l'application du plan")
+      }
+    } catch {
+      showToast('Erreur réseau')
+    } finally {
+      setApplying(false)
+    }
   }
 
-  const nbTotal = redistribuer.length + plan.annuler.length
+  const nbTotal = redistribuer.length + Object.values(annulerConfirm).filter(Boolean).length
 
   return (
     <>
@@ -102,7 +161,7 @@ export default function ReorganisationPanel({
           </p>
         </div>
 
-        {/* Scrollable body */}
+        {/* Body scrollable */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
           {/* Résumé ANA */}
@@ -148,7 +207,14 @@ export default function ReorganisationPanel({
                         }
                       />
                       <div>
-                        <p className="text-xs font-mono text-slate-400">{item.intervention_id.slice(0, 8)}…</p>
+                        <p className="text-xs font-semibold text-red-800">
+                          {item.residence_nom ?? item.intervention_id.slice(0, 8) + '…'}
+                        </p>
+                        {item.date_prevue && (
+                          <p className="text-xs text-red-600">
+                            {formatDate(item.date_prevue)} · {formatHeure(item.heure_debut)}→{formatHeure(item.heure_fin)}
+                          </p>
+                        )}
                         <p className="text-xs text-red-700 mt-0.5">{item.raison}</p>
                       </div>
                     </label>
@@ -163,19 +229,32 @@ export default function ReorganisationPanel({
         <div className="flex-shrink-0 border-t border-slate-100 px-4 py-3 flex gap-3">
           <button
             onClick={onClose}
-            className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors"
+            disabled={applying}
+            className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-50"
           >
             Annuler
           </button>
           <button
             onClick={handleApplique}
-            className="flex-1 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-colors"
+            disabled={applying}
+            className="flex-1 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
             style={{ background: '#1A5FA8' }}
           >
-            ✓ Appliquer ({nbTotal})
+            {applying ? (
+              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>
+            ) : (
+              `✓ Appliquer (${nbTotal})`
+            )}
           </button>
         </div>
       </div>
+
+      {/* Toast interne au panneau */}
+      {toast && (
+        <div className="fixed bottom-28 md:bottom-8 left-1/2 -translate-x-1/2 z-[60] bg-[#0A2E5A] text-white px-5 py-3 rounded-2xl shadow-xl text-sm font-medium pointer-events-none whitespace-nowrap">
+          {toast}
+        </div>
+      )}
     </>
   )
 }
@@ -191,11 +270,17 @@ function InterventionCard({
 }) {
   return (
     <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 space-y-2">
-      <div className="flex items-start gap-2">
-        <span className="text-base mt-0.5">📍</span>
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-mono text-slate-400">{item.intervention_id.slice(0, 8)}…</p>
-        </div>
+      {/* Résidence + créneau */}
+      <div>
+        <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+          <span>📍</span>
+          {item.residence_nom ?? '—'}
+        </p>
+        {item.date_prevue && (
+          <p className="text-xs text-slate-500 mt-0.5">
+            {formatDate(item.date_prevue)} · {formatHeure(item.heure_debut)}→{formatHeure(item.heure_fin)}
+          </p>
+        )}
       </div>
 
       {/* Select agent */}
@@ -214,7 +299,7 @@ function InterventionCard({
         </select>
       </div>
 
-      {/* Charge après */}
+      {/* Barre de charge */}
       <div className="flex items-center gap-1.5">
         <div className="h-1.5 flex-1 bg-slate-200 rounded-full overflow-hidden">
           <div

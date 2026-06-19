@@ -26,15 +26,24 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
 
   const admin = await createAdminClient()
-  const { data } = await admin.from('contrats_residences')
-    .select('*')
-    .eq('residence_id', residenceId)
-    .eq('actif', true)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  const [{ data }, { data: params }] = await Promise.all([
+    admin.from('contrats_residences')
+      .select('*')
+      .eq('residence_id', residenceId)
+      .eq('actif', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    admin.from('parametres_societe')
+      .select('taux_horaire_facturation_defaut')
+      .limit(1)
+      .maybeSingle(),
+  ])
 
-  return NextResponse.json({ data })
+  return NextResponse.json({
+    data,
+    tauxBase: params?.taux_horaire_facturation_defaut ?? 25,
+  })
 }
 
 // POST — créer ou mettre à jour le contrat d'une résidence
@@ -47,6 +56,8 @@ export async function POST(req: NextRequest) {
     residenceId, contratId,
     dateDebut, dateFin,
     montantMensuel,
+    nbInterventionsMois,
+    tauxHoraireFacturation,
     joursObliges, joursInterdits,
     creneauxAcceptes,
     notesSpecifiques,
@@ -59,15 +70,17 @@ export async function POST(req: NextRequest) {
 
   const admin = await createAdminClient()
   const payload = {
-    residence_id:         residenceId,
-    date_debut:           dateDebut,
-    date_fin:             dateFin,
-    montant_mensuel:      montantMensuel ? Number(montantMensuel) : null,
-    jours_obliges:        joursObliges ?? [],
-    jours_interdits:      joursInterdits ?? [],
-    creneaux_acceptes:    creneauxAcceptes ?? [],
-    notes_specifiques:    notesSpecifiques ?? null,
-    actif:                true,
+    residence_id:               residenceId,
+    date_debut:                 dateDebut,
+    date_fin:                   dateFin,
+    montant_mensuel:            montantMensuel ? Number(montantMensuel) : null,
+    nb_interventions_mois:      nbInterventionsMois ? Number(nbInterventionsMois) : 4,
+    taux_horaire_facturation:   tauxHoraireFacturation != null ? Number(tauxHoraireFacturation) : null,
+    jours_obliges:              joursObliges ?? [],
+    jours_interdits:            joursInterdits ?? [],
+    creneaux_acceptes:          creneauxAcceptes ?? [],
+    notes_specifiques:          notesSpecifiques ?? null,
+    actif:                      true,
   }
 
   let data, error

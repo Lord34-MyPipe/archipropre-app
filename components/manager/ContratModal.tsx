@@ -36,28 +36,34 @@ interface Props {
 
 export default function ContratModal({ residence, onClose, onSaved }: Props) {
   // Contrat fields
-  const [contratId, setContratId]           = useState<string | null>(null)
-  const [dateDebut, setDateDebut]           = useState(todayStr())
-  const [dateFin, setDateFin]               = useState(in12Months())
-  const [montant, setMontant]               = useState('')
-  const [joursInterdits, setJoursInterdits] = useState<string[]>([])
-  const [creneaux, setCreneaux]             = useState<Creneau[]>([])
-  const [notes, setNotes]                   = useState('')
+  const [contratId, setContratId]                   = useState<string | null>(null)
+  const [dateDebut, setDateDebut]                   = useState(todayStr())
+  const [dateFin, setDateFin]                       = useState(in12Months())
+  const [montant, setMontant]                       = useState('')
+  const [nbInterventionsMois, setNbInterventionsMois] = useState<number>(4)
+  const [joursInterdits, setJoursInterdits]         = useState<string[]>([])
+  const [creneaux, setCreneaux]                     = useState<Creneau[]>([])
+  const [notes, setNotes]                           = useState('')
 
-  // Fréquence estimée (depuis tâches hebdo)
-  const [freqEstimee, setFreqEstimee]       = useState<number | null>(null)
+  // Taux horaire facturation
+  const [tauxMode, setTauxMode]           = useState<'base' | 'specifique'>('base')
+  const [tauxSpecifique, setTauxSpecifique] = useState('')
+  const [tauxBase, setTauxBase]           = useState<number>(25)
+
+  // Fréquence estimée (indicateur, depuis tâches hebdo)
+  const [freqEstimee, setFreqEstimee] = useState<number | null>(null)
 
   // Formulaire ajout créneau
-  const [showAddForm, setShowAddForm]       = useState(false)
-  const [newJours, setNewJours]             = useState<string[]>([])
-  const [newDebut, setNewDebut]             = useState('08:00')
-  const [newFin, setNewFin]                 = useState('12:00')
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [newJours, setNewJours]       = useState<string[]>([])
+  const [newDebut, setNewDebut]       = useState('08:00')
+  const [newFin, setNewFin]           = useState('12:00')
 
   // UI
-  const [loading, setLoading]   = useState(true)
-  const [saving, setSaving]     = useState(false)
-  const [saved, setSaved]       = useState(false)
-  const [error, setError]       = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving]   = useState(false)
+  const [saved, setSaved]     = useState(false)
+  const [error, setError]     = useState('')
 
   useEffect(() => {
     Promise.all([
@@ -65,17 +71,30 @@ export default function ContratModal({ residence, onClose, onSaved }: Props) {
       fetch(`/api/taches-template?residenceId=${residence.id}&frequenceType=hebdo`).then(r => r.json()).catch(() => ({ data: [] })),
     ]).then(([contratJson, tachesJson]) => {
       const contrat = contratJson.data
+
+      // Taux Base depuis la réponse enrichie
+      if (contratJson.tauxBase != null) setTauxBase(contratJson.tauxBase)
+
       if (contrat) {
         setContratId(contrat.id)
         setDateDebut(contrat.date_debut)
         setDateFin(contrat.date_fin)
         setMontant(contrat.montant_mensuel != null ? String(contrat.montant_mensuel) : '')
+        setNbInterventionsMois(contrat.nb_interventions_mois ?? 4)
         setJoursInterdits(contrat.jours_interdits ?? [])
         setCreneaux(contrat.creneaux_acceptes ?? [])
         setNotes(contrat.notes_specifiques ?? '')
+        // Taux facturation
+        if (contrat.taux_horaire_facturation != null) {
+          setTauxMode('specifique')
+          setTauxSpecifique(String(contrat.taux_horaire_facturation))
+        } else {
+          setTauxMode('base')
+        }
         setSaved(true)
       }
-      // Calcul fréquence estimée depuis tâches hebdo
+
+      // Fréquence estimée depuis tâches hebdo — indicateur seulement
       const taches: Array<{ jours_semaine: string[] }> = tachesJson.data ?? []
       if (taches.length > 0) {
         const joursUniques = new Set(taches.flatMap(t => t.jours_semaine ?? []))
@@ -84,6 +103,14 @@ export default function ContratModal({ residence, onClose, onSaved }: Props) {
       setLoading(false)
     })
   }, [residence.id])
+
+  // ── Calcul heures vendues (live) ──────────────────────────────────────────
+  const montantNum     = parseFloat(montant) || 0
+  const tauxEffectif   = tauxMode === 'base' ? tauxBase : (parseFloat(tauxSpecifique) || 0)
+  const heuresMois     = montantNum > 0 && tauxEffectif > 0 ? Math.round(montantNum / tauxEffectif) : null
+  const heuresPassage  = heuresMois !== null && nbInterventionsMois > 0
+    ? Math.round((heuresMois / nbInterventionsMois) * 10) / 10
+    : null
 
   function toggleJour(jour: string, list: string[], setter: (v: string[]) => void) {
     setter(list.includes(jour) ? list.filter(j => j !== jour) : [...list, jour])
@@ -114,7 +141,11 @@ export default function ContratModal({ residence, onClose, onSaved }: Props) {
         residenceId: residence.id,
         contratId,
         dateDebut, dateFin,
-        montantMensuel: montant || null,
+        montantMensuel:         montant || null,
+        nbInterventionsMois:    nbInterventionsMois,
+        tauxHoraireFacturation: tauxMode === 'specifique' && tauxSpecifique
+          ? Number(tauxSpecifique)
+          : null,
         joursInterdits,
         creneauxAcceptes: creneaux,
         notesSpecifiques: notes || null,
@@ -184,28 +215,101 @@ export default function ContratModal({ residence, onClose, onSaved }: Props) {
                 </div>
               </div>
 
-              {/* Montant + fréquence estimée */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                    Montant mensuel HT (€)
-                  </label>
-                  <input type="number" value={montant} onChange={e => setMontant(e.target.value)}
-                    placeholder="Ex : 350"
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0BBFBF]/40"/>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                    Fréquence estimée
-                  </label>
-                  <div className="w-full px-3 py-2.5 border border-slate-100 bg-slate-50 rounded-xl text-sm text-slate-600">
-                    {freqEstimee !== null
-                      ? <>{freqEstimee} interventions / mois</>
-                      : <span className="text-slate-400 italic">calculé depuis les tâches</span>
-                    }
-                  </div>
+              {/* Montant mensuel */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Montant mensuel HT (€)
+                </label>
+                <input type="number" value={montant} onChange={e => { setMontant(e.target.value); setSaved(false) }}
+                  placeholder="Ex : 350"
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0BBFBF]/40"/>
+              </div>
+
+              {/* Interventions facturées / mois — valeur contractuelle */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Interventions facturées / mois
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number" min={1} max={31}
+                    value={nbInterventionsMois}
+                    onChange={e => { setNbInterventionsMois(Math.max(1, Number(e.target.value))); setSaved(false) }}
+                    className="w-24 px-3 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold text-center focus:outline-none focus:ring-2 focus:ring-[#0BBFBF]/40"
+                  />
+                  {freqEstimee !== null && (
+                    <span className="text-xs text-slate-400 italic">
+                      ~{freqEstimee}/mois estimé d&apos;après les tâches
+                    </span>
+                  )}
                 </div>
               </div>
+
+              {/* Taux horaire de facturation */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Taux horaire facturé (€/h)
+                </label>
+                {/* Toggle Base / Spécifique */}
+                <div className="flex gap-2 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => { setTauxMode('base'); setSaved(false) }}
+                    className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                      tauxMode === 'base'
+                        ? 'bg-[#0A2E5A] text-white border-[#0A2E5A]'
+                        : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    Taux Base société
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setTauxMode('specifique'); setSaved(false) }}
+                    className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                      tauxMode === 'specifique'
+                        ? 'bg-[#0BBFBF] text-white border-[#0BBFBF]'
+                        : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    Taux spécifique
+                  </button>
+                </div>
+
+                {tauxMode === 'base' ? (
+                  <div className="w-full px-3 py-2.5 border border-slate-100 bg-slate-50 rounded-xl text-sm text-slate-500 flex items-center justify-between">
+                    <span>Taux Base société</span>
+                    <span className="font-semibold text-slate-700">{tauxBase} €/h</span>
+                  </div>
+                ) : (
+                  <input
+                    type="number" min={1} step={0.5}
+                    value={tauxSpecifique}
+                    onChange={e => { setTauxSpecifique(e.target.value); setSaved(false) }}
+                    placeholder={`Ex : ${tauxBase}`}
+                    className="w-full px-3 py-2.5 border border-[#0BBFBF]/40 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0BBFBF]/40"
+                  />
+                )}
+              </div>
+
+              {/* Heures vendues — calcul live */}
+              {heuresMois !== null && (
+                <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
+                  <p className="text-xs font-semibold text-blue-500 uppercase tracking-wider mb-1.5">
+                    Heures vendues
+                  </p>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-xl font-bold text-blue-700">{heuresMois} h</span>
+                    <span className="text-sm text-blue-500">/ mois</span>
+                  </div>
+                  {heuresPassage !== null && (
+                    <p className="text-xs text-blue-500 mt-0.5">
+                      soit <span className="font-semibold">{heuresPassage} h</span> par passage
+                      {' '}({nbInterventionsMois} interventions × {tauxEffectif} €/h)
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Créneaux acceptés */}
               <div>

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import ReorganisationPanel from './ReorganisationPanel'
 
 interface AlerteMetadata {
   agent_id: string
@@ -16,36 +17,69 @@ interface Props {
   metadata: AlerteMetadata | null
 }
 
+interface Plan {
+  redistribuer: Array<{
+    intervention_id: string
+    agent_id_propose: string
+    agent_nom: string
+    charge_apres_pct: number
+    avertissements: string[]
+  }>
+  annuler: Array<{
+    intervention_id: string
+    raison: string
+  }>
+  resume: string
+}
+
+interface AgentDisponible {
+  id: string
+  prenom: string
+  nom: string
+}
+
 export default function AlerteReorganisationButton({ message, metadata }: Props) {
-  const [loading, setLoading] = useState(false)
-  const [toast, setToast]     = useState('')
+  const [loading, setLoading]               = useState(false)
+  const [toast, setToast]                   = useState('')
+  const [panelOpen, setPanelOpen]           = useState(false)
+  const [plan, setPlan]                     = useState<Plan | null>(null)
+  const [context, setContext]               = useState<{ agent_absent: string; periode: string; nb_orphelines: number } | null>(null)
+  const [agentsDisponibles, setAgents]      = useState<AgentDisponible[]>([])
 
   async function handleClick() {
     if (!metadata) {
-      console.warn("[ANA Réorganisation] metadata manquante sur l'alerte")
       showToast('Données insuffisantes')
       return
     }
 
     setLoading(true)
     try {
-      const res = await fetch('/api/ia/reorganisation', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agent_id:         metadata.agent_id,
-          date_debut:       metadata.date_debut,
-          date_fin:         metadata.date_fin,
-          intervention_ids: metadata.intervention_ids,
+      const [resPlan, resAgents] = await Promise.all([
+        fetch('/api/ia/reorganisation', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agent_id:         metadata.agent_id,
+            date_debut:       metadata.date_debut,
+            date_fin:         metadata.date_fin,
+            intervention_ids: metadata.intervention_ids,
+          }),
         }),
-      })
-      const data = await res.json()
-      console.log('[ANA Réorganisation] réponse :', data)
-      if (!res.ok) {
-        showToast(data.error ?? 'Erreur IA')
-      } else {
-        showToast(`Plan généré — ${data.plan?.redistribuer?.length ?? 0} redistributions, ${data.plan?.annuler?.length ?? 0} annulations`)
+        fetch('/api/agents'),
+      ])
+
+      const dataPlan   = await resPlan.json()
+      const dataAgents = await resAgents.json()
+
+      if (!resPlan.ok) {
+        showToast(dataPlan.error ?? 'Erreur IA')
+        return
       }
+
+      setPlan(dataPlan.plan)
+      setContext(dataPlan.context)
+      setAgents(dataAgents.agents ?? [])
+      setPanelOpen(true)
     } catch (e) {
       console.error('[ANA Réorganisation] erreur réseau :', e)
       showToast('Erreur réseau')
@@ -57,6 +91,11 @@ export default function AlerteReorganisationButton({ message, metadata }: Props)
   function showToast(msg: string) {
     setToast(msg)
     setTimeout(() => setToast(''), 4000)
+  }
+
+  function handleApplique() {
+    setPanelOpen(false)
+    showToast('Plan appliqué — redistribution à venir (étape 4)')
   }
 
   return (
@@ -74,6 +113,17 @@ export default function AlerteReorganisationButton({ message, metadata }: Props)
         )}
         {loading ? 'ANA réfléchit…' : 'Réorganiser avec ANA'}
       </button>
+
+      {plan && context && (
+        <ReorganisationPanel
+          open={panelOpen}
+          onClose={() => setPanelOpen(false)}
+          plan={plan}
+          context={context}
+          agentsDisponibles={agentsDisponibles}
+          onApplique={handleApplique}
+        />
+      )}
 
       {toast && (
         <div className="fixed bottom-28 md:bottom-8 left-1/2 -translate-x-1/2 z-50 bg-[#0A2E5A] text-white px-5 py-3 rounded-2xl shadow-xl text-sm font-medium pointer-events-none whitespace-nowrap">

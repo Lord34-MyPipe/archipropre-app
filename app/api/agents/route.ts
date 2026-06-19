@@ -10,6 +10,24 @@ async function getManagerUser() {
   return user
 }
 
+// GET /api/agents — liste des agents actifs du manager
+export async function GET() {
+  const manager = await getManagerUser()
+  if (!manager) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+
+  const admin = await createAdminClient()
+  const { data, error } = await admin
+    .from('profiles')
+    .select('id, prenom, nom')
+    .eq('role', 'agent')
+    .eq('actif', true)
+    .eq('manager_id', manager.id)
+    .order('nom')
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+  return NextResponse.json({ agents: data ?? [] })
+}
+
 // POST /api/agents — créer un agent
 export async function POST(req: NextRequest) {
   const manager = await getManagerUser()

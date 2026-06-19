@@ -251,6 +251,25 @@ L'état se calcule automatiquement, aucun champ à maintenir.
 ✅ Migration 012 : ON DELETE CASCADE sur alertes.intervention_id et
    tournees_etapes.intervention_id — corrige le blocage FK lors de la régénération
    de planning (RPC planifier_interventions)
+✅ Moteur IA réorganisation sur absence/congé (ANA) :
+   - Déclencheur automatique : POST /api/absences crée une alerte
+     'reorganisation_proposee' avec metadata JSONB (agent_id, période,
+     intervention_ids) quand des interventions orphelines sont détectées
+   - Route POST /api/ia/reorganisation : construit le contexte (orphelines +
+     charge agents sur la période + contraintes contrats), appelle claude-sonnet,
+     retourne plan JSON enrichi côté serveur (résidence_nom, date, créneau)
+   - Panneau slide-in ReorganisationPanel (420px) : résumé ANA, cartes par
+     intervention avec select agent modifiable, avertissements amber, barre de
+     charge, footer sticky "✓ Appliquer (N)"
+   - Route POST /api/ia/reorganisation/appliquer : UPDATE agent_id sur
+     interventions redistribuées, UPDATE statut='annulee' sur annulations,
+     DELETE alerte traitée — avec garde-fous auth + ownership
+   - router.refresh() après application : alerte disparaît du dashboard,
+     planning mis à jour
+   - Fix bug silencieux : filtre congés corrigé 'approuve' → 'valide' dans
+     le contexte ANA
+   - GET /api/agents : nouvelle route retournant les agents actifs du manager
+   - Migration 013 : ALTER TABLE alertes ADD COLUMN metadata JSONB
 
 ## Bugs connus à corriger
 ℹ️ depart_lat/lng de Marie Dupont (agent test) à null — point par défaut siège
@@ -259,7 +278,6 @@ L'état se calcule automatiquement, aucun champ à maintenir.
    → peut être supprimé lors d'une future migration de nettoyage
 
 ## À faire Phase 1 (dans l'ordre)
-- Moteur IA réorganisation sur absence/congé
 
 ## À faire Phase 2
 - Gestion agents spécialisés (poubelles, vitres, façades…)

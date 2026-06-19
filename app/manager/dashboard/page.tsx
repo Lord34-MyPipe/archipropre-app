@@ -119,7 +119,7 @@ export default async function ManagerDashboard() {
                       <p className="font-semibold text-amber-800 text-sm">Réorganisation requise</p>
                       <p className="text-amber-700 text-sm mt-0.5">{al.message}</p>
                     </div>
-                    <AlerteReorganisationButton alerteId={al.id} message={al.message ?? ''} />
+                    <AlerteReorganisationButton alerteId={al.id} message={al.message ?? ''} metadata={(al as import('@/lib/types').Alerte).metadata} />
                   </div>
                 )
               }

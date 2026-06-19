@@ -147,6 +147,13 @@ export interface Alerte {
   envoyee_at: string
   lue: boolean
   destinataire_id: string | null
+  metadata: {
+    agent_id: string
+    date_debut: string
+    date_fin: string
+    nb_orphelines: number
+    intervention_ids: string[]
+  } | null
 }
 
 export type AbsenceType = 'maladie' | 'absence_justifiee' | 'absence_injustifiee' | 'jour_ferie' | 'formation'

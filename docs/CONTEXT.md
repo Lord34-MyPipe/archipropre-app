@@ -310,6 +310,37 @@ L'état se calcule automatiquement, aucun champ à maintenir.
 
 ### P2-1 — Refonte tableau de bord manager ✅ LIVRÉ
 
+### P2-1b — Heures réelles vs contractuelles + export RH
+Comparaison heures planifiées / réalisées / contractuelles par agent.
+Les heures réalisées proviennent des journees_agent validées par le manager.
+
+Niveau 1 — Double barre sur /manager/charge :
+- Barre 1 (existante) : heures planifiées vs contrat
+- Barre 2 (nouvelle) : heures réalisées validées vs contrat
+- Delta "heures non productives" en rouge si réalisé < contrat
+  (ex. contrat 35h, réalisé 28h → △ 7h non productives)
+- N'apparaît que si au moins une journée validée sur la semaine
+
+Niveau 2 — Récapitulatif hebdomadaire sur /manager/charge/[id] :
+- Tableau par jour : statut validation + heures réalisées
+- Total réalisé (validé) vs contrat hebdo vs delta
+- Bouton "Préparer le rapport RH" → ouvre sélecteur de mois
+
+Niveau 3 — Export RH mensuel (PDF imprimable) :
+- Par mois civil, par agent
+- Détail par semaine : jours travaillés, heures réalisées, trajets
+- Total mensuel réalisé vs contrat mensuel (contrat_heures_hebdo × 4,33)
+- Delta heures non productives (à la charge employeur)
+- Validé et signé par le manager (nom + date)
+- Format : PDF généré côté serveur, téléchargeable ou envoyable par email
+- Remplace partiellement PEGASE pour la gestion des heures
+
+Règle métier :
+- Heures réalisées = nettoyage + trajets inter-chantiers (journees_agent.total_minutes_terrain + total_minutes_trajets)
+- Heures non productives = contrat_heures_hebdo - heures_réalisées (si positif)
+- Domicile→1er chantier et dernier→domicile exclus (déjà implémenté)
+- Un delta négatif (agent a fait plus que son contrat) = heures sup à signaler
+
 ### P2-2 — Commandes produits agents
 Liste globale de produits définie par le directeur.
 Agent coche ce qui manque depuis son app mobile (interface simple,

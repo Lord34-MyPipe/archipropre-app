@@ -1,7 +1,9 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { AgentDetailData, AgentIntervention, CongeItem, AbsenceItem } from './page'
+import JourneeAgentPanel from '@/components/manager/JourneeAgentPanel'
 
 // ── Constantes (identiques à ChargeClient) ────────────────────────────────────
 
@@ -66,6 +68,7 @@ export default function AgentDetailClient({
   agent, interventions, conges, absences, mondayStr, sundayStr, agentId,
 }: Props) {
   const router = useRouter()
+  const [journeeDate, setJourneeDate] = useState<string | null>(null)
 
   // ── Charge bar (même logique que ChargeClient) ─────────────────────────────
   const taux      = agent.taux
@@ -298,11 +301,23 @@ export default function AgentDetailClient({
               {sortedDays.map(date => {
                 const d = new Date(date + 'T00:00:00')
                 const dayLabel = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+                const hasTerminee = byDay[date].some(i => ['terminee', 'validee'].includes(i.statut))
                 return (
                   <div key={date}>
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 capitalize">
-                      {dayLabel}
-                    </p>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider capitalize">
+                        {dayLabel}
+                      </p>
+                      {hasTerminee && (
+                        <button
+                          onClick={() => setJourneeDate(date)}
+                          className="text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors"
+                          style={{ background: '#E6F1FB', color: '#185FA5' }}
+                        >
+                          Voir la journée
+                        </button>
+                      )}
+                    </div>
                     <div className="space-y-2">
                       {byDay[date].map(inter => (
                         <div
@@ -387,6 +402,16 @@ export default function AgentDetailClient({
         )}
 
       </div>
+
+      {journeeDate && (
+        <JourneeAgentPanel
+          open={true}
+          onClose={() => setJourneeDate(null)}
+          agentId={agentId}
+          agentNom={agent.nom_complet}
+          date={journeeDate}
+        />
+      )}
     </div>
   )
 }

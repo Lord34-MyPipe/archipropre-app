@@ -31,6 +31,7 @@ export interface AgentIntervention {
   duree_minutes: number
   taches: string[]
   est_binome: boolean
+  statut: string
 }
 
 export interface CongeItem {
@@ -138,7 +139,7 @@ export default async function AgentDetailPage({
       : Promise.resolve({ data: null }),
 
     admin.from('interventions')
-      .select('id, residence_id, date_prevue, heure_debut_prevue, heure_fin_prevue, residences(nom), taches_intervention(libelle)')
+      .select('id, residence_id, date_prevue, heure_debut_prevue, heure_fin_prevue, statut, residences(nom), taches_intervention(libelle)')
       .eq('agent_id', agentId)
       .gte('date_prevue', mondayStr)
       .lte('date_prevue', sundayStr)
@@ -204,6 +205,7 @@ export default async function AgentDetailPage({
       duree_minutes: Math.max(0, dureeMin),
       taches:        taches.map(t => t.libelle),
       est_binome:    binomeMirrorSet.has(mirrorKey),
+      statut:        i.statut ?? 'planifiee',
     }
   })
 

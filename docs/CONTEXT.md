@@ -270,6 +270,33 @@ L'état se calcule automatiquement, aucun champ à maintenir.
      le contexte ANA
    - GET /api/agents : nouvelle route retournant les agents actifs du manager
    - Migration 013 : ALTER TABLE alertes ADD COLUMN metadata JSONB
+✅ Refonte tableau de bord manager (P2-1) :
+   - Layout 2 colonnes desktop (Alertes 60% / Équipe 40%)
+   - KPIs du jour : interventions / scans effectués / rapports reçus / points d'attention
+   - Bloc alertes prioritaires : scans manquants +30min (rouge), alertes ANA,
+     rapports en attente, commandes produits placeholder
+   - Bloc équipe : agents groupés par statut (En retard / Pas scanné / En cours /
+     Terminé / Absent / Disponible), groupes vides masqués
+   - Bloc vert "Tout se passe bien" si 0 urgence
+   - Alertes marquées lues au clic (PATCH /api/alertes/[id]/lue)
+   - Fix NaN : nowTime via Intl.formatToParts (stable sur Vercel Edge Runtime)
+✅ Statut 'validee' ajouté aux interventions (migration 014) :
+   - v_conflits_planning corrigée (exclut 'validee' comme 'terminee')
+   - Colonnes validee_par + validee_at sur interventions
+✅ Validation rapport manager : bouton "Valider le rapport" sur page rapport,
+   badge "✓ Validé" / "En attente" sur page rapports résidence
+✅ Validation journalière agent :
+   - Table journees_agent (migration 014) avec RLS manager
+   - GET /api/agents/[id]/journee?date= : récapitulatif avec trajets inter-chantiers
+     (heure_scan[N+1] − heure_fin[N]), trajets négatifs filtrés
+   - POST /api/agents/[id]/journee/valider : upsert journees_agent + UPDATE
+     interventions terminee → validee
+   - JourneeAgentPanel (slide-in 420px) : segments chantiers + trajets + totaux +
+     notes + bouton valider / badge validée
+   - Accès depuis page détail agent /manager/charge/[id] (par jour)
+   - Accès depuis page rapports résidence /manager/residences/[id]/rapports
+   - Règle métier : domicile→1er chantier et dernier→domicile exclus du calcul
+✅ Statut validee : vert foncé (#C0DD97/#27500A) + libellé "Validé" dans le planning
 
 ## Bugs connus à corriger
 ℹ️ depart_lat/lng de Marie Dupont (agent test) à null — point par défaut siège
@@ -281,13 +308,7 @@ L'état se calcule automatiquement, aucun champ à maintenir.
 
 ## À faire Phase 2 (dans l'ordre de priorité)
 
-### P2-1 — Refonte tableau de bord manager (priorité absolue)
-Nouveau design from scratch, orienté pilotage en un regard.
-KPIs du jour : interventions en cours / terminées / non démarrées,
-agents n'ayant pas scanné 30 min après l'heure prévue,
-rapports reçus vs attendus, agents en sous/sur-charge,
-commandes produits en attente, alertes prioritaires.
-Supprimer : liste interventions (→ Planning) et liste équipe (→ Agents).
+### P2-1 — Refonte tableau de bord manager ✅ LIVRÉ
 
 ### P2-2 — Commandes produits agents
 Liste globale de produits définie par le directeur.

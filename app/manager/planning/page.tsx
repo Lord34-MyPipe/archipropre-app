@@ -31,10 +31,15 @@ const STATUT_BG: Record<string, string> = {
   planifiee:    'bg-blue-100 text-blue-700 border-blue-200',
   en_cours:     'bg-amber-100 text-amber-700 border-amber-200',
   terminee:     'bg-green-100 text-green-700 border-green-200',
+  validee:      'border',
   non_demarree: 'bg-red-100 text-red-700 border-red-200',
 }
+const STATUT_STYLE: Record<string, { background?: string; color?: string; borderColor?: string }> = {
+  validee: { background: '#C0DD97', color: '#27500A', borderColor: '#9CC46A' },
+}
 const STATUT_LABEL: Record<string, string> = {
-  planifiee: 'Planifiée', en_cours: 'En cours', terminee: 'Terminée', non_demarree: 'En retard',
+  planifiee: 'Planifiée', en_cours: 'En cours', terminee: 'Terminée',
+  validee: 'Validé', non_demarree: 'En retard',
 }
 
 // ── Date helpers ───────────────────────────────────────────────────────────
@@ -215,9 +220,9 @@ export default async function ManagerPlanning({ searchParams }: Props) {
         {/* Légende */}
         <div className="flex gap-3 mt-3 flex-wrap text-xs text-blue-200">
           {[['bg-blue-400','Planifiée'],['bg-amber-400','En cours'],['bg-green-400','Terminée'],
-            ['bg-orange-300','🏖️ Congé'],['bg-red-400','⚠️ Conflit']].map(([c,l]) => (
+            ['','Validé','#C0DD97'],['bg-orange-300','🏖️ Congé'],['bg-red-400','⚠️ Conflit']].map(([c,l,bg]) => (
             <div key={l} className="flex items-center gap-1.5">
-              <div className={`w-3 h-3 rounded-sm ${c}`}/>
+              <div className={`w-3 h-3 rounded-sm ${c}`} style={bg ? { background: bg } : undefined}/>
               <span>{l}</span>
             </div>
           ))}
@@ -438,12 +443,12 @@ function VueSemaine({ dates, inters, agents, congeKeys, congeMotifs, todayStr }:
                                 <div className="text-[9px] opacity-60 mt-0.5">{STATUT_LABEL[i.statut] ?? i.statut}</div>
                               </>
                             )
-                            return i.statut === 'terminee' && !isOnLeave ? (
-                              <Link key={i.id} href={`/manager/interventions/${i.id}/rapport`} className={`block ${cardCls}`}>
+                            return ['terminee','validee'].includes(i.statut) && !isOnLeave ? (
+                              <Link key={i.id} href={`/manager/interventions/${i.id}/rapport`} className={`block ${cardCls}`} style={STATUT_STYLE[i.statut]}>
                                 {cardContent}
                               </Link>
                             ) : (
-                              <div key={i.id} className={cardCls}>
+                              <div key={i.id} className={cardCls} style={STATUT_STYLE[i.statut]}>
                                 {cardContent}
                               </div>
                             )
@@ -527,10 +532,10 @@ function VueSemaine({ dates, inters, agents, congeKeys, congeMotifs, todayStr }:
                           {i.heure_debut_prevue && (i.heure_fin_prevue ? ` → ${i.heure_fin_prevue.slice(0,5)}` : ' → ?')}
                         </p>
                       </div>
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 border ${STATUT_BG[i.statut] ?? 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 border ${STATUT_BG[i.statut] ?? 'bg-slate-100 text-slate-600 border-slate-200'}`} style={STATUT_STYLE[i.statut]}>
                         {STATUT_LABEL[i.statut] ?? i.statut}
                       </span>
-                      {i.statut === 'terminee' && (
+                      {['terminee','validee'].includes(i.statut) && (
                         <Link href={`/manager/interventions/${i.id}/rapport`}
                           className="text-xs font-semibold shrink-0 whitespace-nowrap hover:underline"
                           style={{ color: '#0BBFBF' }}>
@@ -653,12 +658,12 @@ function VueJour({ dateStr, inters, agents, congeKeys, congeMotifs }: {
                         </div>
                       </>
                     )
-                    return i.statut === 'terminee' && !isConflict ? (
-                      <Link key={i.id} href={`/manager/interventions/${i.id}/rapport`} className={cardCls}>
+                    return ['terminee','validee'].includes(i.statut) && !isConflict ? (
+                      <Link key={i.id} href={`/manager/interventions/${i.id}/rapport`} className={cardCls} style={STATUT_STYLE[i.statut]}>
                         {cardContent}
                       </Link>
                     ) : (
-                      <div key={i.id} className={cardCls}>
+                      <div key={i.id} className={cardCls} style={STATUT_STYLE[i.statut]}>
                         {cardContent}
                       </div>
                     )

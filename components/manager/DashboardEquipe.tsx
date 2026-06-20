@@ -1,5 +1,8 @@
 'use client'
 
+import { useState } from 'react'
+import JourneeAgentPanel from './JourneeAgentPanel'
+
 type StatutAgent = 'disponible' | 'en_cours' | 'terminee' | 'pas_scanne' | 'en_retard' | 'absent'
 
 interface AgentStatut {
@@ -45,7 +48,15 @@ function contexteAgent(agent: AgentStatut): string {
   return `${agent.nbTotal} intervention${agent.nbTotal > 1 ? 's' : ''}`
 }
 
+function todayParis(): string {
+  const fmt = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' })
+  return fmt.format(new Date())
+}
+
 export default function DashboardEquipe({ agents }: { agents: AgentStatut[] }) {
+  const [panelAgentId, setPanelAgentId]   = useState<string | null>(null)
+  const [panelAgentNom, setPanelAgentNom] = useState('')
+
   const parGroupe = ORDRE.map(statut => ({
     statut,
     cfg: GROUPES[statut],
@@ -60,40 +71,70 @@ export default function DashboardEquipe({ agents }: { agents: AgentStatut[] }) {
     )
   }
 
+  const today = todayParis()
+  const selectedAgent = agents.find(a => a.id === panelAgentId)
+
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-100">
-        <h2 className="font-semibold text-slate-800 text-sm">Équipe aujourd'hui</h2>
-      </div>
-      <div className="divide-y divide-slate-50">
-        {parGroupe.map(({ statut, cfg, membres }) => (
-          <div key={statut}>
-            {/* Titre de groupe */}
-            <div className="px-5 py-2" style={{ background: cfg.bg }}>
-              <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: cfg.couleur }}>
-                {cfg.label} ({membres.length})
-              </p>
-            </div>
-            {/* Agents du groupe */}
-            {membres.map(agent => (
-              <div key={agent.id} className="flex items-center gap-3 px-5 py-2.5 border-t border-slate-50">
-                <div
-                  className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold shrink-0"
-                  style={{ background: cfg.avatarBg }}
-                >
-                  {agent.prenom[0]}{agent.nom[0]}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-800 leading-tight">
-                    {agent.prenom} {agent.nom}
-                  </p>
-                  <p className="text-xs text-slate-400 truncate leading-tight">{contexteAgent(agent)}</p>
-                </div>
+    <>
+      <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100">
+          <h2 className="font-semibold text-slate-800 text-sm">Équipe aujourd'hui</h2>
+        </div>
+        <div className="divide-y divide-slate-50">
+          {parGroupe.map(({ statut, cfg, membres }) => (
+            <div key={statut}>
+              {/* Titre de groupe */}
+              <div className="px-5 py-2" style={{ background: cfg.bg }}>
+                <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: cfg.couleur }}>
+                  {cfg.label} ({membres.length})
+                </p>
               </div>
-            ))}
-          </div>
-        ))}
+              {/* Agents du groupe */}
+              {membres.map(agent => {
+                const peutVoirJournee = agent.statut === 'terminee' && agent.nbTerminees > 0
+                return (
+                  <div key={agent.id} className="flex items-center gap-3 px-5 py-2.5 border-t border-slate-50">
+                    <div
+                      className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold shrink-0"
+                      style={{ background: cfg.avatarBg }}
+                    >
+                      {agent.prenom[0]}{agent.nom[0]}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-800 leading-tight">
+                        {agent.prenom} {agent.nom}
+                      </p>
+                      <p className="text-xs text-slate-400 truncate leading-tight">{contexteAgent(agent)}</p>
+                    </div>
+                    {peutVoirJournee && (
+                      <button
+                        onClick={() => {
+                          setPanelAgentNom(`${agent.prenom} ${agent.nom}`)
+                          setPanelAgentId(agent.id)
+                        }}
+                        className="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors"
+                        style={{ background: '#E6F1FB', color: '#185FA5' }}
+                      >
+                        Journée
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
+
+      {panelAgentId && (
+        <JourneeAgentPanel
+          open={true}
+          onClose={() => setPanelAgentId(null)}
+          agentId={panelAgentId}
+          agentNom={panelAgentNom}
+          date={today}
+        />
+      )}
+    </>
   )
 }

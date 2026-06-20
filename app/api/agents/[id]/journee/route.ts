@@ -73,13 +73,14 @@ export async function GET(
       heure_debut: inter.heure_scan,
       heure_fin: inter.heure_fin,
       duree_minutes: dureeMin,
-      trajet_apres_minutes: trajetMin,
+      trajet_apres_minutes: trajetMin !== null && trajetMin > 0 ? trajetMin : null,
       statut: inter.statut,
     }
   })
 
   const totalTerrain = segments.reduce((s, seg) => s + (seg.duree_minutes ?? 0), 0)
-  const totalTrajets = segments.reduce((s, seg) => s + (seg.trajet_apres_minutes ?? 0), 0)
+  const totalTrajets = segments.reduce((s, seg) =>
+    s + (seg.trajet_apres_minutes !== null && seg.trajet_apres_minutes > 0 ? seg.trajet_apres_minutes : 0), 0)
 
   return NextResponse.json({
     agent: agentProfile,

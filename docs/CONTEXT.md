@@ -297,6 +297,16 @@ L'état se calcule automatiquement, aucun champ à maintenir.
    - Accès depuis page rapports résidence /manager/residences/[id]/rapports
    - Règle métier : domicile→1er chantier et dernier→domicile exclus du calcul
 ✅ Statut validee : vert foncé (#C0DD97/#27500A) + libellé "Validé" dans le planning
+✅ RH export (P2-1b) :
+   - Double barre sur /manager/charge : barre planifiée (existante) +
+     barre réalisée (journees_agent validées), delta heures non productives en rouge
+   - Récapitulatif hebdomadaire sur /manager/charge/[id] : tableau par jour
+     (terrain + trajets + total), total réalisé vs contrat hebdo, delta
+   - Export PDF RH mensuel (jsPDF) : en-tête Archipropre, infos agent,
+     tableau journées validées, total réalisé vs contrat mensuel (× 4,33),
+     delta heures non productives, signature manager
+   - Modal sélecteur de mois (13 mois glissants)
+   - Téléchargement direct : rapport-rh_[nom]_[année]-[mois].pdf
 
 ## Bugs connus à corriger
 ℹ️ depart_lat/lng de Marie Dupont (agent test) à null — point par défaut siège
@@ -310,7 +320,7 @@ L'état se calcule automatiquement, aucun champ à maintenir.
 
 ### P2-1 — Refonte tableau de bord manager ✅ LIVRÉ
 
-### P2-1b — Heures réelles vs contractuelles + export RH
+### P2-1b — Heures réelles vs contractuelles + export RH ✅ LIVRÉ
 Comparaison heures planifiées / réalisées / contractuelles par agent.
 Les heures réalisées proviennent des journees_agent validées par le manager.
 

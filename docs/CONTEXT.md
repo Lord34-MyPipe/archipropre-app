@@ -351,16 +351,27 @@ Règle métier :
 - Domicile→1er chantier et dernier→domicile exclus (déjà implémenté)
 - Un delta négatif (agent a fait plus que son contrat) = heures sup à signaler
 
-### P2-2 — Commandes produits agents
-Liste globale de produits définie par le directeur.
-Agent coche ce qui manque depuis son app mobile (interface simple,
-cases à cocher, quantité optionnelle).
-Alerte immédiate type 'commande_produit' sur dashboard manager.
-Page dédiée /manager/commandes : liste des demandes en attente,
-historique, validation/traitement par le manager.
-Tables : produits (id, nom, categorie, photo_url),
-commandes_produits (id, agent_id, produit_id, residence_id,
-quantite, statut, created_at).
+### P2-2 — Commandes produits agents (enrichi)
+Liste globale de produits définie par le directeur (nom, catégorie, photo_url).
+Agent coche ce qui manque depuis son app mobile.
+
+Intégration parcours agent :
+- Après validation de toutes les zones, avant envoi du rapport :
+  écran "Contrôle du local produits" avec 2 options :
+  "Tout est OK" → passe directement à l'envoi du rapport
+  "Il manque des produits" → grille de photos produits à cocher
+  (quantité optionnelle par produit)
+- Commande rattachée à residence_id + intervention_id
+- Alerte immédiate type 'commande_produit' sur dashboard manager
+
+Dashboard manager :
+- Bloc "Commandes produits" dans les alertes (actuellement placeholder)
+- Page dédiée /manager/commandes : liste par résidence, statut, historique
+
+Tables :
+- produits (id, nom, categorie, photo_url, actif)
+- commandes_produits (id, agent_id, produit_id, residence_id,
+  intervention_id, quantite, statut, created_at)
 
 ### P2-3 — Contrat containers / agent spécialisé
 Deux situations à gérer :
@@ -425,6 +436,29 @@ Si claude-sonnet indisponible :
 - Modèle configurable via variable d'env ANTHROPIC_MODEL
   (défaut 'claude-sonnet-4-6') → mise à jour sans redéploiement code.
 - Jamais de dépendance bloquante à un modèle spécifique.
+
+### P2-9 — Passage au siège (intervention spéciale)
+Le manager peut programmer un passage au siège pour un agent en 1 clic.
+Cas d'usage : récupérer/rendre du matériel, réunion, briefing.
+
+Création depuis 2 points d'accès :
+- Planning manager : bouton "+ Passage siège" par agent
+- Fiche agent /manager/charge/[id] : bouton dédié
+
+Options à la création :
+- Agent concerné
+- Date
+- Moment : "Avant sa 1ère intervention" / "Après sa dernière intervention" / "Créneau libre"
+- Motif : Récupérer matériel / Rendre matériel / Réunion / Autre (texte libre)
+
+Côté agent (dashboard mobile) :
+- Carte spéciale "Passage au siège" avec adresse + bouton Waze
+- Bouton "Effectué" simple (pas de scan QR, pas de tâches)
+- Apparaît dans le planning J→J+7 comme les autres interventions
+
+Stockage : nouveau type d'intervention ou table dédiée passages_siege
+(id, agent_id, date, moment, motif, statut, created_by, created_at)
+Adresse siège : depuis parametres_societe (champ a ajouter : adresse_siege)
 
 ## À faire Phase 3
 

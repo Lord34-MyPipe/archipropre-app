@@ -446,6 +446,32 @@ Génération de contrat PDF depuis l'app (remplace Organilogue).
 Signature électronique client.
 Archivage dans Supabase Storage.
 
+### P3-5 — Mode offline agent (PWA)
+Permettre à l'agent de travailler sans réseau et synchroniser au retour.
+Priorité : critique pour l'adoption terrain (perte réseau fréquente en sous-sol,
+parkings, locaux techniques).
+
+Ce qui doit fonctionner offline :
+- Consultation planning J→J+7 (chargé en cache au login)
+- Validation tâches par zone (stockées IndexedDB)
+- Commentaires sur tâches
+- Photos par zone (compressées, stockées IndexedDB en base64)
+- Validation zone + envoi rapport
+- Scan QR (résolution token depuis cache local)
+
+Sync automatique au retour réseau :
+- Upload photos vers Supabase Storage
+- Sync statuts tâches + zones vers Supabase
+- Règle conflit : le terrain prime (données agent = vérité)
+
+UI offline :
+- Bandeau "Mode hors ligne — données sauvegardées localement"
+- Indicateur sync "Synchronisation en cours..." au retour réseau
+- Badge sur chaque tâche validée offline en attente de sync
+
+Tech : Service Worker + IndexedDB + Background Sync API
+Contrainte : photos iPhone 3-5 Mo → compression avant stockage obligatoire
+
 ## Règles métier ajoutées
 
 - Coût réel agent : 23 €/HT/h (frais généraux inclus)

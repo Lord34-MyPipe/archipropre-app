@@ -577,6 +577,140 @@ Output : redistribution proposée respectant contraintes dures
   (réservés à un usage futur : choix de l'agent le plus proche pour une affectation).
 - Agent sans domicile : point par défaut = siège Archipropre (à renseigner).
 
+## Données métier Archipropre (extraites des documents Ana)
+
+### Produits de stock (table `produits` à pré-remplir — P2-2)
+Liste officielle des produits utilisés par les agents, à créer en base :
+
+| Nom | Catégorie | Couleur/Usage |
+|-----|-----------|---------------|
+| Produit vitres et surfaces IGUAL | Produit | Bleu — vitres, miroirs, surfaces modernes |
+| Sol 3D désinfectant/détartrant/désodorisant | Produit | Vert — sols résistants |
+| Détartrage sanitaires désinfectant | Produit | Rouge — WC, lavabos, sanitaires |
+| Lavette microfibre 40x40 jaune | Consommable | Jaune — surfaces modernes (hors sanitaires) |
+| Lavette microfibre 40x40 bleue | Consommable | Bleue — vitres et miroirs |
+| Lavette microfibre 40x40 rose/rouge | Consommable | Rouge — sanitaires uniquement |
+| Sacs poubelles 30L | Consommable | — |
+| Sacs poubelles 50L | Consommable | — |
+| Sacs poubelles 100L | Consommable | — |
+| Bobines essuie-mains | Consommable | — |
+| Papier WC | Consommable | — |
+| Franges de lavage microfibre | Matériel | — |
+
+### Code couleur lavettes microfibre (IGUAL — protocole Archipropre)
+- Jaune → surfaces modernes (plastiques, chromes, alu, stratifiés)
+- Bleu → vitres, glaces, miroirs
+- Rouge → sanitaires (WC, lavabos, douches, robinetterie)
+- Vert → sols (détergent Sol Net, grès cérame)
+Ce code couleur doit apparaître dans les descriptions de tâches template.
+
+### Protocole des 5 doigts (ordre d'exécution des tâches — Archipropre)
+Ordre obligatoire pour chaque intervention, du haut vers le bas, du propre vers le sale :
+1. INDEX — Toiles d'araignées (zones hautes, plafonds, angles, luminaires)
+2. MAJEUR — Dépoussiérage surfaces (mobilier, étagères, rebords)
+3. ANNULAIRE — Traces portes et vitres (poignées, interrupteurs, vitrerie)
+4. AURICULAIRE — Poubelles/vidage (corbeilles, remplacement sacs)
+5. POUCE — Sol fin de prestation (aspiration + lavage adapté au revêtement)
+
+Règle clé : toujours du haut vers le bas, du propre vers le sale, terminer par le sol.
+L'ordre des tâches template dans l'app doit respecter ce protocole.
+
+### Fiche de contrôle qualité (check-list satisfaction client — 8 points)
+À intégrer comme contrôle final optionnel en fin de parcours agent (avant envoi rapport) :
+1. Dépoussiérage des surfaces
+2. Nettoyage des sols
+3. Désinfection des sanitaires
+4. Élimination des toiles d'araignées
+5. Vidage des corbeilles et remplacement des sacs
+6. Absence de traces sur portes, vitres et interrupteurs
+7. État général des locaux
+8. Respect des consignes spécifiques du site
+Chaque point : Conforme / À améliorer / Non conforme + commentaire libre.
+Ce document peut évoluer vers un futur rapport qualité manager/client.
+
+### Contrats de prestation réels (données de référence)
+
+**Contrat MACJ (Contrat N°035) :**
+- Client : SCI MACJ — 8 Avenue de la Fontvin, 34970 Lattes
+- Fréquence : bi-hebdomadaire (lundi + jeudi)
+- Durée par passage : 1h50
+- Périmètre : parties communes bâtiments A-B-C-D + espaces verts + parking
+- Tâches containers : incluses (sortie containers dimanche soir + mercredi soir)
+- Tarif HT mensuel : 287 € (parties communes) + 68 € (espaces verts) = 355 €/mois HT
+- Durée contrat : 1 an renouvelable, date anniversaire 01/08/2016
+- Paiement : factures à réception, délai 30 jours fin de mois
+- Révision prix : 1er janvier chaque année
+
+**Contrat Pradim (Réf. RP/C.22070090) :**
+- Client : Groupe Pradim — 13 Rue de la Source, 34830 Clapiers
+- Signé le 20 juillet 2022 par Ana Gainar
+- Détail des prestations : à compléter lors de la saisie en base
+
+**Contrat Riviera Lodge :**
+- Client : Riviera Lodge
+- 9 pages — détail des prestations à compléter lors de la saisie en base
+
+### Règles métier extraites des documents
+
+**Gestion des stocks (règlement intérieur agent) :**
+- Signaler toute rupture de stock 3 jours à l'avance minimum au chef d'équipe
+- Responsabilité du surdosage produits entièrement à charge de l'agent
+- Dosage sol : diluer à 10% (fiches techniques fournies à l'embauche)
+- Gestion serpillières/franges : lavage obligatoire minimum 1x/semaine
+
+**Containers/poubelles :**
+- Lavage + désinfection containers : 1x/semaine OBLIGATOIRE
+- Désodorisation incluse
+- Rangement cartons dans containers jaunes
+- Gestion sacs : enlèvement petits encombrants
+
+**Contrôle présence :**
+- Obligation de signer les fiches de présence sur site (selon contrat client)
+- Absence injustifiée = lettre d'avertissement
+
+**Réunion équipe :**
+- Réunion téléphonique ou présentielle chaque vendredi soir au siège
+- Minimum 1x/semaine avec le chef d'équipe
+
+**Matériel fourni par Archipropre :**
+- Lavettes microfibres spécialement conçues pour surfaces modernes
+- Franges de lavage microfibre
+- Aspirateurs industriels
+- Balais rasants (système lavage à plat)
+- Produits de la gamme IGUAL / Terre Avenir (éco-labellisés)
+
+### Espace client actuel (Organilogue — à remplacer)
+Archipropre utilise actuellement Organilogue comme espace client syndic :
+URL : https://archipropreservices.organilog.com/client/client-new.php
+L'app Archipropre remplacera cet espace client via le rôle 'client' (P3-1).
+Arguments de vente à valoriser dans l'app :
+- Interventions traçables
+- Historique clair
+- Transparence copropriétaires
+- Moins d'administratif
+- Communication fluide avec le syndic
+
+### Informations société Archipropre Services
+- Forme juridique : SAS au capital de 1 000 €
+- Siège social : 4 Place Alphonse Beau de Rochas, Résidence Les Rabelais, 34790 Grabels
+- Adresse établissement : 8 Avenue de la Fontvin, 34970 Lattes
+  (puis 123 Rue de la Bandido, 34160 Castries — adresse plus récente)
+- Tél : 06 74 92 85 51 / 09 80 84 57 64
+- Email : contact@archipropre-services.com / archipropre@yahoo.fr
+- N° SIRET : 812 688 612 00025 (RCS Montpellier)
+- N° TVA : FR45 812 688 612
+- IBAN : FR76 3000 3016 1500 0200 1605 547
+- Représentante légale : Ana Maria GAINAR (Directrice)
+- TVA : 20%
+
+### Corrections de données à faire en base avant livraison
+- [ ] `parametres_societe.taux_horaire_facturation_defaut` : mettre à jour
+      (valeur actuelle : 25 €/h — fourchette réelle Archipropre : 28-34 €/HT/h)
+- [ ] Contrat MACJ : `montant_mensuel` = 355 € HT (actuellement valeur de test)
+- [ ] Pré-remplir table `produits` avec les 12 produits listés ci-dessus (lors du dev P2-2)
+- [ ] `parametres_societe.adresse_siege` :
+      "123 Rue de la Bandido, 34160 Castries" (pour P2-9 passage au siège)
+
 ## Règles de développement
 - Interface en français uniquement
 - Agent : mobile-first, gros boutons, ultra simple

@@ -144,7 +144,7 @@ export function genererRapportRHPDF(params: RapportRHParams) {
   if (deltaMin > 0) {
     doc.setTextColor(163, 45, 45)
     doc.setFont('helvetica', 'bold')
-    doc.text(`△ Heures non productives : ${formatMinutes(deltaMin)}`, COL.date, y)
+    doc.text(`>> Heures non productives : ${formatMinutes(deltaMin)}`, COL.date, y)
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(0, 0, 0)
     y += 6
@@ -157,7 +157,7 @@ export function genererRapportRHPDF(params: RapportRHParams) {
   } else if (deltaMin < 0) {
     doc.setTextColor(59, 109, 17)
     doc.setFont('helvetica', 'bold')
-    doc.text(`+ Heures supplémentaires : ${formatMinutes(Math.abs(deltaMin))}`, COL.date, y)
+    doc.text(`++ Heures supplementaires : ${formatMinutes(Math.abs(deltaMin))}`, COL.date, y)
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(0, 0, 0)
   } else {

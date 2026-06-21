@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { AgentDetailData, AgentIntervention, CongeItem, AbsenceItem, JourneeRealisee } from './page'
 import JourneeAgentPanel from '@/components/manager/JourneeAgentPanel'
+import RapportRHModal from '@/components/manager/RapportRHModal'
 
 // ── Constantes (identiques à ChargeClient) ────────────────────────────────────
 
@@ -69,13 +70,15 @@ interface Props {
   sundayStr: string
   agentId: string
   journeesRealisees: JourneeRealisee[]
+  managerNom: string
 }
 
 export default function AgentDetailClient({
-  agent, interventions, conges, absences, mondayStr, sundayStr, agentId, journeesRealisees,
+  agent, interventions, conges, absences, mondayStr, sundayStr, agentId, journeesRealisees, managerNom,
 }: Props) {
   const router = useRouter()
   const [journeeDate, setJourneeDate] = useState<string | null>(null)
+  const [showRapportRH, setShowRapportRH] = useState(false)
 
   // ── Charge bar (même logique que ChargeClient) ─────────────────────────────
   const taux      = agent.taux
@@ -402,7 +405,7 @@ export default function AgentDetailClient({
               </tfoot>
             </table>
             <button
-              onClick={() => alert('Sélection du mois — à venir')}
+              onClick={() => setShowRapportRH(true)}
               className="mt-4 w-full py-2.5 text-sm font-medium rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 transition"
             >
               📄 Préparer le rapport RH
@@ -524,6 +527,16 @@ export default function AgentDetailClient({
         )}
 
       </div>
+
+      <RapportRHModal
+        open={showRapportRH}
+        onClose={() => setShowRapportRH(false)}
+        agentId={agentId}
+        agentNom={agent.nom}
+        agentPrenom={agent.prenom}
+        contratHeuresHebdo={agent.contrat_heures_hebdo}
+        managerNom={managerNom}
+      />
 
       {journeeDate && (
         <JourneeAgentPanel

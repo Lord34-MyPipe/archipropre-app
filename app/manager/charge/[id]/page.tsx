@@ -9,6 +9,8 @@ import AgentDetailClient from './AgentDetailClient'
 export interface AgentDetailData {
   id: string
   nom_complet: string
+  nom: string
+  prenom: string
   mode_deplacement: string | null
   secteur_libelle: string | null
   contrat_heures_hebdo: number
@@ -112,8 +114,9 @@ export default async function AgentDetailPage({
   if (!user) redirect('/login')
 
   const { data: managerProfile } = await supabase
-    .from('profiles').select('role').eq('id', user.id).single()
+    .from('profiles').select('role, nom, prenom').eq('id', user.id).single()
   if (managerProfile?.role !== 'manager') redirect('/login')
+  const managerNom = `${managerProfile?.prenom ?? ''} ${managerProfile?.nom ?? ''}`.trim()
 
   const { id: agentId } = await params
   const { date: dateParam } = await searchParams
@@ -244,6 +247,8 @@ export default async function AgentDetailPage({
   const agent: AgentDetailData = {
     id:                agentId,
     nom_complet:       `${agentProfile.prenom} ${agentProfile.nom}`,
+    nom:               agentProfile.nom,
+    prenom:            agentProfile.prenom,
     mode_deplacement:  agentProfile.mode_deplacement,
     secteur_libelle:   agentProfile.secteur_libelle,
     contrat_heures_hebdo: contrat,
@@ -268,6 +273,7 @@ export default async function AgentDetailPage({
       sundayStr={sundayStr}
       agentId={agentId}
       journeesRealisees={journeesRealisees}
+      managerNom={managerNom}
     />
   )
 }

@@ -313,10 +313,43 @@ L'état se calcule automatiquement, aucun champ à maintenir.
    à renseigner si on active un jour le choix d'agent le plus proche.
 ℹ️ taches_intervention.validee (booléen) conservé en base mais plus utilisé
    → peut être supprimé lors d'une future migration de nettoyage
+ℹ️ Données de test à nettoyer avant mise en production :
+   - 10 comptes demo_ à supprimer
+   - Contrat MACJ : montant_mensuel = 355 € HT (valeur de test actuellement)
+   - taux_horaire_facturation_defaut : mettre à jour (actuellement 25 €/h)
 
 ## À faire Phase 1 (dans l'ordre)
 
 ## À faire Phase 2 (dans l'ordre de priorité)
+
+### P0 — Migration des données (priorité avant Phase 2)
+À faire avant tout développement de nouvelles fonctionnalités :
+
+1. Import agents depuis Organilogue via API
+   - 42 agents actifs à récupérer (nom, email, fonction, téléphone)
+   - Créer les comptes profiles dans Supabase + auth.users
+   - Assigner rôle 'agent' + manager_id
+
+2. Import résidences/clients depuis Organilogue via API
+   - 150+ résidences actives à récupérer (nom, adresse, GPS)
+   - Script d'import en masse via Supabase
+   - Geocodage adresses manquantes via Nominatim
+
+3. Saisie des tâches par résidence
+   - Template Excel préparé (Archipropre_Template_Import_Residences_Taches.xlsx)
+   - Ana et managers remplissent zone + tâche + durée + fréquence par résidence
+   - Import SQL en masse depuis le fichier Excel rempli
+
+4. Saisie des contrats par résidence
+   - Montant mensuel, nb interventions/mois, créneaux, jours
+   - À saisir dans l'app une fois les résidences importées
+
+5. Suppression des comptes démo
+   DELETE FROM auth.users WHERE email LIKE 'demo_%@archipropre.fr'
+
+6. Mise à jour parametres_societe
+   - taux_horaire_facturation_defaut : 28-34 €/h (à confirmer avec Ana)
+   - adresse_siege : "123 Rue de la Bandido, 34160 Castries"
 
 ### P2-1 — Refonte tableau de bord manager ✅ LIVRÉ
 

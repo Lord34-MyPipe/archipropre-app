@@ -17,6 +17,7 @@ export interface ChargeAgent {
   taux_remplissage_pct: number
   binome_nom: string | null
   binome_heures_hebdo: number | null
+  heures_realisees: number | null
 }
 
 export default async function ChargePage() {
@@ -39,12 +40,38 @@ export default async function ChargePage() {
 
   const agentIds = (myAgents ?? []).map(a => a.id)
 
+  // Lundi/dimanche de la semaine courante (Europe/Paris)
+  const todayStr = new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' })
+  const todayDate = new Date(todayStr + 'T12:00:00Z')
+  const dayOfWeek = todayDate.getUTCDay()
+  const diffToMonday = (dayOfWeek === 0 ? -6 : 1 - dayOfWeek)
+  const mondayDate = new Date(todayDate)
+  mondayDate.setUTCDate(todayDate.getUTCDate() + diffToMonday)
+  const sundayDate = new Date(mondayDate)
+  sundayDate.setUTCDate(mondayDate.getUTCDate() + 6)
+  const mondayStr = mondayDate.toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' })
+  const sundayStr = sundayDate.toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' })
+
   let agents: ChargeAgent[] = []
   if (agentIds.length > 0) {
-    const { data } = await admin
-      .from('v_charge_agent')
-      .select('*')
-      .in('agent_id', agentIds)
+    const [{ data }, { data: journeesData }] = await Promise.all([
+      admin.from('v_charge_agent').select('*').in('agent_id', agentIds),
+      admin.from('journees_agent')
+        .select('agent_id, total_minutes_terrain, total_minutes_trajets')
+        .in('agent_id', agentIds)
+        .gte('date', mondayStr)
+        .lte('date', sundayStr)
+        .not('validee_par', 'is', null),
+    ])
+
+    const heuresRealisees = new Map<string, number>()
+    for (const j of journeesData ?? []) {
+      const current = heuresRealisees.get(j.agent_id) ?? 0
+      heuresRealisees.set(j.agent_id,
+        current + ((j.total_minutes_terrain ?? 0) + (j.total_minutes_trajets ?? 0)) / 60
+      )
+    }
+
     agents = (data ?? []) as ChargeAgent[]
 
     // Enrichir avec le nom du binôme
@@ -65,6 +92,7 @@ export default async function ChargePage() {
         ...a,
         binome_nom:          b ? `${b.prenom} ${b.nom}` : null,
         binome_heures_hebdo: b ? b.contrat_heures_hebdo : null,
+        heures_realisees:    heuresRealisees.has(a.agent_id) ? (heuresRealisees.get(a.agent_id) ?? null) : null,
       }
     })
   }

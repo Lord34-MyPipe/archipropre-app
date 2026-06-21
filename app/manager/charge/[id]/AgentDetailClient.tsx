@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { AgentDetailData, AgentIntervention, CongeItem, AbsenceItem } from './page'
+import type { AgentDetailData, AgentIntervention, CongeItem, AbsenceItem, JourneeRealisee } from './page'
 import JourneeAgentPanel from '@/components/manager/JourneeAgentPanel'
 
 // ── Constantes (identiques à ChargeClient) ────────────────────────────────────
@@ -45,11 +45,17 @@ function formatDateFr(isoDate: string, opts?: Intl.DateTimeFormatOptions): strin
 }
 
 function fmtDuree(min: number): string {
+  if (min === 0) return '0 min'
   const h = Math.floor(min / 60)
   const m = min % 60
   if (h === 0) return `${m} min`
   if (m === 0) return `${h}h`
   return `${h}h${String(m).padStart(2, '0')}`
+}
+
+function fmtDateCourt(isoDate: string): string {
+  const d = new Date(isoDate + 'T00:00:00')
+  return d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -62,10 +68,11 @@ interface Props {
   mondayStr: string
   sundayStr: string
   agentId: string
+  journeesRealisees: JourneeRealisee[]
 }
 
 export default function AgentDetailClient({
-  agent, interventions, conges, absences, mondayStr, sundayStr, agentId,
+  agent, interventions, conges, absences, mondayStr, sundayStr, agentId, journeesRealisees,
 }: Props) {
   const router = useRouter()
   const [journeeDate, setJourneeDate] = useState<string | null>(null)
@@ -85,6 +92,16 @@ export default function AgentDetailClient({
   const posCharge = (tauxCap / ECHELLE) * 100
   const posSeuil  = (Math.min(seuil, ECHELLE) / ECHELLE) * 100
   const showChargeLabel = Math.abs(posCharge - CONTRAT_X) > 9
+
+  // ── Heures réalisées (journées validées) ──────────────────────────────────
+  const totalRealiseeMin = journeesRealisees.reduce(
+    (s, j) => s + (j.total_minutes_terrain ?? 0) + (j.total_minutes_trajets ?? 0), 0
+  )
+  const totalRealiseeH = totalRealiseeMin / 60
+  const tauxReel    = contrat > 0 ? Math.round((totalRealiseeH / contrat) * 100) : 0
+  const largReel    = Math.min(tauxReel, ECHELLE) / ECHELLE * 100
+  const deltaMin    = contrat * 60 - totalRealiseeMin
+  const couleurReel = tauxReel > 95 ? '#A32D2D' : tauxReel >= seuil ? '#BA7517' : '#3B6D11'
 
   // ── Navigation semaine ────────────────────────────────────────────────────
   const prevMonday = addDaysStr(mondayStr, -7)
@@ -286,7 +303,112 @@ export default function AgentDetailClient({
               )}
             </div>
           </div>
+
+          {/* ── Barre 2 — heures réalisées ────────────────────────────────────── */}
+          {totalRealiseeMin > 0 && (
+            <div className="mt-4 pt-4 border-t border-slate-100">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Réalisé (journées validées)</span>
+                <span className="text-sm font-semibold" style={{ color: couleurReel }}>
+                  {Math.round(totalRealiseeH * 10) / 10}h
+                </span>
+              </div>
+              <div className="relative h-2.5 bg-slate-100 rounded-full mb-2">
+                <div
+                  className="absolute w-0.5 pointer-events-none z-10"
+                  style={{ left: `${CONTRAT_X}%`, top: -3, height: 22, background: '#94928A' }}
+                />
+                <div
+                  className="absolute left-0 top-0 h-full rounded-full transition-all duration-300"
+                  style={{ width: `${largReel}%`, backgroundColor: couleurReel }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-slate-400">
+                <span>{tauxReel}% du contrat</span>
+                {deltaMin > 30 && (
+                  <span className="font-semibold" style={{ color: '#A32D2D' }}>
+                    △ {fmtDuree(deltaMin)} non productif
+                  </span>
+                )}
+                {deltaMin <= 0 && (
+                  <span className="font-semibold" style={{ color: '#3B6D11' }}>
+                    +{fmtDuree(Math.abs(deltaMin))} sur le contrat
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* ── Récapitulatif hebdomadaire (journées validées) ─────────────────── */}
+        {totalRealiseeMin > 0 && (
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+            <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">
+              Récapitulatif de la semaine
+            </h2>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-[11px] text-slate-400 border-b border-slate-100">
+                  <th className="text-left pb-2 font-medium">Jour</th>
+                  <th className="text-right pb-2 font-medium">Terrain</th>
+                  <th className="text-right pb-2 font-medium">Trajets</th>
+                  <th className="text-right pb-2 font-medium">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {journeesRealisees.map(j => {
+                  const total = (j.total_minutes_terrain ?? 0) + (j.total_minutes_trajets ?? 0)
+                  return (
+                    <tr key={j.date} className="border-t border-slate-50">
+                      <td className="py-2 text-slate-700 capitalize">{fmtDateCourt(j.date)}</td>
+                      <td className="py-2 text-right text-slate-600">{fmtDuree(j.total_minutes_terrain ?? 0)}</td>
+                      <td className="py-2 text-right text-slate-400">{fmtDuree(j.total_minutes_trajets ?? 0)}</td>
+                      <td className="py-2 text-right font-medium text-slate-800">{fmtDuree(total)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-slate-200">
+                  <td className="pt-3 pb-1 font-semibold text-slate-700">Total réalisé</td>
+                  <td /><td />
+                  <td className="pt-3 pb-1 text-right font-bold" style={{ color: '#185FA5' }}>
+                    {fmtDuree(totalRealiseeMin)}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="pb-1 text-slate-400">Contrat hebdo</td>
+                  <td /><td />
+                  <td className="pb-1 text-right text-slate-400">{contrat}h</td>
+                </tr>
+                {deltaMin > 30 && (
+                  <tr>
+                    <td className="font-medium" style={{ color: '#A32D2D' }}>△ Non productif</td>
+                    <td /><td />
+                    <td className="text-right font-semibold" style={{ color: '#A32D2D' }}>
+                      {fmtDuree(deltaMin)}
+                    </td>
+                  </tr>
+                )}
+                {deltaMin <= 0 && (
+                  <tr>
+                    <td className="font-medium" style={{ color: '#3B6D11' }}>Heures sup</td>
+                    <td /><td />
+                    <td className="text-right font-semibold" style={{ color: '#3B6D11' }}>
+                      +{fmtDuree(Math.abs(deltaMin))}
+                    </td>
+                  </tr>
+                )}
+              </tfoot>
+            </table>
+            <button
+              onClick={() => alert('Sélection du mois — à venir')}
+              className="mt-4 w-full py-2.5 text-sm font-medium rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 transition"
+            >
+              📄 Préparer le rapport RH
+            </button>
+          </div>
+        )}
 
         {/* ── Liste des interventions ────────────────────────────────────────── */}
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">

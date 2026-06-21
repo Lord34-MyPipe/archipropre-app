@@ -21,6 +21,12 @@ export interface AgentDetailData {
   dispo: number
 }
 
+export interface JourneeRealisee {
+  date: string
+  total_minutes_terrain: number
+  total_minutes_trajets: number
+}
+
 export interface AgentIntervention {
   id: string
   residence_nom: string
@@ -133,7 +139,7 @@ export default async function AgentDetailPage({
   const contrat = agentProfile.contrat_heures_hebdo ?? 35
 
   // ── Récupérations parallèles ─────────────────────────────────────────────────
-  const [binomeRes, interventionsRes, binomeInterventionsRes, congesRes, absencesRes] = await Promise.all([
+  const [binomeRes, interventionsRes, binomeInterventionsRes, congesRes, absencesRes, journeesRes] = await Promise.all([
     agentProfile.binome_agent_id
       ? admin.from('profiles').select('id, nom, prenom').eq('id', agentProfile.binome_agent_id).single()
       : Promise.resolve({ data: null }),
@@ -168,6 +174,14 @@ export default async function AgentDetailPage({
       .eq('agent_id', agentId)
       .gte('date_fin', todayStr)
       .order('date_debut'),
+
+    admin.from('journees_agent')
+      .select('date, total_minutes_terrain, total_minutes_trajets')
+      .eq('agent_id', agentId)
+      .gte('date', mondayStr)
+      .lte('date', sundayStr)
+      .not('validee_par', 'is', null)
+      .order('date'),
   ])
 
   const binomeProfile = binomeRes.data as { id: string; nom: string; prenom: string } | null
@@ -242,6 +256,8 @@ export default async function AgentDetailPage({
     dispo,
   }
 
+  const journeesRealisees = (journeesRes.data ?? []) as JourneeRealisee[]
+
   return (
     <AgentDetailClient
       agent={agent}
@@ -251,6 +267,7 @@ export default async function AgentDetailPage({
       mondayStr={mondayStr}
       sundayStr={sundayStr}
       agentId={agentId}
+      journeesRealisees={journeesRealisees}
     />
   )
 }

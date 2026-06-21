@@ -224,8 +224,8 @@ export default function ChargeClient({ agents }: Props) {
                     )
                   })()}
 
-                  {/* ── Barre de charge ── */}
-                  <div className="relative mt-2 mb-8">
+                  {/* ── Barres de charge ── */}
+                  <div className="relative mt-2 mb-6">
 
                     {/* Piste */}
                     <div className="relative h-3 bg-slate-100 rounded-full overflow-hidden">
@@ -298,6 +298,41 @@ export default function ChargeClient({ agents }: Props) {
                       )}
                     </div>
                   </div>
+
+                  {/* Barre 2 — heures réalisées (journées validées) */}
+                  {agent.heures_realisees !== null && agent.heures_realisees > 0 && (() => {
+                    const realisees  = agent.heures_realisees
+                    const tauxReel   = Math.round((realisees / contrat) * 100)
+                    const largReel   = Math.min(tauxReel, ECHELLE) / ECHELLE * 100
+                    const delta      = contrat - realisees
+                    const couleurReel = tauxReel > 95 ? '#A32D2D' : tauxReel >= seuil ? '#BA7517' : '#3B6D11'
+                    return (
+                      <div className="mt-2">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[10px] text-slate-400">Réalisé</span>
+                          <span className="text-[10px] text-slate-600 font-medium">
+                            {Math.round(realisees * 10) / 10}h validées
+                          </span>
+                          {delta > 0.5 && (
+                            <span className="text-[10px] font-medium ml-auto" style={{ color: '#A32D2D' }}>
+                              △ {Math.round(delta * 10) / 10}h non prod.
+                            </span>
+                          )}
+                        </div>
+                        <div className="relative h-1.5 bg-[#F1EFE8] rounded-full">
+                          <div
+                            className="absolute w-px pointer-events-none"
+                            style={{ left: `${CONTRAT_X}%`, top: -2, bottom: -2, background: '#94928A' }}
+                          />
+                          <div
+                            className="absolute left-0 top-0 h-full rounded-full transition-all duration-300"
+                            style={{ width: `${largReel}%`, backgroundColor: couleurReel }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })()}
+
                   {/* Mode sous la barre */}
                   <p className="text-xs text-slate-400">
                     {agent.mode_deplacement ? (MODE_LABELS[agent.mode_deplacement] ?? '') : 'Mode non défini'}

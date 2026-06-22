@@ -109,7 +109,7 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
     return residences.filter(r => {
-      if (q && !r.nom.toLowerCase().includes(q) && !r.adresse.toLowerCase().includes(q)) return false
+      if (q && !r.nom.toLowerCase().includes(q) && !(r.adresse ?? '').toLowerCase().includes(q)) return false
       if (filterType && r.type_client !== filterType) return false
       if (filterStatut === 'actif' && !r.actif) return false
       if (filterStatut === 'sommeil' && r.actif) return false

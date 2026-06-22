@@ -242,6 +242,16 @@ export default function ResidenceCard({ residence: initial }: Props) {
                 </span>
               )}
             </div>
+            {initial.notes_import === 'adresse_manquante' && (
+              <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 text-[11px] font-medium rounded-full bg-orange-100 text-orange-700">
+                ⚠ Adresse manquante
+              </span>
+            )}
+            {initial.notes_import === 'doublon_potentiel' && (
+              <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 text-[11px] font-medium rounded-full bg-yellow-100 text-yellow-700">
+                🔶 À vérifier doublon
+              </span>
+            )}
             <p className="text-sm text-slate-400 mt-1 truncate">📍 {initial.adresse}</p>
             <div className="flex items-center gap-1.5 mt-2 flex-wrap">
               {initial.type_client && (

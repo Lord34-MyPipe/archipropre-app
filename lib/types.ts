@@ -44,6 +44,7 @@ export interface Residence {
   manager_id: string | null
   actif: boolean
   created_at: string
+  notes_import: string | null
 }
 
 export interface ZoneResidence {

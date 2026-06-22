@@ -308,13 +308,33 @@ L'état se calcule automatiquement, aucun champ à maintenir.
    - Modal sélecteur de mois (13 mois glissants)
    - Téléchargement direct : rapport-rh_[nom]_[année]-[mois].pdf
 
+✅ Migration données production (session 22-23 juin 2026) :
+   - Import 31 agents réels en base (auth.users + profiles + adresse_domicile +
+     contrat_heures_hebdo) — emails : nom@archipropre-services.com / mdp temporaire : 2026
+   - Suppression des 10 comptes démo (demo_@archipropre.fr) avec cascade complète
+   - 127 résidences réelles importées (is_demo=false) depuis planning Excel Archipropre
+   - 35 résidences démo taguées is_demo=true
+     (à supprimer sur ordre : DELETE FROM residences WHERE is_demo=true)
+   - Colonne notes_import ajoutée sur residences :
+     'adresse_manquante' (7) | 'doublon_potentiel' (4) | NULL
+   - Colonne adresse rendue nullable sur residences
+     (migration allow_null_adresse_residences)
+✅ Champ adresse_domicile dans le modal agent (AgentFormModal.tsx + route PATCH /api/agents)
+✅ Bouton géocodage agents dans /manager/agents (depart_lat / depart_lng via /api/geocoder)
+✅ Bouton géocodage résidences dans /manager/residences (lat / lng via /api/geocoder)
+✅ Badges ⚠ Adresse manquante et 🔶 À vérifier doublon sur les cartes résidence
+✅ Fix crash recherche résidences : (e.adresse ?? '').toLowerCase() au lieu de
+   e.adresse.toLowerCase() (crash sur adresses null après migration nullable)
+
 ## Bugs connus à corriger
 ℹ️ depart_lat/lng de Marie Dupont (agent test) à null — point par défaut siège
    à renseigner si on active un jour le choix d'agent le plus proche.
 ℹ️ taches_intervention.validee (booléen) conservé en base mais plus utilisé
    → peut être supprimé lors d'une future migration de nettoyage
 ℹ️ Données de test à nettoyer avant mise en production :
-   - 10 comptes demo_ à supprimer
+   - 35 résidences démo (is_demo=true) à supprimer : DELETE FROM residences WHERE is_demo=true
+   - 7 résidences avec notes_import='adresse_manquante' à corriger manuellement
+   - 4 résidences avec notes_import='doublon_potentiel' à vérifier
    - Contrat MACJ : montant_mensuel = 355 € HT (valeur de test actuellement)
    - taux_horaire_facturation_defaut : mettre à jour (actuellement 25 €/h)
 

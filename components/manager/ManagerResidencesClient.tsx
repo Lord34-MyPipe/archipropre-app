@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 import ResidenceCard from './ResidenceCard'
 import type { ResidenceMapItem } from '@/components/shared/ResidencesMap'
 import type { EtatResidenceInfo, ResidenceEtat } from './ResidenceCard'
+import { createClient } from '@/lib/supabase'
 
 const ResidencesMap = dynamic(
   () => import('@/components/shared/ResidencesMap'),
@@ -34,6 +35,11 @@ const STATUT_OPTIONS = [
 
 type ResidenceWithMeta = ResidenceMapItem & { _etat?: EtatResidenceInfo | null }
 
+type GeoState =
+  | { status: 'idle' }
+  | { status: 'running'; done: number; total: number }
+  | { status: 'done'; success: number; errors: number }
+
 interface Props {
   residences: ResidenceWithMeta[]
   agents: { id: string; nom: string; prenom: string }[]
@@ -47,7 +53,49 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
   const [filterType, setFilterType]     = useState('')
   const [filterStatut, setFilterStatut] = useState<'all' | 'actif' | 'sommeil'>('all')
   const [filterEtat, setFilterEtat]     = useState<'all' | ResidenceEtat>('all')
+  const [geoState, setGeoState]         = useState<GeoState>({ status: 'idle' })
   const searchRef = useRef<HTMLDivElement>(null)
+
+  const residencesAGeocoder = useMemo(
+    () => residences.filter(r => r.adresse && (r.lat == null || r.lng == null)),
+    [residences]
+  )
+
+  async function lancerGeocodage() {
+    if (geoState.status === 'running') return
+    const cibles = residencesAGeocoder
+    if (!cibles.length) return
+
+    setGeoState({ status: 'running', done: 0, total: cibles.length })
+    const supabase = createClient()
+    let success = 0
+    let errors = 0
+
+    for (let i = 0; i < cibles.length; i++) {
+      const res = cibles[i]
+      try {
+        const resp = await fetch(
+          `/api/geocoder?adresse=${encodeURIComponent(res.adresse)}`
+        )
+        const data = await resp.json()
+        if (data.lat && data.lng) {
+          await supabase
+            .from('residences')
+            .update({ lat: data.lat, lng: data.lng })
+            .eq('id', res.id)
+          success++
+        } else {
+          errors++
+        }
+      } catch {
+        errors++
+      }
+      setGeoState({ status: 'running', done: i + 1, total: cibles.length })
+      if (i < cibles.length - 1) await new Promise(r => setTimeout(r, 1200))
+    }
+
+    setGeoState({ status: 'done', success, errors })
+  }
 
   // Fermer suggestions au clic extérieur
   useEffect(() => {
@@ -79,8 +127,8 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
   return (
     <div className="p-4 md:p-8 pb-28 md:pb-8 space-y-4">
 
-      {/* Toggle Liste / Carte */}
-      <div className="flex items-center justify-between">
+      {/* Toggle Liste / Carte + bouton géocodage */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex bg-white border border-slate-200 rounded-xl p-1 gap-1">
           <button onClick={() => setView('list')}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
@@ -105,6 +153,48 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
             </span>
           </button>
         </div>
+
+        {/* Bouton géocodage résidences */}
+        {residencesAGeocoder.length > 0 && geoState.status !== 'done' && (
+          <button
+            onClick={lancerGeocodage}
+            disabled={geoState.status === 'running'}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+          >
+            {geoState.status === 'running' ? (
+              <>
+                <svg className="w-4 h-4 animate-spin text-[#0BBFBF]" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                </svg>
+                {geoState.done}/{geoState.total} géocodées…
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/>
+                </svg>
+                📍 Géocoder les adresses ({residencesAGeocoder.length})
+              </>
+            )}
+          </button>
+        )}
+
+        {/* Résultat géocodage */}
+        {geoState.status === 'done' && (
+          <div className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm bg-green-50 border border-green-200 text-green-700">
+            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            {geoState.success} géocodée{geoState.success > 1 ? 's' : ''}
+            {geoState.errors > 0 && (
+              <span className="text-amber-600 ml-1">
+                · {geoState.errors} échec{geoState.errors > 1 ? 's' : ''} (adresse imprécise)
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Barre de recherche + filtres — visibles en vue liste uniquement */}

@@ -5,6 +5,7 @@ import type { Profile } from '@/lib/types'
 import AgentFormModal from './AgentFormModal'
 import AgentAbsenceDrawer from './AgentAbsenceDrawer'
 import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase'
 
 const JOURS_LABELS: Record<string, string> = {
   lundi: 'L', mardi: 'M', mercredi: 'Me',
@@ -151,6 +152,11 @@ function AgentCard({
 
 // ── Composant principal ───────────────────────────────────────────────────────
 
+type GeoState =
+  | { status: 'idle' }
+  | { status: 'running'; done: number; total: number }
+  | { status: 'done'; success: number; errors: number }
+
 export default function AgentsClient({ agents: initial }: Props) {
   const router = useRouter()
   const [agents, setAgents]               = useState(initial)
@@ -159,6 +165,49 @@ export default function AgentsClient({ agents: initial }: Props) {
   const [confirmDeactivate, setConfirmDeactivate] = useState<Profile | null>(null)
   const [loading, setLoading]             = useState<string | null>(null)
   const [absenceDrawerAgent, setAbsenceDrawerAgent] = useState<Profile | null>(null)
+  const [geoState, setGeoState]           = useState<GeoState>({ status: 'idle' })
+
+  const agentsAGeocoder = useMemo(
+    () => agents.filter(a => a.adresse_domicile && !a.depart_lat),
+    [agents]
+  )
+
+  async function lancerGeocodage() {
+    if (geoState.status === 'running') return
+    const cibles = agentsAGeocoder
+    if (!cibles.length) return
+
+    setGeoState({ status: 'running', done: 0, total: cibles.length })
+    const supabase = createClient()
+    let success = 0
+    let errors = 0
+
+    for (let i = 0; i < cibles.length; i++) {
+      const agent = cibles[i]
+      try {
+        const res = await fetch(
+          `/api/geocoder?adresse=${encodeURIComponent(agent.adresse_domicile!)}`
+        )
+        const data = await res.json()
+        if (data.lat && data.lng) {
+          await supabase
+            .from('profiles')
+            .update({ depart_lat: data.lat, depart_lng: data.lng })
+            .eq('id', agent.id)
+          success++
+        } else {
+          errors++
+        }
+      } catch {
+        errors++
+      }
+      setGeoState({ status: 'running', done: i + 1, total: cibles.length })
+      if (i < cibles.length - 1) await new Promise(r => setTimeout(r, 1200))
+    }
+
+    setGeoState({ status: 'done', success, errors })
+    router.refresh()
+  }
 
   function openCreate() { setEditing(null); setModalOpen(true) }
   function openEdit(a: Profile) { setEditing(a); setModalOpen(true) }
@@ -219,8 +268,49 @@ export default function AgentsClient({ agents: initial }: Props) {
   return (
     <>
       <div className="p-4 md:p-8 pb-24 md:pb-8 space-y-4">
-        {/* Bouton ajouter */}
-        <div className="flex justify-end">
+        {/* Barre d'actions */}
+        <div className="flex items-center gap-3 flex-wrap justify-end">
+
+          {/* Bouton géocodage — visible seulement si des adresses sont à géocoder */}
+          {agentsAGeocoder.length > 0 && geoState.status !== 'done' && (
+            <button
+              onClick={lancerGeocodage}
+              disabled={geoState.status === 'running'}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+            >
+              {geoState.status === 'running' ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin text-[#0BBFBF]" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                  </svg>
+                  {geoState.done}/{geoState.total} adresses…
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/>
+                  </svg>
+                  Géocoder les adresses ({agentsAGeocoder.length})
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Résultat géocodage */}
+          {geoState.status === 'done' && (
+            <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm bg-green-50 border border-green-200 text-green-700">
+              <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              {geoState.success} géocodée{geoState.success > 1 ? 's' : ''}
+              {geoState.errors > 0 && (
+                <span className="text-amber-600 ml-1">· {geoState.errors} échec{geoState.errors > 1 ? 's' : ''}</span>
+              )}
+            </div>
+          )}
+
           <button onClick={openCreate}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold shadow-md active:scale-[0.98] transition-all"
             style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}>

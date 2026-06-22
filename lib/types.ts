@@ -19,6 +19,8 @@ export interface Profile {
   residences_exclues: string[]
   disponibilites: Record<string, unknown>
   adresse_domicile: string | null
+  depart_lat: number | null
+  depart_lng: number | null
   actif: boolean
   created_at: string
   binome_agent_id: string | null

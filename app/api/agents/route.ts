@@ -85,7 +85,7 @@ export async function PATCH(req: NextRequest) {
   if (!manager) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
   const body = await req.json()
-  const { id, nom, prenom, telephone, vehicule, zones_geo, competences, contrat_heures_hebdo, disponibilites, actif,
+  const { id, nom, prenom, telephone, adresse_domicile, vehicule, zones_geo, competences, contrat_heures_hebdo, disponibilites, actif,
           mode_deplacement, secteur_libelle, seuil_cible_pct, binome_agent_id, facteur_binome } = body
   if (!id) return NextResponse.json({ error: 'id manquant' }, { status: 400 })
 
@@ -101,6 +101,7 @@ export async function PATCH(req: NextRequest) {
   if (nom !== undefined) updates.nom = nom
   if (prenom !== undefined) updates.prenom = prenom
   if (telephone !== undefined) updates.telephone = telephone || null
+  if (adresse_domicile !== undefined) updates.adresse_domicile = adresse_domicile || null
   if (vehicule !== undefined) updates.vehicule = vehicule
   if (zones_geo !== undefined) updates.zones_geo = zones_geo
   if (competences !== undefined) updates.competences = competences

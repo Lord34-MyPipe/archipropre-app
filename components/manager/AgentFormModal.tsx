@@ -25,6 +25,7 @@ interface FormState {
   prenom: string
   email: string
   telephone: string
+  adresse_domicile: string
   password: string
   vehicule: boolean
   zones_geo: string[]
@@ -48,6 +49,7 @@ function defaultForm(agent?: Profile | null): FormState {
     prenom: agent?.prenom ?? '',
     email: agent?.email ?? '',
     telephone: agent?.telephone ?? '',
+    adresse_domicile: agent?.adresse_domicile ?? '',
     password: genPassword(),
     vehicule: agent?.vehicule ?? false,
     zones_geo: agent?.zones_geo ?? [],
@@ -144,6 +146,7 @@ export default function AgentFormModal({ agent, agents = [], onClose, onSaved }:
       prenom: form.prenom.trim(),
       email: form.email.trim(),
       telephone: form.telephone.trim(),
+      adresse_domicile: form.adresse_domicile.trim() || null,
       vehicule: form.vehicule,
       zones_geo: form.zones_geo,
       competences: form.competences,
@@ -228,6 +231,13 @@ export default function AgentFormModal({ agent, agents = [], onClose, onSaved }:
             <input type="tel" value={form.telephone} onChange={e => set('telephone', e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0BBFBF] focus:border-transparent transition"
               placeholder="06 00 00 00 00"/>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Adresse personnelle</label>
+            <input type="text" value={form.adresse_domicile} onChange={e => set('adresse_domicile', e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0BBFBF] focus:border-transparent transition"
+              placeholder="15 Rue de la Paix, 34000 Montpellier"/>
           </div>
 
           {/* Mot de passe (création uniquement) */}

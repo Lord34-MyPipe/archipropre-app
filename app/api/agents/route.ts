@@ -86,7 +86,7 @@ export async function PATCH(req: NextRequest) {
 
   const body = await req.json()
   const { id, nom, prenom, telephone, adresse_domicile, vehicule, zones_geo, competences, contrat_heures_hebdo, disponibilites, actif,
-          mode_deplacement, secteur_libelle, seuil_cible_pct, binome_agent_id, facteur_binome } = body
+          mode_deplacement, secteur_libelle, seuil_cible_pct, binome_agent_id, facteur_binome, password } = body
   if (!id) return NextResponse.json({ error: 'id manquant' }, { status: 400 })
 
   const admin = await createAdminClient()
@@ -131,6 +131,12 @@ export async function PATCH(req: NextRequest) {
 
   const { error } = await admin.from('profiles').update(updates).eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+  // Mise à jour du mot de passe via Auth Admin (ne passe jamais par profiles)
+  if (password && typeof password === 'string' && password.length >= 6) {
+    const { error: pwErr } = await admin.auth.admin.updateUserById(id, { password })
+    if (pwErr) return NextResponse.json({ error: pwErr.message }, { status: 400 })
+  }
 
   return NextResponse.json({ ok: true })
 }

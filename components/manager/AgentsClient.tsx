@@ -1,16 +1,12 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import Link from 'next/link'
 import type { Profile } from '@/lib/types'
 import AgentFormModal from './AgentFormModal'
 import AgentAbsenceDrawer from './AgentAbsenceDrawer'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
-
-const JOURS_LABELS: Record<string, string> = {
-  lundi: 'L', mardi: 'M', mercredi: 'Me',
-  jeudi: 'J', vendredi: 'V', samedi: 'S', dimanche: 'D',
-}
 
 interface AgentWithStats extends Profile {
   stats: { total: number; terminees: number }
@@ -24,7 +20,12 @@ interface Props {
   agents: AgentWithStats[]
 }
 
-// ── Carte agent individuelle ──────────────────────────────────────────────────
+type GeoState =
+  | { status: 'idle' }
+  | { status: 'running'; done: number; total: number }
+  | { status: 'done'; success: number; errors: number }
+
+// ── Carte agent compacte ──────────────────────────────────────────────────────
 
 function AgentCard({
   agent,
@@ -39,112 +40,95 @@ function AgentCard({
   onToggle: () => void
   onCongés: () => void
 }) {
-  const dispo = agent.disponibilites as Record<string, boolean> | null
-  const joursActifs = Object.entries(dispo ?? {}).filter(([, v]) => v).map(([k]) => k)
+  const taux = agent.stats.total
+    ? Math.round((agent.stats.terminees / agent.stats.total) * 100)
+    : null
 
   return (
-    <div className={`bg-white rounded-2xl border border-slate-100 p-5 transition-opacity ${!agent.actif ? 'opacity-60' : ''}`}>
-      <div className="flex items-start gap-4">
+    <div className={`bg-white rounded-xl border border-slate-100 flex flex-col transition-opacity ${!agent.actif ? 'opacity-60' : ''}`}>
+
+      {/* ── En-tête ── */}
+      <div className="flex items-start gap-2.5 p-3 pb-0">
         {/* Avatar */}
-        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-lg shrink-0 ${
+        <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0 ${
           agent.actif ? 'bg-[#1A5FA8]' : 'bg-slate-300'
         }`}>
           {agent.prenom?.[0]}{agent.nom?.[0]}
         </div>
 
+        {/* Nom + badge */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-semibold text-slate-800">{agent.prenom} {agent.nom}</h3>
-            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-medium">Agent</span>
-            {agent.vehicule && <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded-full">🚗</span>}
-            {!agent.actif && <span className="px-2 py-0.5 bg-slate-100 text-slate-400 text-xs rounded-full">Inactif</span>}
+          <p className="text-sm font-semibold text-slate-800 leading-tight truncate">
+            {agent.prenom} {agent.nom}
+          </p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <span className={`px-1.5 py-px text-[10px] font-semibold rounded-full ${
+              agent.actif ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'
+            }`}>
+              {agent.actif ? 'Actif' : 'Inactif'}
+            </span>
+            {agent.vehicule && <span className="text-[11px]">🚗</span>}
+            <span className="text-[10px] text-slate-400 ml-auto">{agent.contrat_heures_hebdo}h/sem</span>
           </div>
-          <p className="text-sm text-slate-500 mt-0.5 truncate">{agent.email}</p>
-          {agent.telephone && (
-            <a href={`tel:${agent.telephone}`} className="text-sm text-[#0BBFBF] font-medium hover:underline mt-0.5 block">
-              {agent.telephone}
-            </a>
-          )}
         </div>
 
         {/* Toggle actif */}
         <button onClick={onToggle} disabled={isLoading}
-          className={`relative w-11 h-6 rounded-full transition-colors shrink-0 disabled:opacity-50 ${
+          className={`relative w-9 h-5 rounded-full transition-colors shrink-0 disabled:opacity-50 mt-0.5 ${
             agent.actif ? 'bg-[#0BBFBF]' : 'bg-slate-300'
           }`}>
           {isLoading
             ? <span className="absolute inset-0 flex items-center justify-center">
-                <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"/>
+                <div className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin"/>
               </span>
-            : <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${agent.actif ? 'translate-x-5' : ''}`}/>
+            : <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${agent.actif ? 'translate-x-4' : ''}`}/>
           }
         </button>
       </div>
 
-      {/* Stats jour */}
-      <div className="mt-4 grid grid-cols-3 gap-3">
+      {/* Email */}
+      <p className="px-3 mt-2 text-[11px] text-slate-400 truncate">{agent.email}</p>
+
+      {/* ── Stats ── */}
+      <div className="px-3 mt-2 grid grid-cols-3 gap-1.5">
         {[
-          { label: "Aujourd'hui", value: agent.stats.total },
-          { label: 'Terminées',   value: agent.stats.terminees },
-          { label: 'Taux',        value: agent.stats.total ? `${Math.round(agent.stats.terminees / agent.stats.total * 100)}%` : '—' },
+          { label: "Auj.", value: agent.stats.total },
+          { label: 'Term.', value: agent.stats.terminees },
+          { label: 'Taux',  value: taux !== null ? `${taux}%` : '—' },
         ].map(s => (
-          <div key={s.label} className="text-center bg-slate-50 rounded-xl py-2">
-            <p className="text-lg font-bold text-[#1A5FA8]">{s.value}</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">{s.label}</p>
+          <div key={s.label} className="text-center bg-slate-50 rounded-lg py-1.5">
+            <p className="text-sm font-bold text-[#1A5FA8]">{s.value}</p>
+            <p className="text-[9px] text-slate-400 mt-px">{s.label}</p>
           </div>
         ))}
       </div>
 
-      {/* Tags */}
-      {((agent.competences ?? []).length > 0 || (agent.zones_geo ?? []).length > 0) && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {(agent.zones_geo ?? []).map(z => (
-            <span key={z} className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs rounded-full">{z}</span>
-          ))}
-          {(agent.competences ?? []).map(c => (
-            <span key={c} className="px-2 py-0.5 bg-purple-50 text-purple-700 text-xs rounded-full">{c}</span>
-          ))}
-        </div>
-      )}
-
-      {/* Disponibilités */}
-      {joursActifs.length > 0 && (
-        <div className="mt-3 flex gap-1.5">
-          {['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'].map(j => (
-            <div key={j}
-              className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold ${
-                joursActifs.includes(j) ? 'bg-[#1A5FA8] text-white' : 'bg-slate-100 text-slate-300'
-              }`}>
-              {JOURS_LABELS[j]}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="mt-4 flex gap-2 pt-3 border-t border-slate-100">
+      {/* ── Actions ── */}
+      <div className="px-3 py-3 mt-auto flex gap-1.5">
         <button onClick={onEdit}
-          className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-200 transition-colors">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125"/>
+          title="Modifier"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-medium hover:bg-slate-200 transition-colors">
+          <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/>
           </svg>
           Modifier
         </button>
         <button onClick={onCongés}
-          className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 text-amber-700 rounded-xl text-sm font-medium hover:bg-amber-100 transition-colors">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5m-9-6h.008v.008H12V9zm0 3.75h.008v.008H12v-.008zm0 3.75h.008v.008H12v-.008z"/>
+          title="Congés"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-[11px] font-medium hover:bg-amber-100 transition-colors">
+          <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5"/>
           </svg>
           Congés
         </button>
-        <a href={`/manager/planning?agent=${agent.id}`}
-          className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-medium hover:bg-slate-200 transition-colors">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <Link href={`/manager/planning?agent=${agent.id}`}
+          title="Planning"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-medium hover:bg-slate-200 transition-colors">
+          <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5"/>
           </svg>
           Planning
-        </a>
-        <span className="ml-auto text-xs text-slate-400 self-center">{agent.contrat_heures_hebdo}h/sem</span>
+        </Link>
       </div>
     </div>
   )
@@ -152,20 +136,18 @@ function AgentCard({
 
 // ── Composant principal ───────────────────────────────────────────────────────
 
-type GeoState =
-  | { status: 'idle' }
-  | { status: 'running'; done: number; total: number }
-  | { status: 'done'; success: number; errors: number }
-
 export default function AgentsClient({ agents: initial }: Props) {
   const router = useRouter()
   const [agents, setAgents]               = useState(initial)
+  const [search, setSearch]               = useState('')
   const [modalOpen, setModalOpen]         = useState(false)
   const [editing, setEditing]             = useState<Profile | null>(null)
   const [confirmDeactivate, setConfirmDeactivate] = useState<Profile | null>(null)
   const [loading, setLoading]             = useState<string | null>(null)
   const [absenceDrawerAgent, setAbsenceDrawerAgent] = useState<Profile | null>(null)
   const [geoState, setGeoState]           = useState<GeoState>({ status: 'idle' })
+
+  void setAgents // évite unused-var si jamais le refresh ne touche pas le state local
 
   const agentsAGeocoder = useMemo(
     () => agents.filter(a => a.adresse_domicile && !a.depart_lat),
@@ -185,15 +167,10 @@ export default function AgentsClient({ agents: initial }: Props) {
     for (let i = 0; i < cibles.length; i++) {
       const agent = cibles[i]
       try {
-        const res = await fetch(
-          `/api/geocoder?adresse=${encodeURIComponent(agent.adresse_domicile!)}`
-        )
+        const res = await fetch(`/api/geocoder?adresse=${encodeURIComponent(agent.adresse_domicile!)}`)
         const data = await res.json()
         if (data.lat && data.lng) {
-          await supabase
-            .from('profiles')
-            .update({ depart_lat: data.lat, depart_lng: data.lng })
-            .eq('id', agent.id)
+          await supabase.from('profiles').update({ depart_lat: data.lat, depart_lng: data.lng }).eq('id', agent.id)
           success++
         } else {
           errors++
@@ -211,7 +188,6 @@ export default function AgentsClient({ agents: initial }: Props) {
 
   function openCreate() { setEditing(null); setModalOpen(true) }
   function openEdit(a: Profile) { setEditing(a); setModalOpen(true) }
-
   function onSaved() { setModalOpen(false); router.refresh() }
 
   async function toggleActif(agent: Profile) {
@@ -239,19 +215,28 @@ export default function AgentsClient({ agents: initial }: Props) {
     router.refresh()
   }
 
+  // ── Filtrage recherche ────────────────────────────────────────────────────
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim()
+    if (!q) return agents
+    return agents.filter(a =>
+      `${a.prenom} ${a.nom}`.toLowerCase().includes(q) ||
+      (a.email ?? '').toLowerCase().includes(q)
+    )
+  }, [agents, search])
+
   // ── Groupage binômes ──────────────────────────────────────────────────────
   const renderItems = useMemo<RenderItem[]>(() => {
-    const agentMap = new Map(agents.map(a => [a.id, a]))
+    const agentMap = new Map(filtered.map(a => [a.id, a]))
     const done = new Set<string>()
     const items: RenderItem[] = []
 
-    for (const agent of agents) {
+    for (const agent of filtered) {
       if (done.has(agent.id)) continue
       const partnerId = agent.binome_agent_id
       const partner = partnerId ? agentMap.get(partnerId) : undefined
 
       if (partner && !done.has(partner.id)) {
-        // Afficher une seule fois : primary = UUID lexicalement plus petit
         const primary   = agent.id < partner.id ? agent : partner
         const secondary = agent.id < partner.id ? partner : agent
         items.push({ type: 'binome', primary, secondary })
@@ -263,20 +248,35 @@ export default function AgentsClient({ agents: initial }: Props) {
       }
     }
     return items
-  }, [agents])
+  }, [filtered])
 
   return (
     <>
-      <div className="p-4 md:p-8 pb-24 md:pb-8 space-y-4">
-        {/* Barre d'actions */}
-        <div className="flex items-center gap-3 flex-wrap justify-end">
+      <div className="p-4 md:p-6 pb-24 md:pb-6 space-y-4">
 
-          {/* Bouton géocodage — visible seulement si des adresses sont à géocoder */}
+        {/* ── Toolbar ── */}
+        <div className="flex items-center gap-2 flex-wrap">
+
+          {/* Recherche */}
+          <div className="relative flex-1 min-w-[180px]">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/>
+            </svg>
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Rechercher un agent…"
+              className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0BBFBF] focus:border-transparent"
+            />
+          </div>
+
+          {/* Géocodage */}
           {agentsAGeocoder.length > 0 && geoState.status !== 'done' && (
             <button
               onClick={lancerGeocodage}
               disabled={geoState.status === 'running'}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
             >
               {geoState.status === 'running' ? (
                 <>
@@ -292,27 +292,24 @@ export default function AgentsClient({ agents: initial }: Props) {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"/>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/>
                   </svg>
-                  Géocoder les adresses ({agentsAGeocoder.length})
+                  Géocoder ({agentsAGeocoder.length})
                 </>
               )}
             </button>
           )}
-
-          {/* Résultat géocodage */}
           {geoState.status === 'done' && (
-            <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm bg-green-50 border border-green-200 text-green-700">
+            <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm bg-green-50 border border-green-200 text-green-700">
               <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
               </svg>
               {geoState.success} géocodée{geoState.success > 1 ? 's' : ''}
-              {geoState.errors > 0 && (
-                <span className="text-amber-600 ml-1">· {geoState.errors} échec{geoState.errors > 1 ? 's' : ''}</span>
-              )}
+              {geoState.errors > 0 && <span className="text-amber-600 ml-1">· {geoState.errors} échec{geoState.errors > 1 ? 's' : ''}</span>}
             </div>
           )}
 
+          {/* Ajouter */}
           <button onClick={openCreate}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold shadow-md active:scale-[0.98] transition-all"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold shadow-sm active:scale-[0.98] transition-all"
             style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}>
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
@@ -321,8 +318,20 @@ export default function AgentsClient({ agents: initial }: Props) {
           </button>
         </div>
 
-        {/* Liste */}
-        <div className="space-y-3">
+        {/* ── Grille ── */}
+        {renderItems.length === 0 && (
+          <div className="bg-white rounded-2xl p-10 text-center text-slate-400 border border-slate-100">
+            <p className="text-4xl mb-3">👥</p>
+            <p>{search ? 'Aucun agent trouvé.' : 'Aucun agent dans votre équipe.'}</p>
+            {!search && (
+              <button onClick={openCreate} className="mt-4 px-4 py-2 bg-[#1A5FA8] text-white rounded-xl text-sm font-medium">
+                Ajouter le premier agent
+              </button>
+            )}
+          </div>
+        )}
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
           {renderItems.map(item => {
             if (item.type === 'solo') {
               return (
@@ -337,65 +346,49 @@ export default function AgentsClient({ agents: initial }: Props) {
               )
             }
 
-            // Carte binôme englobante
+            // Binôme : occupe 2 colonnes
             const { primary, secondary } = item
             const facteur = primary.facteur_binome ?? 0.60
             const gainPct = Math.round((1 - facteur) * 100)
 
             return (
               <div key={`binome-${primary.id}`}
-                className="rounded-2xl border-2 border-[#0BBFBF]/30 bg-[#0BBFBF]/5 p-3 space-y-2">
+                style={{ gridColumn: 'span 2' }}
+                className="rounded-xl border-2 border-[#0BBFBF]/30 bg-[#0BBFBF]/5 p-2.5 space-y-2">
                 {/* Header binôme */}
-                <div className="flex items-center gap-2 px-1">
-                  <span className="flex items-center gap-1.5 px-2.5 py-1 bg-[#0BBFBF] text-white text-xs font-semibold rounded-full">
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <div className="flex items-center gap-2">
+                  <span className="flex items-center gap-1 px-2 py-0.5 bg-[#0BBFBF] text-white text-[10px] font-semibold rounded-full">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"/>
                     </svg>
                     Binôme
                   </span>
-                  <span className="text-xs text-slate-500">
-                    {primary.prenom} {primary.nom} &amp; {secondary.prenom} {secondary.nom}
+                  <span className="text-[11px] text-slate-500 truncate">
+                    {primary.prenom} &amp; {secondary.prenom}
+                    {gainPct > 0 && <span className="ml-1 text-[#0BBFBF]">⚡ {gainPct}% +rapide</span>}
                   </span>
                 </div>
 
-                {/* Agent principal */}
-                <AgentCard
-                  agent={primary}
-                  isLoading={loading === primary.id}
-                  onEdit={() => openEdit(primary)}
-                  onToggle={() => toggleActif(primary)}
-                  onCongés={() => setAbsenceDrawerAgent(primary)}
-                />
-
-                {/* Agent secondaire */}
-                <AgentCard
-                  agent={secondary}
-                  isLoading={loading === secondary.id}
-                  onEdit={() => openEdit(secondary)}
-                  onToggle={() => toggleActif(secondary)}
-                  onCongés={() => setAbsenceDrawerAgent(secondary)}
-                />
-
-                {/* Footer vitesse */}
-                <div className="flex items-center gap-2 px-2 pt-1">
-                  <span className="text-xs text-[#0BBFBF]">
-                    ⚡ Vitesse binôme : ×{facteur.toFixed(2)}
-                    {gainPct > 0 ? ` (${gainPct}% plus rapide à deux)` : ' (aucun gain)'}
-                  </span>
+                {/* Les 2 cartes en sous-grille */}
+                <div className="grid grid-cols-2 gap-2">
+                  <AgentCard
+                    agent={primary}
+                    isLoading={loading === primary.id}
+                    onEdit={() => openEdit(primary)}
+                    onToggle={() => toggleActif(primary)}
+                    onCongés={() => setAbsenceDrawerAgent(primary)}
+                  />
+                  <AgentCard
+                    agent={secondary}
+                    isLoading={loading === secondary.id}
+                    onEdit={() => openEdit(secondary)}
+                    onToggle={() => toggleActif(secondary)}
+                    onCongés={() => setAbsenceDrawerAgent(secondary)}
+                  />
                 </div>
               </div>
             )
           })}
-
-          {agents.length === 0 && (
-            <div className="bg-white rounded-2xl p-10 text-center text-slate-400 border border-slate-100">
-              <p className="text-4xl mb-3">👥</p>
-              <p>Aucun agent dans votre équipe.</p>
-              <button onClick={openCreate} className="mt-4 px-4 py-2 bg-[#1A5FA8] text-white rounded-xl text-sm font-medium">
-                Ajouter le premier agent
-              </button>
-            </div>
-          )}
         </div>
       </div>
 

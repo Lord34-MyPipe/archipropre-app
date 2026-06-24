@@ -26,6 +26,10 @@ Plan : Free (à passer Pro avant livraison)
 - (+ 8 autres comptes demo_ à supprimer via :
   DELETE FROM auth.users WHERE email LIKE 'demo_%@archipropre.fr')
 
+## Comptes de production (agents réels)
+- Tous les agents @archipropre-services.com : mot de passe **Archipropre2026**
+- Christian Marquant (manager) : marquant@archipropre-services.com / Archipropre2026
+
 ## IDs importants en base
 - Manager test (Ciprian Onitiu) : 94562442-7f4a-4ab7-bc11-ac866275d5d7
 - Agent test (Marie Dupont) : c9ae0702-02d4-45b3-aa51-4dd987184867
@@ -310,7 +314,7 @@ L'état se calcule automatiquement, aucun champ à maintenir.
 
 ✅ Migration données production (session 22-23 juin 2026) :
    - Import 31 agents réels en base (auth.users + profiles + adresse_domicile +
-     contrat_heures_hebdo) — emails : nom@archipropre-services.com / mdp temporaire : 2026
+     contrat_heures_hebdo) — emails : nom@archipropre-services.com / mdp : Archipropre2026
    - Suppression des 10 comptes démo (demo_@archipropre.fr) avec cascade complète
    - 127 résidences réelles importées (is_demo=false) depuis planning Excel Archipropre
    - 35 résidences démo taguées is_demo=true
@@ -353,6 +357,45 @@ L'état se calcule automatiquement, aucun champ à maintenir.
    - N'affiche plus que les agents ayant au moins une intervention planifiée aujourd'hui
      (statut != 'annulee') — groupe "Disponible" supprimé
    - Message "Aucune intervention planifiée aujourd'hui" si aucun agent actif
+
+✅ Champ mot de passe optionnel dans AgentFormModal (modal "Modifier l'agent") :
+   - Input password en mode édition uniquement, vide par défaut (ne modifie pas si laissé vide)
+   - Route PATCH /api/agents → auth.admin.updateUserById via SUPABASE_SERVICE_ROLE_KEY
+   - Validation min 6 caractères côté client et côté serveur
+   - Logs détaillés dans Vercel Functions pour débug (error.message, code, status, Object.entries)
+
+---
+
+## BUG CRITIQUE RÉSOLU — Connexion impossible agents importés (24 juin 2026)
+
+⚠️ APPRENTISSAGE MAJEUR : les 31 agents importés le 22 juin (@archipropre-services.com)
+ne pouvaient pas se connecter ET updateUserById échouait avec AuthRetryableFetchError.
+
+**Cause racine** : lors d'un import en masse via INSERT SQL dans auth.users, plusieurs
+colonnes de tokens ont NULL au lieu de chaîne vide. GoTrue (serveur Auth Supabase) plante
+silencieusement à la connexion ET à l'appel admin API pour ces comptes.
+
+**FIX OBLIGATOIRE après tout import d'agents via SQL :**
+```sql
+UPDATE auth.users
+SET confirmation_token          = COALESCE(confirmation_token, ''),
+    recovery_token              = COALESCE(recovery_token, ''),
+    email_change_token_new      = COALESCE(email_change_token_new, ''),
+    email_change                = COALESCE(email_change, ''),
+    email_change_token_current  = COALESCE(email_change_token_current, ''),
+    phone_change                = COALESCE(phone_change, ''),
+    phone_change_token          = COALESCE(phone_change_token, ''),
+    reauthentication_token      = COALESCE(reauthentication_token, '')
+WHERE email LIKE '%@archipropre-services.com';
+```
+
+**Autres apprentissages auth :**
+- `crypt('xxx', gen_salt('bf'))` en SQL direct NE fonctionne PAS avec Supabase Auth
+  (hashage incompatible) — toujours passer par `auth.admin.updateUserById`
+- Mot de passe minimum **6 caractères** (Supabase rejette en dessous — '2026' → rejeté)
+- Les agents importés doivent avoir `user_metadata.email_verified = true`
+- `AuthRetryableFetchError` = erreur réseau/fetch du client JS, PAS une erreur de données.
+  Cause probable si persistant : SUPABASE_SERVICE_ROLE_KEY absente sur Vercel.
 
 ## Bugs connus à corriger
 ℹ️ depart_lat/lng de Marie Dupont (agent test) à null — point par défaut siège

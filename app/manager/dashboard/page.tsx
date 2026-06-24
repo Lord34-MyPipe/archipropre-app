@@ -135,6 +135,8 @@ export default async function ManagerDashboard() {
     return { ...agent, statut, nbTotal, nbTerminees, nbEnCours, interventions: ints }
   })
 
+  const statutParAgentFiltre = statutParAgent.filter(a => a.statut !== 'disponible')
+
   const alertesUrgentes = alertes.filter(a => a.type !== 'reorganisation_proposee' && a.type !== 'rapport_soumis')
 
   const kpis = {
@@ -167,7 +169,7 @@ export default async function ManagerDashboard() {
             alertes={alertes}
             kpis={kpis}
           />
-          <DashboardEquipe agents={statutParAgent} />
+          <DashboardEquipe agents={statutParAgentFiltre} />
         </div>
       </div>
     </div>

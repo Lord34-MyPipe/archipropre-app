@@ -65,8 +65,13 @@ export default function DashboardEquipe({ agents }: { agents: AgentStatut[] }) {
 
   if (!agents.length) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-100 p-6 text-center text-slate-400 text-sm">
-        Aucun agent.
+      <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100">
+          <h2 className="font-semibold text-slate-800 text-sm">Équipe aujourd'hui</h2>
+        </div>
+        <p className="px-5 py-6 text-center text-slate-400 text-sm">
+          Aucune intervention planifiée aujourd'hui.
+        </p>
       </div>
     )
   }

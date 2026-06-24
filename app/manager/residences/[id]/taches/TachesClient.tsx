@@ -371,7 +371,7 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
       </div>
 
       {/* Corps */}
-      <div className="p-4 md:p-8 pb-24 space-y-4">
+      <div className={`p-4 md:p-8 space-y-4 ${taches.length > 0 ? 'pb-44' : 'pb-24'}`}>
 
         {/* ── Vue par zone ── */}
         {view === 'zone' && (

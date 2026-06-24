@@ -36,14 +36,14 @@ export async function POST(req: NextRequest) {
 
   let success = 0
   let errors = 0
-  const failures: string[] = []
+  const failures: { nom: string; id: string; error_message?: string; error_code?: string; error_status?: number }[] = []
 
   for (const p of cibles) {
     const { error } = await admin.auth.admin.updateUserById(p.id, { password: '2026' })
     if (error) {
       console.error(`[reset-passwords] échec ${p.prenom} ${p.nom} (${p.id}):`,
         error.message, 'code:', error.code, 'status:', error.status)
-      failures.push(`${p.prenom} ${p.nom}`)
+      failures.push({ nom: `${p.prenom} ${p.nom}`, id: p.id, error_message: error?.message, error_code: error?.code, error_status: error?.status })
       errors++
     } else {
       console.log(`[reset-passwords] ok: ${p.prenom} ${p.nom}`)

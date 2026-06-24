@@ -139,10 +139,19 @@ export async function PATCH(req: NextRequest) {
 
   // Mise à jour du mot de passe via Auth Admin (ne passe jamais par profiles)
   if (password && typeof password === 'string' && password.length >= 6) {
+    console.log('[PATCH /api/agents] id pour updateUserById:', id, typeof id)
     const { data: pwData, error: pwErr } = await admin.auth.admin.updateUserById(id, { password })
     if (pwErr) {
-      console.error('[PATCH /api/agents] updateUserById error:', pwErr)
-      return NextResponse.json({ error: `Mot de passe : ${pwErr.message}` }, { status: 500 })
+      console.error('[PATCH /api/agents] updateUserById error FULL:',
+        JSON.stringify(pwErr, null, 2),
+        'status:', pwErr?.status,
+        'message:', pwErr?.message,
+        'code:', pwErr?.code
+      )
+      return NextResponse.json(
+        { error: pwErr?.message || pwErr?.code || 'Erreur mise à jour mot de passe' },
+        { status: 500 }
+      )
     }
     console.log('[PATCH /api/agents] password updated for user:', pwData?.user?.email)
   }

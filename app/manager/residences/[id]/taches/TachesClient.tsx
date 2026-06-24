@@ -165,6 +165,23 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
     showToast('Zone renommée')
   }
 
+  async function handleDuplicateZone(zone: ZoneResidence) {
+    const res = await fetch('/api/zones/dupliquer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ zoneId: zone.id }),
+    })
+    const json = await res.json()
+    if (!res.ok) { showToast(json.error ?? 'Erreur duplication', 'error'); return }
+    const newZone = json.zone as ZoneResidence
+    const newTaches = json.taches as TacheTemplate[]
+    setZones(zs => [...zs, newZone])
+    setTaches(ts => [...ts, ...newTaches])
+    setExpanded(s => new Set([...s, newZone.id]))
+    setRenaming(newZone.id)
+    showToast(`Zone dupliquée (${newTaches.length} tâche${newTaches.length > 1 ? 's' : ''} copiée${newTaches.length > 1 ? 's' : ''})`)
+  }
+
   async function handleDeleteZone(id: string) {
     const res = await fetch('/api/zones', {
       method: 'DELETE',
@@ -415,6 +432,11 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
                           className="w-7 h-7 rounded-lg bg-blue-50 text-blue-500 flex items-center justify-center hover:bg-blue-100 transition-colors"
                           title="Renommer">
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/></svg>
+                        </button>
+                        <button onClick={() => handleDuplicateZone(zone)}
+                          className="w-7 h-7 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center hover:bg-teal-100 transition-colors"
+                          title="Dupliquer la zone et ses tâches">
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5a1.125 1.125 0 01-1.125-1.125v-1.5a3.375 3.375 0 00-3.375-3.375H9.75"/></svg>
                         </button>
                         <button onClick={() => setConfirmDelete({ type: 'zone', id: zone.id, label: zone.nom })}
                           className="w-7 h-7 rounded-lg bg-slate-100 text-slate-400 flex items-center justify-center hover:bg-red-100 hover:text-red-500 transition-colors"

@@ -77,14 +77,15 @@ export default async function ManagerDashboard() {
 
   // ── Calculs côté serveur ──────────────────────────────────────────────────
 
-  const cutoffScan    = addMinutesToTime(nowTime, -30)
   const agentProfiles = new Map(agents.map(a => [a.id, a]))
 
+  // Une intervention est "scan manquant" uniquement si son heure de début
+  // est DÉJÀ PASSÉE depuis plus de 30 min (diffMinutes > 0 = passé, < 0 = futur)
   const scanManquants = interventions
     .filter(i =>
       i.statut === 'planifiee' &&
       i.heure_debut_prevue &&
-      i.heure_debut_prevue.slice(0, 5) < cutoffScan
+      diffMinutes(i.heure_debut_prevue.slice(0, 5), nowTime) >= 30
     )
     .map(i => {
       const agent = agentProfiles.get(i.agent_id)
@@ -120,7 +121,7 @@ export default async function ManagerDashboard() {
     const nbTerminees = ints.filter(i => i.statut === 'terminee').length
     const nbEnCours   = ints.filter(i => i.statut === 'en_cours').length
     const enRetard    = ints.some(
-      i => i.statut === 'planifiee' && i.heure_debut_prevue && i.heure_debut_prevue.slice(0, 5) < cutoffScan
+      i => i.statut === 'planifiee' && i.heure_debut_prevue && diffMinutes(i.heure_debut_prevue.slice(0, 5), nowTime) >= 30
     )
     const absent = absentsIds.has(agent.id)
 

@@ -10,6 +10,7 @@ type Vue = 'jour' | 'semaine' | 'mois'
 interface Intervention {
   id: string
   agent_id: string
+  residence_id: string
   date_prevue: string
   heure_debut_prevue: string | null
   heure_fin_prevue: string | null
@@ -129,7 +130,7 @@ export default async function ManagerPlanning({ searchParams }: Props) {
     supabase.from('absences').select('agent_id,date_debut,date_fin,statut,motif')
       .in('agent_id', safeIds).lte('date_debut', finStr).gte('date_fin', debutStr),
     supabase.from('interventions')
-      .select('id,agent_id,date_prevue,heure_debut_prevue,heure_fin_prevue,statut,residences(nom)')
+      .select('id,agent_id,residence_id,date_prevue,heure_debut_prevue,heure_fin_prevue,statut,residences(nom)')
       .in('agent_id', safeIds).gte('date_prevue', debutStr).lte('date_prevue', finStr)
       .neq('statut', 'annulee')
       .order('heure_debut_prevue'),
@@ -153,14 +154,14 @@ export default async function ManagerPlanning({ searchParams }: Props) {
   // Normalize interventions
   const agentMap = new Map(agents.map(a => [a.id, a]))
   type IR = {
-    id: string; agent_id: string; date_prevue: string
+    id: string; agent_id: string; residence_id: string; date_prevue: string
     heure_debut_prevue: string | null; heure_fin_prevue: string | null
     statut: string; residences?: { nom: string } | null
   }
   const inters: Intervention[] = ((intersRaw as unknown as IR[]) ?? []).map(i => {
     const a = agentMap.get(i.agent_id)
     return {
-      id: i.id, agent_id: i.agent_id, date_prevue: i.date_prevue,
+      id: i.id, agent_id: i.agent_id, residence_id: i.residence_id, date_prevue: i.date_prevue,
       heure_debut_prevue: i.heure_debut_prevue, heure_fin_prevue: i.heure_fin_prevue,
       statut: i.statut,
       agent_prenom: a?.prenom ?? '?', agent_nom_str: a?.nom ?? '',
@@ -443,8 +444,11 @@ function VueSemaine({ dates, inters, agents, congeKeys, congeMotifs, todayStr }:
                                 <div className="text-[9px] opacity-60 mt-0.5">{STATUT_LABEL[i.statut] ?? i.statut}</div>
                               </>
                             )
-                            return ['terminee','validee'].includes(i.statut) && !isOnLeave ? (
-                              <Link key={i.id} href={`/manager/interventions/${i.id}/rapport`} className={`block ${cardCls}`} style={STATUT_STYLE[i.statut]}>
+                            const href = ['terminee','validee'].includes(i.statut)
+                              ? `/manager/interventions/${i.id}/rapport`
+                              : `/manager/residences/${i.residence_id}`
+                            return !isOnLeave ? (
+                              <Link key={i.id} href={href} className={`block ${cardCls}`} style={STATUT_STYLE[i.statut]}>
                                 {cardContent}
                               </Link>
                             ) : (
@@ -658,8 +662,11 @@ function VueJour({ dateStr, inters, agents, congeKeys, congeMotifs }: {
                         </div>
                       </>
                     )
-                    return ['terminee','validee'].includes(i.statut) && !isConflict ? (
-                      <Link key={i.id} href={`/manager/interventions/${i.id}/rapport`} className={cardCls} style={STATUT_STYLE[i.statut]}>
+                    const href = ['terminee','validee'].includes(i.statut)
+                      ? `/manager/interventions/${i.id}/rapport`
+                      : `/manager/residences/${i.residence_id}`
+                    return !isConflict ? (
+                      <Link key={i.id} href={href} className={cardCls} style={STATUT_STYLE[i.statut]}>
                         {cardContent}
                       </Link>
                     ) : (
@@ -817,7 +824,7 @@ function VueMois({ debut, fin, inters, todayStr }: {
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border shrink-0 ${STATUT_BG[i.statut] ?? 'bg-slate-100 text-slate-600 border-slate-200'}`}>
                         {STATUT_LABEL[i.statut] ?? i.statut}
                       </span>
-                      {i.statut === 'terminee' && (
+                      {['terminee','validee'].includes(i.statut) && (
                         <Link href={`/manager/interventions/${i.id}/rapport`}
                           className="text-[10px] font-semibold shrink-0 whitespace-nowrap hover:underline"
                           style={{ color: '#0BBFBF' }}>

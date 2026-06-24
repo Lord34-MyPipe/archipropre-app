@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import ContratModal from '@/components/manager/ContratModal'
+import RentabiliteModal from './RentabiliteModal'
 import type { Residence } from '@/lib/types'
 import type { ResidenceEtat } from '@/components/manager/ResidenceCard'
 
@@ -77,6 +78,12 @@ const IcoContract = () => (
     <line x1="8" y1="17" x2="16" y2="17"/>
   </svg>
 )
+const IcoCoins = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="12" y1="1" x2="12" y2="23"/>
+    <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
+  </svg>
+)
 const IcoQr = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="3" y="3" width="7" height="7"/>
@@ -92,7 +99,8 @@ const IcoQr = () => (
 
 export default function ResidenceDetailClient({ residence: r, etat, agentNom, contrat }: Props) {
   const router = useRouter()
-  const [showContrat, setShowContrat] = useState(false)
+  const [showContrat, setShowContrat]       = useState(false)
+  const [showRentabilite, setShowRentabilite] = useState(false)
 
   const etatCfg = ETAT_CONFIG[etat]
   const enSommeil = !r.actif
@@ -207,6 +215,16 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
             <span className="text-sm font-semibold text-slate-700">Contrat</span>
           </button>
 
+          <button
+            onClick={() => setShowRentabilite(true)}
+            className="bg-white rounded-xl p-5 flex flex-col items-center gap-2 shadow-sm hover:shadow-md hover:bg-slate-50 transition-all border border-slate-100 text-center"
+          >
+            <span className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center text-green-700">
+              <IcoCoins />
+            </span>
+            <span className="text-sm font-semibold text-slate-700">Rentabilité</span>
+          </button>
+
           {r.qr_code_token && (
             <button
               onClick={async () => {
@@ -226,6 +244,11 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
           )}
         </div>
       </div>
+
+      {/* ── Modal rentabilité ── */}
+      {showRentabilite && (
+        <RentabiliteModal residenceId={r.id} onClose={() => setShowRentabilite(false)} />
+      )}
 
       {/* ── Modal contrat ── */}
       {showContrat && (

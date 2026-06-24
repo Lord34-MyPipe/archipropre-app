@@ -39,8 +39,11 @@ export async function POST(req: NextRequest) {
   let errors = 0
   const failures: { nom: string; id: string; error_message?: string; error_code?: string; error_status?: number }[] = []
 
+  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
   for (const p of cibles) {
     const { error } = await admin.auth.admin.updateUserById(p.id, { password: 'Archipropre2026' })
+    await sleep(200)
     if (error) {
       console.error(`[reset-passwords] échec ${p.prenom} ${p.nom} (${p.id}):`,
         error.message, 'code:', error.code, 'status:', error.status)

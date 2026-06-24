@@ -21,27 +21,32 @@ export async function POST(req: NextRequest) {
 
   const admin = await createAdminClient()
 
-  // Lister tous les users (pagination 1000 max par page)
-  const { data: { users }, error: listErr } = await admin.auth.admin.listUsers({ perPage: 1000 })
+  // Récupérer tous les agents via profiles (profile.id === auth.users.id garanti)
+  const { data: profiles, error: listErr } = await admin
+    .from('profiles')
+    .select('id, nom, prenom')
+    .eq('role', 'agent')
   if (listErr) {
-    console.error('[reset-passwords] listUsers error:', listErr)
+    console.error('[reset-passwords] profiles.select error:', listErr)
     return NextResponse.json({ error: listErr.message }, { status: 500 })
   }
 
-  const cibles = users.filter(u => u.email?.endsWith('@archipropre-services.com'))
-  console.log(`[reset-passwords] ${cibles.length} comptes @archipropre-services.com trouvés`)
+  const cibles = profiles ?? []
+  console.log(`[reset-passwords] ${cibles.length} agents trouvés`)
 
   let success = 0
   let errors = 0
   const failures: string[] = []
 
-  for (const u of cibles) {
-    const { error } = await admin.auth.admin.updateUserById(u.id, { password: '2026' })
+  for (const p of cibles) {
+    const { error } = await admin.auth.admin.updateUserById(p.id, { password: '2026' })
     if (error) {
-      console.error(`[reset-passwords] échec ${u.email}:`, error.message)
-      failures.push(u.email ?? u.id)
+      console.error(`[reset-passwords] échec ${p.prenom} ${p.nom} (${p.id}):`,
+        error.message, 'code:', error.code, 'status:', error.status)
+      failures.push(`${p.prenom} ${p.nom}`)
       errors++
     } else {
+      console.log(`[reset-passwords] ok: ${p.prenom} ${p.nom}`)
       success++
     }
   }

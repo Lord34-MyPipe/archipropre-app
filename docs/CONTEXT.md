@@ -513,6 +513,53 @@ Stockage : nouveau type d'intervention ou table dédiée passages_siege
 (id, agent_id, date, moment, motif, statut, created_by, created_at)
 Adresse siège : depuis parametres_societe (champ a ajouter : adresse_siege)
 
+### P2-10 — Workflow congés avec impact IA (spec, non implémenté)
+
+#### Statuts congés
+- Statuts possibles : 'en_attente' | 'valide' | 'refuse' | 'annule'
+- Seul le statut 'valide' impacte le planning et le calcul de charge
+- Statut 'en_attente' = invisible pour le moteur de planning (ANA)
+
+#### Permissions
+- Agent : peut soumettre (→ 'en_attente') et annuler ses propres demandes
+- Manager / Directeur : peut soumettre, valider, refuser, et annuler
+
+#### Fix modal congés existant (AgentAbsenceDrawer)
+- Message "Dates obligatoires" : n'afficher qu'après tentative de soumission
+  (useState `submitted`, afficher les erreurs seulement si submitted === true)
+- Fusionner les 2 boutons selon le rôle :
+  * Agent → un seul bouton "Soumettre la demande" (→ 'en_attente')
+  * Manager/Directeur → bouton "Soumettre" + bouton séparé "Valider directement"
+
+#### Bouton "Impact" (pré-validation par manager/directeur)
+- Visible sur toute demande 'en_attente'
+- Appelle /api/ia/reorganisation avec les interventions de l'agent sur la période
+- Affiche : résidences impactées, heures à redispatcher, jours concernés
+- Propose plan de réorganisation via ReorganisationPanel existant
+- Bouton "Valider + appliquer" : valide le congé ET applique la réorganisation
+  en une seule action atomique
+
+#### Annulation congé — 2 cas
+
+Cas A — annulation avant validation ('en_attente' → supprimé) :
+- Suppression simple, aucun impact planning
+- Pas d'analyse IA nécessaire
+
+Cas B — annulation après validation ('valide' → 'annule') :
+- Alerte automatique au manager : "Congé annulé — réintégration possible"
+- Bouton "Impact réintégration" : analyse les interventions de la période
+  qui avaient été réaffectées à d'autres agents
+- Distingue : interventions récupérables (futures, réaffectées)
+  vs interventions terminées (irrécupérables, agent n'avait pas travaillé)
+- Propose plan inverse : remettre l'agent sur ses interventions d'origine
+  si les agents remplaçants ne sont pas surchargés
+- Manager valide ou ajuste manuellement
+
+#### Notifications
+- Agent → notification quand son congé est validé ou refusé
+  (alerte en base, future push PWA P2-5)
+- Manager → alerte quand un agent soumet une nouvelle demande
+
 ## À faire Phase 3
 
 ### P3-1 — Espace client (4e rôle)

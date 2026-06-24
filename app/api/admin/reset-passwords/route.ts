@@ -33,16 +33,20 @@ export async function POST(req: NextRequest) {
 
   const cibles = profiles ?? []
   console.log(`[reset-passwords] ${cibles.length} agents trouvés`)
+  console.log('supabase url:', process.env.NEXT_PUBLIC_SUPABASE_URL)
 
   let success = 0
   let errors = 0
   const failures: { nom: string; id: string; error_message?: string; error_code?: string; error_status?: number }[] = []
 
   for (const p of cibles) {
-    const { error } = await admin.auth.admin.updateUserById(p.id, { password: '2026' })
+    const { error } = await admin.auth.admin.updateUserById(p.id, { password: 'Archipropre2026' })
     if (error) {
       console.error(`[reset-passwords] échec ${p.prenom} ${p.nom} (${p.id}):`,
         error.message, 'code:', error.code, 'status:', error.status)
+      console.error('pwErr entries:', Object.entries(error || {}))
+      console.error('pwErr string:', String(error))
+      console.error('pwErr name:', error?.name)
       failures.push({ nom: `${p.prenom} ${p.nom}`, id: p.id, error_message: error?.message, error_code: error?.code, error_status: error?.status })
       errors++
     } else {

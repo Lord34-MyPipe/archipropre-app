@@ -326,6 +326,34 @@ L'état se calcule automatiquement, aucun champ à maintenir.
 ✅ Fix crash recherche résidences : (e.adresse ?? '').toLowerCase() au lieu de
    e.adresse.toLowerCase() (crash sur adresses null après migration nullable)
 
+✅ Session 24 juin 2026 :
+
+✅ Fiche détail résidence — /manager/residences/[id]/page.tsx (nouveau) :
+   - Server Component (force-dynamic) + ResidenceDetailClient.tsx pour les parties interactives
+   - En-tête : nom, adresse, badges état / sommeil / type client / notes_import
+   - Affiche agent attitré et résumé contrat (montant + nb interventions/mois)
+   - Grille de navigation : Planning / Rapports / Tâches / Contrat (modal) / QR Code
+   - Bouton "← Retour" via router.back()
+   - Garde-fou ownership : filtre .eq('manager_id', user.id)
+
+✅ Planning manager — navigation au clic sur carte intervention :
+   - planifiee / en_cours / non_demarree → /manager/residences/{residence_id}
+   - terminee / validee → /manager/interventions/{id}/rapport (inchangé)
+   - residence_id ajouté au SELECT Supabase et au type Intervention local
+   - Fix bug Vue Mois : 'validee' ajoutée au lien "Voir →" (était 'terminee' seul)
+
+✅ Page /manager/agents — refonte layout grille :
+   - Cartes compactes : grille repeat(auto-fill, minmax(260px, 1fr))
+   - Noms complets visibles (non tronqués), email tronqué
+   - Stats par carte : interventions aujourd'hui / terminées / taux charge
+   - Barre de recherche dans la toolbar
+   - Binômes : conteneur span 2 colonnes avec sous-grille grid-cols-2
+
+✅ Dashboard manager — bloc "Équipe aujourd'hui" :
+   - N'affiche plus que les agents ayant au moins une intervention planifiée aujourd'hui
+     (statut != 'annulee') — groupe "Disponible" supprimé
+   - Message "Aucune intervention planifiée aujourd'hui" si aucun agent actif
+
 ## Bugs connus à corriger
 ℹ️ depart_lat/lng de Marie Dupont (agent test) à null — point par défaut siège
    à renseigner si on active un jour le choix d'agent le plus proche.

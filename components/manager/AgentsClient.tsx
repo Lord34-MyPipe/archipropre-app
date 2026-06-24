@@ -48,9 +48,9 @@ function AgentCard({
     <div className={`bg-white rounded-xl border border-slate-100 flex flex-col transition-opacity ${!agent.actif ? 'opacity-60' : ''}`}>
 
       {/* ── En-tête ── */}
-      <div className="flex items-start gap-2.5 p-3 pb-0">
+      <div className="flex items-start gap-3 p-4 pb-0">
         {/* Avatar */}
-        <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0 ${
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0 ${
           agent.actif ? 'bg-[#1A5FA8]' : 'bg-slate-300'
         }`}>
           {agent.prenom?.[0]}{agent.nom?.[0]}
@@ -58,10 +58,10 @@ function AgentCard({
 
         {/* Nom + badge */}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-slate-800 leading-tight truncate">
+          <p className="text-sm font-semibold text-slate-800 leading-snug">
             {agent.prenom} {agent.nom}
           </p>
-          <div className="flex items-center gap-1.5 mt-0.5">
+          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
             <span className={`px-1.5 py-px text-[10px] font-semibold rounded-full ${
               agent.actif ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'
             }`}>
@@ -87,10 +87,10 @@ function AgentCard({
       </div>
 
       {/* Email */}
-      <p className="px-3 mt-2 text-[11px] text-slate-400 truncate">{agent.email}</p>
+      <p className="px-4 mt-2 text-[11px] text-slate-400 truncate">{agent.email}</p>
 
       {/* ── Stats ── */}
-      <div className="px-3 mt-2 grid grid-cols-3 gap-1.5">
+      <div className="px-4 mt-3 grid grid-cols-3 gap-2">
         {[
           { label: "Auj.", value: agent.stats.total },
           { label: 'Term.', value: agent.stats.terminees },
@@ -104,7 +104,7 @@ function AgentCard({
       </div>
 
       {/* ── Actions ── */}
-      <div className="px-3 py-3 mt-auto flex gap-1.5">
+      <div className="px-4 py-4 mt-auto flex gap-2">
         <button onClick={onEdit}
           title="Modifier"
           className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-[11px] font-medium hover:bg-slate-200 transition-colors">
@@ -331,7 +331,7 @@ export default function AgentsClient({ agents: initial }: Props) {
           </div>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '12px' }}>
           {renderItems.map(item => {
             if (item.type === 'solo') {
               return (

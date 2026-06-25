@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   const { data: existing } = await admin.from('parametres_societe').select('id').limit(1).maybeSingle()
 
   const payload = {
-    taux_horaire_agent:  tauxHoraireAgent  ?? 22,
+    taux_horaire_agent:  tauxHoraireAgent  ?? 23,
     cout_km:             coutKm            ?? 0.45,
     frais_generaux_mois: fraisGenerauxMois ?? 0,
     updated_at:          new Date().toISOString(),

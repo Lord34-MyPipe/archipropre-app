@@ -10,6 +10,7 @@ interface TacheTemplate {
 }
 
 interface Contrat {
+  libelle: string | null
   montant_mensuel: number | null
   nb_interventions_mois: number | null
 }
@@ -82,17 +83,25 @@ function Row({ label, values }: { label: string; values: string[] }) {
   )
 }
 
-export default function RentabiliteModal({ residenceId, onClose }: { residenceId: string; onClose: () => void }) {
+export default function RentabiliteModal({
+  residenceId,
+  contratId,
+  onClose,
+}: {
+  residenceId: string
+  contratId: string
+  onClose: () => void
+}) {
   const [data, setData] = useState<Data | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch(`/api/residences/${residenceId}/rentabilite`)
+    fetch(`/api/residences/${residenceId}/rentabilite?contratId=${contratId}`)
       .then(r => r.json())
       .then(json => { setData(json); setLoading(false) })
       .catch(() => { setError('Erreur de chargement'); setLoading(false) })
-  }, [residenceId])
+  }, [residenceId, contratId])
 
   const fmt = (n: number) => `${Math.round(n).toLocaleString('fr-FR')} €`
   const sgn = (n: number) => (n >= 0 ? '+' : '') + Math.round(n).toLocaleString('fr-FR') + ' €'
@@ -109,7 +118,12 @@ export default function RentabiliteModal({ residenceId, onClose }: { residenceId
                 <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
               </svg>
             </span>
-            <h2 className="text-base font-bold text-slate-800">Rentabilité</h2>
+            <div>
+              <h2 className="text-base font-bold text-slate-800 leading-tight">Rentabilité</h2>
+              {data?.contrat?.libelle && (
+                <p className="text-xs text-slate-400 leading-tight">{data.contrat.libelle}</p>
+              )}
+            </div>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -127,15 +141,17 @@ export default function RentabiliteModal({ residenceId, onClose }: { residenceId
           {data && (() => {
             const { taches, contrat, parametres, statsReel } = data
             const duree  = calcDureTotaux(taches)
-            const taux   = parametres?.taux_horaire_agent ?? 0
+            const taux   = parametres?.taux_horaire_agent ?? 23
             const ca     = contrat?.montant_mensuel ?? 0
             const caAnn  = ca * 12
             const caHebdo = ca * 12 / 52
+            const perteCachee = ca === 0
 
             const hmois  = duree.mois / 60
             const hsem   = duree.semaine / 60
             const hann   = duree.annuel / 60
-            const hasEstime = ca > 0 && taux > 0 && duree.annuel > 0
+            // hasEstime ne dépend plus du CA — contrat offert (0€) doit aussi s'afficher
+            const hasEstime = taux > 0 && duree.annuel > 0
 
             const coutMois = hmois * taux
             const coutSem  = hsem  * taux
@@ -143,21 +159,32 @@ export default function RentabiliteModal({ residenceId, onClose }: { residenceId
             const margMois = ca      - coutMois
             const margSem  = caHebdo - coutSem
             const margAnn  = caAnn   - coutAnn
-            const pctEstime = ca > 0 && taux > 0 ? (margMois / ca) * 100 : null
+            const pctEstime = ca > 0 ? (margMois / ca) * 100 : null
 
-            let reel: { hrMois: number; hrSem: number; coutMois: number; margMois: number; pct: number } | null = null
-            if (statsReel && taux > 0 && ca > 0) {
+            let reel: { hrMois: number; hrSem: number; coutMois: number; margMois: number; pct: number | null } | null = null
+            if (statsReel && taux > 0) {
               const hrMois = statsReel.totalMin / 60
               const hrSem  = hrMois * 12 / 52
               const crMois = hrMois * taux
               const mrMois = ca - crMois
-              reel = { hrMois, hrSem, coutMois: crMois, margMois: mrMois, pct: (mrMois / ca) * 100 }
+              const pct    = ca > 0 ? (mrMois / ca) * 100 : null
+              reel = { hrMois, hrSem, coutMois: crMois, margMois: mrMois, pct }
             }
 
             const inc = duree.incompleteCount > 0
 
             return (
               <>
+                {/* Perte cachée */}
+                {perteCachee && hasEstime && (
+                  <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700 shrink-0">
+                      ⚠ Perte cachée
+                    </span>
+                    <span className="text-xs text-red-700">Ce contrat est offert à 0 € — le coût est entièrement à perte.</span>
+                  </div>
+                )}
+
                 {/* Temps estimé */}
                 <section className="mb-5">
                   <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2">
@@ -187,7 +214,9 @@ export default function RentabiliteModal({ residenceId, onClose }: { residenceId
                           <span key={i} className="text-[10px] font-semibold text-slate-400 text-right first:text-left">{h}</span>
                         ))}
                       </div>
-                      <Row label="CA" values={[fmt(caHebdo), fmt(ca), fmt(caAnn)]} />
+                      {!perteCachee && (
+                        <Row label="CA" values={[fmt(caHebdo), fmt(ca), fmt(caAnn)]} />
+                      )}
                       <Row label="Coût" values={[fmt(coutSem), fmt(coutMois), fmt(coutAnn)]} />
                       <div className="grid grid-cols-4 items-center pt-2.5">
                         <span className="text-xs font-bold text-slate-600">Marge</span>
@@ -200,13 +229,16 @@ export default function RentabiliteModal({ residenceId, onClose }: { residenceId
                           Taux de marge : {pctEstime.toFixed(1)} %
                         </p>
                       )}
+                      {perteCachee && (
+                        <p className="text-right text-xs font-semibold mt-1 text-red-600">CA = 0 € — perte = coût intégral</p>
+                      )}
                     </div>
                   </section>
                 )}
 
                 {!hasEstime && (
                   <div className="bg-amber-50 rounded-xl px-4 py-3 text-amber-700 text-xs mb-5">
-                    {!ca ? 'Aucun contrat actif — CA inconnu.' : !taux ? 'Taux horaire non configuré (paramètres société).' : 'Renseignez les durées de tâches pour calculer la rentabilité.'}
+                    {!taux ? 'Taux horaire non configuré (paramètres société).' : 'Renseignez les durées de tâches pour calculer la rentabilité.'}
                   </div>
                 )}
 
@@ -228,8 +260,9 @@ export default function RentabiliteModal({ residenceId, onClose }: { residenceId
                       </div>
                       <div className="grid grid-cols-3 items-center pt-2.5">
                         <span className="text-xs font-bold text-slate-600">Marge réelle</span>
-                        <span className={`text-sm font-bold col-span-2 text-right ${margeColor(reel.pct)}`}>
-                          {sgn(reel.margMois)}/mois ({reel.pct.toFixed(1)} %)
+                        <span className={`text-sm font-bold col-span-2 text-right ${reel.margMois >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                          {sgn(reel.margMois)}/mois
+                          {reel.pct !== null ? ` (${reel.pct.toFixed(1)} %)` : ' — perte cachée'}
                         </span>
                       </div>
                     </div>
@@ -237,7 +270,7 @@ export default function RentabiliteModal({ residenceId, onClose }: { residenceId
                 )}
 
                 {!statsReel && (
-                  <p className="text-xs text-slate-400 text-center mt-2">Données réelles disponibles après les premières interventions terminées.</p>
+                  <p className="text-xs text-slate-400 text-center mt-2">Pas encore de données réelles pour ce contrat.</p>
                 )}
               </>
             )

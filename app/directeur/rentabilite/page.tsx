@@ -79,7 +79,7 @@ export default async function DirecteurRentabilite() {
       .gte('date_prevue', dateLimitStr),
   ])
 
-  const params: SocieteParams = paramsRaw ?? { taux_horaire_agent: 22, cout_km: 0.45, frais_generaux_mois: 0 }
+  const params: SocieteParams = paramsRaw ?? { taux_horaire_agent: 23, cout_km: 0.45, frais_generaux_mois: 0 }
   const taux = params.taux_horaire_agent
 
   const tachesMap = new Map<string, typeof tachesRaw>()

@@ -125,7 +125,7 @@ const IcoQr = () => (
 
 export default function ResidenceDetailClient({ residence: r, etat, agentNom, contrat }: Props) {
   const router = useRouter()
-  const [showRentabilite, setShowRentabilite]       = useState(false)
+  const [rentabiliteContratId, setRentabiliteContratId] = useState<string | null>(null)
   const [showAjoutContrat, setShowAjoutContrat]     = useState(false)
   const [contratSelectionne, setContratSelectionne] = useState<ContratCard | null>(null)
   const [contrats, setContrats]                     = useState<ContratCard[]>([])
@@ -237,16 +237,6 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
             <span className="text-sm font-semibold text-slate-700">Rapports</span>
           </Link>
 
-          <button
-            onClick={() => setShowRentabilite(true)}
-            className="bg-white rounded-xl p-5 flex flex-col items-center gap-2 shadow-sm hover:shadow-md hover:bg-slate-50 transition-all border border-slate-100 text-center"
-          >
-            <span className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center text-green-700">
-              <IcoCoins />
-            </span>
-            <span className="text-sm font-semibold text-slate-700">Rentabilité</span>
-          </button>
-
           {r.qr_code_token && (
             <button
               onClick={async () => {
@@ -337,6 +327,16 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
                       Tâches
                     </Link>
                     <button
+                      onClick={() => setRentabiliteContratId(c.id)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-slate-500 hover:text-green-700 hover:bg-green-50 transition-colors"
+                      aria-label="Rentabilité de ce contrat"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
+                      </svg>
+                      Rentabilité
+                    </button>
+                    <button
                       onClick={() => setContratSelectionne(c)}
                       className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-slate-500 hover:text-[#0A2E5A] hover:bg-slate-100 transition-colors"
                       aria-label="Gérer ce contrat"
@@ -403,8 +403,12 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
       )}
 
       {/* ── Modal rentabilité ── */}
-      {showRentabilite && (
-        <RentabiliteModal residenceId={r.id} onClose={() => setShowRentabilite(false)} />
+      {rentabiliteContratId && (
+        <RentabiliteModal
+          residenceId={r.id}
+          contratId={rentabiliteContratId}
+          onClose={() => setRentabiliteContratId(null)}
+        />
       )}
 
       {/* ── Modal gestion contrat par carte ── */}

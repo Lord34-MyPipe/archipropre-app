@@ -74,23 +74,10 @@ export async function POST(req: NextRequest) {
   if (!res) return NextResponse.json({ error: 'Résidence introuvable ou non autorisée' }, { status: 403 })
   if (!res.actif) return NextResponse.json({ error: 'Résidence en sommeil — réactivez-la avant de régénérer le planning.' }, { status: 403 })
 
-  if (!res.agent_prefere_id)
-    return NextResponse.json({ error: 'Aucun agent attitré pour cette résidence.' }, { status: 400 })
-
-  // ── 1b. Binôme + facteur depuis profiles (source de vérité unique) ────────────
-  const { data: agentPref } = await admin
-    .from('profiles')
-    .select('binome_agent_id, facteur_binome')
-    .eq('id', res.agent_prefere_id)
-    .single()
-
-  const binomeAgentId = agentPref?.binome_agent_id ?? null
-  const facteurBinome = (agentPref?.facteur_binome ?? 1) as number
-
   // ── 2. Contrat actif ─────────────────────────────────────────────────────────
   const { data: contrat } = await admin.from('contrats_residences')
-    .select('id, date_debut, date_fin, jours_obliges, jours_interdits, creneaux_acceptes')
-    .eq('residence_id', residenceId).eq('actif', true)
+    .select('id, date_debut, date_fin, jours_obliges, jours_interdits, creneaux_acceptes, agent_prefere_id')
+    .eq('residence_id', residenceId).eq('actif', true).eq('type_contrat', 'parties_communes')
     .order('created_at', { ascending: false }).limit(1).maybeSingle()
 
   console.log('[generer] contrat:', contrat
@@ -99,6 +86,23 @@ export async function POST(req: NextRequest) {
   console.log('Contrat trouvé:', contrat?.id, 'creneaux:', contrat?.creneaux_acceptes)
   if (!contrat)
     return NextResponse.json({ error: 'Aucun contrat actif pour cette résidence.' }, { status: 400 })
+
+  // Agent effectif : contrat en priorité, résidence en fallback (transition multi-contrats)
+  const effectiveAgentId = contrat.agent_prefere_id ?? res.agent_prefere_id
+  console.log('[generer] agent effectif:', effectiveAgentId,
+    contrat.agent_prefere_id ? '(depuis contrat)' : '(fallback résidence)')
+  if (!effectiveAgentId)
+    return NextResponse.json({ error: 'Aucun agent attitré pour cette résidence.' }, { status: 400 })
+
+  // ── 1b. Binôme + facteur depuis profiles (source de vérité unique) ────────────
+  const { data: agentPref } = await admin
+    .from('profiles')
+    .select('binome_agent_id, facteur_binome')
+    .eq('id', effectiveAgentId)
+    .single()
+
+  const binomeAgentId = agentPref?.binome_agent_id ?? null
+  const facteurBinome = (agentPref?.facteur_binome ?? 1) as number
 
   const creneaux: Creneau[] = contrat.creneaux_acceptes ?? []
   const joursObliges: string[]   = contrat.jours_obliges  ?? []
@@ -193,7 +197,7 @@ export async function POST(req: NextRequest) {
       }
 
       rows.push({
-        agent_id:           res.agent_prefere_id,
+        agent_id:           effectiveAgentId,
         residence_id:       residenceId,
         date_prevue:        dateStr,
         heure_debut_prevue: hDebut,
@@ -260,7 +264,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     count:         insertedCount as number,
     interventions: interventionsForUI,
-    agentId:       res.agent_prefere_id,
+    agentId:       effectiveAgentId,
     warnings,
   })
 }

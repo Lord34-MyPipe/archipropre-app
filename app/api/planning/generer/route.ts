@@ -52,17 +52,19 @@ function creneauPourJour(creneaux: Creneau[], jour: string): Creneau | null {
 }
 
 // POST — génère les interventions et les insère dans la table interventions
-// Body: { residenceId, dateDebut?, dateFin? }
+// Body: { residenceId, contratId, dateDebut?, dateFin? }
 export async function POST(req: NextRequest) {
   const managerId = await getManagerId()
   if (!managerId) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
   const body = await req.json()
-  const { residenceId, dateDebut: bodyDebut, dateFin: bodyFin } = body
-  console.log('[generer] body reçu:', { residenceId, bodyDebut, bodyFin, managerId })
+  const { residenceId, contratId, dateDebut: bodyDebut, dateFin: bodyFin } = body
+  console.log('[generer] body reçu:', { residenceId, contratId, bodyDebut, bodyFin, managerId })
 
   if (!residenceId)
     return NextResponse.json({ error: 'residenceId manquant' }, { status: 400 })
+  if (!contratId)
+    return NextResponse.json({ error: 'contratId manquant' }, { status: 400 })
 
   const admin = await createAdminClient()
 
@@ -74,20 +76,23 @@ export async function POST(req: NextRequest) {
   if (!res) return NextResponse.json({ error: 'Résidence introuvable ou non autorisée' }, { status: 403 })
   if (!res.actif) return NextResponse.json({ error: 'Résidence en sommeil — réactivez-la avant de régénérer le planning.' }, { status: 403 })
 
-  // ── 2. Contrat actif ─────────────────────────────────────────────────────────
+  // ── 2. Contrat explicite — plus de "guess" parties_communes le plus récent ──
   const { data: contrat } = await admin.from('contrats_residences')
     .select('id, date_debut, date_fin, jours_obliges, jours_interdits, creneaux_acceptes, agent_prefere_id')
-    .eq('residence_id', residenceId).eq('actif', true).eq('type_contrat', 'parties_communes')
-    .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    .eq('id', contratId)
+    .eq('residence_id', residenceId)
+    .eq('actif', true)
+    .single()
 
   console.log('[generer] contrat:', contrat
     ? `${contrat.date_debut} → ${contrat.date_fin} | creneaux=${JSON.stringify(contrat.creneaux_acceptes)}`
-    : 'AUCUN contrat actif')
-  console.log('Contrat trouvé:', contrat?.id, 'creneaux:', contrat?.creneaux_acceptes)
+    : 'AUCUN contrat trouvé')
   if (!contrat)
-    return NextResponse.json({ error: 'Aucun contrat actif pour cette résidence.' }, { status: 400 })
+    return NextResponse.json({ error: 'Contrat introuvable, inactif ou n\'appartient pas à cette résidence.' }, { status: 400 })
 
-  // Agent effectif : contrat en priorité, résidence en fallback (transition multi-contrats)
+  // DETTE multi-contrats : le fallback résidence.agent_prefere_id peut être incorrect
+  // quand un contrat a son propre agent distinct de l'agent résidence.
+  // À corriger quand chaque contrat aura systématiquement agent_prefere_id renseigné.
   const effectiveAgentId = contrat.agent_prefere_id ?? res.agent_prefere_id
   console.log('[generer] agent effectif:', effectiveAgentId,
     contrat.agent_prefere_id ? '(depuis contrat)' : '(fallback résidence)')
@@ -112,20 +117,30 @@ export async function POST(req: NextRequest) {
   const dateDebut = bodyDebut ?? contrat.date_debut
   const dateFin   = bodyFin   ?? contrat.date_fin
 
-  // ── 3. Tâches hebdomadaires ──────────────────────────────────────────────────
+  // ── 3. Zones + tâches hebdomadaires du contrat ──────────────────────────────
+  const { data: zonesContrat } = await admin.from('zones_residence')
+    .select('id').eq('contrat_id', contratId)
+
+  const zoneIds = (zonesContrat ?? []).map((z: { id: string }) => z.id)
+
+  if (!zoneIds.length)
+    return NextResponse.json(
+      { error: 'Aucune zone configurée pour ce contrat.' },
+      { status: 400 }
+    )
+
   const { data: taches, error: tachesErr } = await admin.from('taches_template')
     .select('id, libelle, jours_semaine, duree_minutes')
-    .eq('residence_id', residenceId)
+    .in('zone_id', zoneIds)
     .eq('frequence_type', 'hebdo')
 
   console.log('[generer] taches hebdo:', taches?.length ?? 0,
     tachesErr ? `ERREUR: ${tachesErr.message}` : '',
     taches?.map(t => `"${t.libelle}"[${(t.jours_semaine ?? []).join(',')}]`).join(', '))
-  console.log('Tâches hebdo:', taches?.length, JSON.stringify(taches?.map(t => t.jours_semaine)))
 
   if (!taches?.length)
     return NextResponse.json(
-      { error: 'Aucune tâche hebdomadaire configurée pour cette résidence.' },
+      { error: 'Aucune tâche hebdomadaire configurée pour ce contrat.' },
       { status: 400 }
     )
 
@@ -242,6 +257,7 @@ export async function POST(req: NextRequest) {
   // ── 7. DELETE + INSERT atomique via RPC PostgreSQL ──────────────────────────
   const { data: insertedCount, error: rpcErr } = await admin.rpc('planifier_interventions', {
     p_residence_id: residenceId,
+    p_contrat_id:   contratId,
     p_lignes:       allRows,
   })
   console.log('RPC result:', rpcErr, insertedCount)

@@ -17,6 +17,7 @@ interface Contrat {
 
 interface Parametres {
   taux_horaire_agent: number
+  taux_horaire_facturation_defaut: number | null
 }
 
 interface StatsReel {
@@ -29,6 +30,7 @@ interface Data {
   contrat: Contrat | null
   parametres: Parametres | null
   statsReel: StatsReel | null
+  heuresVenduesMois: number | null
 }
 
 function formatDuree(minutes: number): string {
@@ -144,7 +146,7 @@ export default function RentabiliteModal({
             <div className="py-6 text-center text-red-500 text-sm">{error}</div>
           )}
           {data && (() => {
-            const { taches, contrat, parametres, statsReel } = data
+            const { taches, contrat, parametres, statsReel, heuresVenduesMois } = data
             const duree  = calcDureTotaux(taches)
             const taux   = parametres?.taux_horaire_agent ?? 23
             const ca     = contrat?.montant_mensuel ?? 0
@@ -190,10 +192,10 @@ export default function RentabiliteModal({
                   </div>
                 )}
 
-                {/* Temps estimé */}
+                {/* Temps : estimé + vendues côte à côte */}
                 <section className="mb-5">
                   <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2">
-                    Temps estimé {inc && <span className="text-amber-500">· {duree.incompleteCount} tâche{duree.incompleteCount > 1 ? 's' : ''} sans durée</span>}
+                    Heures {inc && <span className="text-amber-500">· {duree.incompleteCount} tâche{duree.incompleteCount > 1 ? 's' : ''} sans durée</span>}
                   </p>
                   <div className="bg-slate-50 rounded-xl p-3">
                     <div className="grid grid-cols-4 pb-1.5 mb-0.5">
@@ -201,11 +203,24 @@ export default function RentabiliteModal({
                         <span key={i} className="text-[10px] font-semibold text-slate-400 text-right first:text-left">{h}</span>
                       ))}
                     </div>
-                    <Row label="⏱ Temps" values={[
+                    <Row label="⏱ Estimées" values={[
                       `${inc ? '~' : ''}${formatDuree(duree.semaine)}`,
                       `${inc ? '~' : ''}${formatDuree(duree.mois)}`,
                       `${inc ? '~' : ''}${formatDuree(duree.annuel)}`,
                     ]} />
+                    {heuresVenduesMois !== null && (
+                      <Row label="💰 Vendues" values={[
+                        formatDuree((heuresVenduesMois / 4.333) * 60),
+                        formatDuree(heuresVenduesMois * 60),
+                        formatDuree(heuresVenduesMois * 12 * 60),
+                      ]} />
+                    )}
+                    {heuresVenduesMois === null && ca === 0 && (
+                      <div className="grid grid-cols-4 items-center py-2.5">
+                        <span className="text-xs font-semibold text-slate-500">💰 Vendues</span>
+                        <span className="text-sm font-semibold text-slate-400 text-right col-span-3">— (contrat offert)</span>
+                      </div>
+                    )}
                   </div>
                 </section>
 

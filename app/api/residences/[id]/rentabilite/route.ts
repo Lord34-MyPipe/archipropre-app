@@ -21,9 +21,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   // Paramètres société (commun aux deux modes)
   const { data: parametres } = await admin.from('parametres_societe')
-    .select('taux_horaire_agent, cout_km, frais_generaux_mois')
+    .select('taux_horaire_agent, taux_horaire_facturation_defaut, cout_km, frais_generaux_mois')
     .limit(1)
     .maybeSingle()
+
+  const tauxFacturationDefaut = parametres?.taux_horaire_facturation_defaut ?? 25
 
   if (contratId) {
     // ── MODE CONTRAT ──────────────────────────────────────────────────────────
@@ -57,25 +59,43 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const statsReel = buildStatsReel(intersReel ?? [])
 
-    return NextResponse.json({ taches, contrat: contratRaw ?? null, parametres, statsReel })
+    // Heures vendues contrat
+    const tauxFact = (contratRaw?.taux_horaire_facturation as number | null) ?? tauxFacturationDefaut
+    const montant  = (contratRaw?.montant_mensuel as number | null) ?? 0
+    const heuresVenduesMois = montant > 0 && tauxFact > 0 ? montant / tauxFact : null
+
+    return NextResponse.json({ taches, contrat: contratRaw ?? null, parametres, statsReel, heuresVenduesMois })
   }
 
   // ── MODE GLOBAL (agrégé, tous les contrats actifs) ────────────────────────
   const { data: contratsActifs } = await admin.from('contrats_residences')
-    .select('id, libelle, montant_mensuel, nb_interventions_mois, actif')
+    .select('id, libelle, montant_mensuel, nb_interventions_mois, taux_horaire_facturation, actif')
     .eq('residence_id', id)
     .eq('actif', true)
     .order('created_at', { ascending: true })
 
   const contrats = contratsActifs ?? []
 
-  // CA agrégé = somme des montants mensuels
-  const montantTotal = contrats.reduce((s, c) => s + (c.montant_mensuel ?? 0), 0)
+  // CA et heures vendues agrégés
+  let montantTotal = 0
+  let heuresVenduesMoisTotal = 0
+  let hasHeures = false
+
+  for (const c of contrats) {
+    montantTotal += c.montant_mensuel ?? 0
+    const tauxFact = c.taux_horaire_facturation ?? tauxFacturationDefaut
+    if ((c.montant_mensuel ?? 0) > 0 && tauxFact > 0) {
+      heuresVenduesMoisTotal += c.montant_mensuel / tauxFact
+      hasHeures = true
+    }
+  }
+
   const contratAgg = {
     libelle: null,
     montant_mensuel: montantTotal,
     nb_interventions_mois: null,
   }
+  const heuresVenduesMois = hasHeures ? heuresVenduesMoisTotal : null
 
   // Tâches : toutes les zones de tous les contrats actifs
   let taches: Record<string, unknown>[] = []
@@ -105,7 +125,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const statsReel = buildStatsReel(intersReel ?? [])
 
-  return NextResponse.json({ taches, contrat: contratAgg, parametres, statsReel })
+  return NextResponse.json({ taches, contrat: contratAgg, parametres, statsReel, heuresVenduesMois })
 }
 
 function buildStatsReel(

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import ContratModal from '@/components/manager/ContratModal'
@@ -16,11 +16,43 @@ interface Contrat {
   nb_interventions_mois: number | null
 }
 
+interface ContratCard {
+  id: string
+  libelle: string | null
+  type_contrat: string | null
+  statut_calcule: 'actif' | 'futur' | 'sommeil' | 'termine'
+  montant_mensuel: number | null
+  nb_interventions_mois: number | null
+  agent_prefere_id: string | null
+  agent_prenom: string | null
+  agent_nom: string | null
+  nb_zones: number
+  nb_interventions: number
+  qr_code_token: string | null
+  date_debut: string
+  date_fin: string
+}
+
 interface Props {
   residence: Residence
   etat: ResidenceEtat
   agentNom: string | null
   contrat: Contrat | null
+}
+
+// ── Config cartes contrats ────────────────────────────────────────────────────
+
+const STATUT_CFG: Record<ContratCard['statut_calcule'], { label: string; cls: string }> = {
+  actif:    { label: 'Actif',       cls: 'bg-green-100 text-green-700' },
+  futur:    { label: 'Futur',       cls: 'bg-blue-100 text-blue-700' },
+  sommeil:  { label: 'En sommeil',  cls: 'bg-slate-100 text-slate-500' },
+  termine:  { label: 'Terminé',     cls: 'bg-slate-200 text-slate-600' },
+}
+
+const TYPE_CONTRAT_CFG: Record<string, { label: string; icon: string }> = {
+  parties_communes: { label: 'Parties communes', icon: '🏢' },
+  containers:       { label: 'Containers',       icon: '🗑️' },
+  espaces_verts:    { label: 'Espaces verts',    icon: '🌿' },
 }
 
 // ── Config badge état ─────────────────────────────────────────────────────────
@@ -99,8 +131,19 @@ const IcoQr = () => (
 
 export default function ResidenceDetailClient({ residence: r, etat, agentNom, contrat }: Props) {
   const router = useRouter()
-  const [showContrat, setShowContrat]       = useState(false)
-  const [showRentabilite, setShowRentabilite] = useState(false)
+  const [showContrat, setShowContrat]           = useState(false)
+  const [showRentabilite, setShowRentabilite]   = useState(false)
+  const [contrats, setContrats]                 = useState<ContratCard[]>([])
+  const [contratsLoading, setContratsLoading]   = useState(true)
+  const [contratsError, setContratsError]       = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch(`/api/residences/${r.id}/contrats`)
+      .then(res => res.ok ? res.json() : Promise.reject(res.statusText))
+      .then((data: ContratCard[]) => setContrats(data))
+      .catch(() => setContratsError('Impossible de charger les contrats.'))
+      .finally(() => setContratsLoading(false))
+  }, [r.id])
 
   const etatCfg = ETAT_CONFIG[etat]
   const enSommeil = !r.actif
@@ -242,6 +285,88 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
               <span className="text-sm font-semibold text-slate-700">QR Code</span>
             </button>
           )}
+        </div>
+
+        {/* ── Cartes contrats ── */}
+        <div className="mt-4 space-y-3">
+          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide px-0.5">
+            Contrats
+          </h2>
+
+          {contratsLoading && (
+            <div className="space-y-2">
+              {[0, 1].map(i => (
+                <div key={i} className="bg-white rounded-xl border border-slate-100 shadow-sm p-4 animate-pulse">
+                  <div className="h-3 bg-slate-200 rounded w-1/3 mb-2" />
+                  <div className="h-3 bg-slate-100 rounded w-1/2" />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {contratsError && (
+            <p className="text-sm text-red-500 px-1">{contratsError}</p>
+          )}
+
+          {!contratsLoading && !contratsError && contrats.map(c => {
+            const statutCfg = STATUT_CFG[c.statut_calcule]
+            const typeCfg   = c.type_contrat ? (TYPE_CONTRAT_CFG[c.type_contrat] ?? { label: c.type_contrat, icon: '📄' }) : null
+            const agentNomComplet = c.agent_prenom && c.agent_nom
+              ? `${c.agent_prenom} ${c.agent_nom}`
+              : null
+
+            return (
+              <div key={c.id} className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
+                {/* Ligne 1 : libellé + badge statut */}
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <span className="text-sm font-semibold text-slate-800">
+                    {c.libelle ?? 'Contrat sans libellé'}
+                  </span>
+                  <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${statutCfg.cls}`}>
+                    {statutCfg.label}
+                  </span>
+                </div>
+
+                {/* Ligne 2 : type + agent */}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 mb-2">
+                  {typeCfg && (
+                    <span>{typeCfg.icon} {typeCfg.label}</span>
+                  )}
+                  <span className={agentNomComplet ? 'text-slate-600' : 'text-slate-400 italic'}>
+                    👤 {agentNomComplet ?? 'Aucun agent attitré'}
+                  </span>
+                </div>
+
+                {/* Ligne 3 : montant + compteurs */}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                  <span className="font-medium text-slate-700">
+                    {c.montant_mensuel != null ? `${c.montant_mensuel} €/mois` : '—'}
+                  </span>
+                  <span>{c.nb_zones} zone{c.nb_zones !== 1 ? 's' : ''}</span>
+                  <span>{c.nb_interventions} intervention{c.nb_interventions !== 1 ? 's' : ''}</span>
+                </div>
+
+                {/* Badges alertes */}
+                {(c.statut_calcule === 'actif' && c.nb_interventions === 0) || c.montant_mensuel === 0
+                  ? (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {c.statut_calcule === 'actif' && c.nb_interventions === 0 && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">
+                          Aucune intervention planifiée
+                        </span>
+                      )}
+                      {c.montant_mensuel === 0 && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">
+                          Offert 0€
+                        </span>
+                      )}
+                    </div>
+                  )
+                  : null
+                }
+              </div>
+            )
+          })}
         </div>
       </div>
 

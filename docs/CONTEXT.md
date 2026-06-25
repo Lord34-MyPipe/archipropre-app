@@ -1,4 +1,4 @@
-# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 25 juin 2026 — soir, suite)
+# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 25 juin 2026 — fin de session)
 
 Travail en cours : P2-11 Multi-contrats par résidence.
 Backend migré (migrations 015+016+017+018+019+020 appliquées en prod) :
@@ -20,9 +20,10 @@ UI multi-contrats — avancement B1→B6 :
 - B5.5 ✅ LIVRÉ : contrat_id écrit à la génération (migration 019 + commit 966d229)
 - B6d ✅ LIVRÉ : tâches PAR CONTRAT (?contratId= + bouton carte) (commit cbacbaa)
 - B6e ✅ LIVRÉ : planning PAR CONTRAT (migrations 020 + commits 2b0852f+7cf8ee3+090479d)
+- B6c ✅ LIVRÉ : rentabilité 2 NIVEAUX — globale (somme contrats) + par contrat
+  (commits f9b03e6 + 0d15336 + 412d10c — détails section P2-11 ci-dessous)
 - RESTE :
   · B6a : QR par contrat (déplacer bouton QR vers chaque carte contrat)
-  · B6c : rentabilité par contrat (corrige bug calcul CA multi-contrats — maybeSingle faux)
   · B6b : rapports par contrat (?contratId= filtre)
   · B5 : KPI agrégés en-tête fiche résidence (CA total / coût / marge / perte cachée)
   · Dette finale : supprimer /api/contrats + ContratModal.tsx, retirer grille résidence-level
@@ -856,8 +857,52 @@ Option B validée (refonte complète fiche résidence en hub), découpée en sou
 
 - B6a (à faire) : QR par contrat — déplacer bouton QR de la grille résidence vers chaque carte contrat.
 - B6b (à faire) : rapports par contrat — page rapports accepte ?contratId= pour filtrer.
-- B6c (à faire) : rentabilité par contrat — corrige bug maybeSingle() qui retourne le mauvais CA
-  en multi-contrats (prend le 1er actif au lieu du bon). Bug identifié en audit architecture.
+
+- B6c ✅ LIVRÉ (commits f9b03e6 + 0d15336 + 412d10c — poussés en prod) :
+  Rentabilité 2 NIVEAUX validée en prod sur ALTHEA (Bat A 458€ rentable, Container 0€ perte cachée).
+
+  Architecture 2 niveaux :
+  - Bouton "Rentabilité" grille HAUT = vue GLOBALE = somme de tous les contrats actifs.
+    Header modal : "Tous les contrats — vue globale".
+  - Bouton "Rentabilité" sur chaque CARTE contrat = vue par contrat.
+    Header modal : libellé du contrat (ex. "Bat A").
+  - State discriminé dans ResidenceDetailClient :
+    `{ contratId: string | null } | null` — null=modal fermé, {null}=global, {id}=par contrat.
+    Évite la collision de l'ancien state booléen `showRentabilite`.
+
+  Route /api/residences/[id]/rentabilite :
+  - SANS contratId (mode global) : charge tous les contrats actifs, somme les montant_mensuel,
+    charge toutes leurs zones/tâches, filtre les interventions sans contrat_id.
+    Plus de maybeSingle() → bug multi-contrats tué.
+  - AVEC contratId (mode contrat) : scope zones via contrat_id, tâches via zone_id IN [...],
+    interventions filtrées par .eq('contrat_id', contratId).
+
+  Bloc HEURES dans RentabiliteModal (commit 412d10c) :
+  - Section "Heures" avec 2 lignes : "⏱ Estimées" (durées tâches via calcDureTotaux) +
+    "💰 Vendues" (montant_mensuel ÷ taux_horaire_facturation effectif).
+  - Taux effectif = contrat.taux_horaire_facturation ?? parametres_societe.taux_horaire_facturation_defaut ?? 25.
+    Identique à la formule de GestionContratModal (cohérence UI).
+  - Calcul côté serveur (heuresVenduesMois renvoyé par la route) pour éviter division par zéro côté client.
+  - Contrat offert (CA=0) → "— (contrat offert)".
+  - Mode global : somme des heures vendues de tous les contrats actifs.
+  - Colonnes Semaine / Mois / Année dans les deux lignes.
+
+  Perte cachée (contrat offert) :
+  - Badge "⚠ Perte cachée" rouge en haut du modal si CA=0 et coût>0.
+  - Coût et marge affichés quand même (pas masqués).
+  - "CA = 0 € — perte = coût intégral" sous la section Estimé.
+
+  Fallbacks taux uniformisés à 23 (était 22 dans directeur/parametres/route.ts,
+  directeur/rentabilite/page.tsx et ?? 0 dans RentabiliteModal) :
+  - Tous les fallbacks en dur → 23 (coût interne Archipropre).
+  - Le code lit toujours parametres_societe.taux_horaire_agent en priorité, 23 = secours si absent.
+  - Fichiers corrigés : app/api/directeur/parametres/route.ts,
+    app/directeur/rentabilite/page.tsx, RentabiliteModal.tsx.
+
+  DETTE cosmétique / lisibilité :
+  - Message "pas encore de données réelles" dit "ce contrat" même en mode global → cosmétique.
+  - Les 3 blocs (Heures / Estimé € / Réel) commencent à charger → envisager tableau comparatif
+    unique Temps vendu / estimé / réel à terme.
 
 ### Décisions & schéma P2-11 (session 25 juin 2026)
 
@@ -911,13 +956,18 @@ GestionContratModal généralisé et B6 livré :
 - Le bouton "Contrat" dans la grille nav de ResidenceDetailClient.tsx (ouvre ContratModal)
 - Retirer le bouton "Tâches" résidence-level (grille du haut dans ResidenceDetailClient) —
   crée des zones orphelines (contrat_id NULL) ; à supprimer une fois toutes fonctions par contrat.
-- Retirer toute la grille du haut (Planning/Rapports/Tâches/Rentabilité/QR résidence-level)
-  une fois toutes les fonctions migrées par contrat (B6a/B6b/B6c terminés).
+- Retirer toute la grille du haut (Planning/Rapports/Tâches/QR résidence-level — NOTE : garder
+  Rentabilité globale qui est intentionnel) une fois toutes les fonctions migrées par contrat
+  (B6a/B6b terminés). Le bouton Rentabilité du haut = vue globale = légitime à garder.
 - Régler le fallback agent dans generer/route.ts :
   effectiveAgentId = contrat.agent_prefere_id ?? res.agent_prefere_id
   (fallback résidence peut être faux pour un contrat avec son propre agent).
 - Re-typer "Container" ALTHEA : type_contrat = 'containers' au lieu de 'parties_communes'.
 - interventions de test ALTHEA (106 = 53 × Bat A + 53 × Container) → à nettoyer avant prod.
+- Modal rentabilité mode global : texte "pas encore de données réelles pour ce contrat" → à
+  corriger en "pour cette résidence" quand contratId === null (cosmétique).
+- Lisibilité modal rentabilité : 3 blocs (Heures / Estimé € / Réel) → à terme, envisager
+  tableau comparatif unique Temps vendu / estimé / réel pour une lecture plus directe.
 Avant suppression : vérifier avec grep qu'aucun autre fichier ne les référence.
 
 ### Reste backend non encore basculé (après l'UI)

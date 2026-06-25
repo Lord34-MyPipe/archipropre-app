@@ -1,7 +1,7 @@
-# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 25 juin 2026)
+# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 25 juin 2026 — soir)
 
 Travail en cours : P2-11 Multi-contrats par résidence.
-Backend migré (migrations 015+016 appliquées en prod) :
+Backend migré (migrations 015+016+017+018 appliquées en prod) :
 modèle Résidence → Contrat → Zone → Tâche. 162 contrats (1 par résidence).
 agent_prefere_id et qr_code_token vivent maintenant sur le CONTRAT.
 Transition sécurisée : double-écriture residences ↔ contrats_residences
@@ -10,15 +10,20 @@ Transition sécurisée : double-écriture residences ↔ contrats_residences
 Étapes livrées : 3.1 (affectation double-écriture), 3.2 (planning lit le contrat),
 3.3 (duplication zones copie contrat_id).
 
-EN COURS : UI multi-contrats, découpage B1→B6.
-- B1 ✅ : API GET /api/residences/[id]/contrats (liste + statut calculé)
-- B2 ✅ : cartes par contrat sur la fiche résidence (lecture seule)
-- B3 ✅ : bouton "+ Ajouter un contrat" (AjoutContratModal + POST route)
-- B4 ← EN COURS : nouveau GestionContratModal + PATCH/DELETE /api/residences/[id]/contrats/[contratId]
-- B5 : KPI agrégés + badges (perte cachée, offert 0€)
+UI multi-contrats — avancement B1→B6 :
+- B1 ✅ LIVRÉ : API GET /api/residences/[id]/contrats (liste + statut calculé + actif)
+- B2 ✅ LIVRÉ : cartes contrats lecture seule sur fiche résidence (commit 4ce7340)
+- B2.5 ✅ LIVRÉ : accès fiche détail depuis la liste résidences (commit 5fc388a)
+- B3 ✅ LIVRÉ : bouton "+ Ajouter un contrat" (AjoutContratModal + POST route, commit 681e209)
+- B4 ✅ LIVRÉ : GestionContratModal par-contrat + zone dangereuse (commits 9823cd3 + 8b7601b)
+- B5 ← EN COURS : KPI agrégés en-tête fiche résidence (prochaine étape)
 - B6 : QR par contrat + Dupliquer
+- Après B6 : nettoyage dette (ancienne route /api/contrats + ancien ContratModal)
 
-Cobaye de test : ALTHEA (6537baf8-05ae-493e-9b3a-d404fa190a94), agent Christian Marquant.
+Cobaye de test : ALTHEA (6537baf8-05ae-493e-9b3a-d404fa190a94).
+État actuel : 1 contrat "Bat A" (ec5f0a9a-4b2e-4b8d-b27b-ac6b93088c3b), 0 zone,
+0 intervention, agent détaché côté résidence, badge "À configurer".
+→ À reconfigurer (agent Christian + zones) pour futurs tests B5/B6.
 Détail complet : voir section P2-11 plus bas.
 
 ## 🔄 PROTOCOLE CONTEXT! (mise à jour de la mémoire projet)
@@ -467,6 +472,10 @@ WHERE email LIKE '%@archipropre-services.com';
    - 4 résidences avec notes_import='doublon_potentiel' à vérifier
    - Contrat MACJ : montant_mensuel = 355 € HT (valeur de test actuellement)
    - taux_horaire_facturation_defaut : mettre à jour (actuellement 25 €/h)
+   - Interventions de test créées sur ALTHEA pendant le dev P2-11 : à nettoyer si besoin
+     (vérifier avec SELECT * FROM interventions WHERE residence_id='6537baf8-...')
+ℹ️ ALTHEA à reconfigurer (agent Christian + zones) après tests B5/B6 :
+   contrat "Bat A" (ec5f0a9a) — actuellement 0 zone, agent détaché
 
 ## À faire Phase 1 (dans l'ordre)
 
@@ -746,25 +755,69 @@ Le code bascule progressivement vers la lecture du contrat, residences reste un 
 - 3.3 ✅ Duplication zones (/api/zones/dupliquer) copie contrat_id de la zone source,
   fallback lookup contrat parties_communes si source NULL.
 
-### UI multi-contrats — découpage B1→B6 (EN COURS)
+### UI multi-contrats — découpage B1→B6
+
 Option B validée (refonte complète fiche résidence en hub), découpée en sous-étapes testables :
-- B1 (LIVRÉ) : API GET /api/residences/[id]/contrats — liste contrats + statut_calcule
-  (actif/futur/termine/sommeil) + nb_interventions + nb_zones + agent joint.
-  Calcul dates en Europe/Paris. Tri actif>futur>sommeil>termine.
-- B2 (LIVRÉ) : fiche résidence affiche une carte par contrat (lecture seule)
-  badges statut+type+agent, alertes "Aucune intervention planifiée" + "Offert 0€"
-- B3 (LIVRÉ) : bouton "+ Ajouter un contrat" → AjoutContratModal
-  POST /api/residences/[id]/contrats, qr_code_token généré par trigger migration 017
-- B4 (EN COURS) : nouveau composant GestionContratModal (édite UN contrat par id)
-  Architecture : Option 2 (nouveau composant, ContratModal existant intact).
-  Routes : PATCH + DELETE sur /api/residences/[id]/contrats/[contratId]/route.ts
-  Champs éditables : libelle, type_contrat, date_debut, date_fin, montant_mensuel,
-  nb_interventions_mois, agent_prefere_id, taux_horaire_facturation, creneaux_acceptes.
-  INTERDIT : qr_code_token (trigger 017 le bloque côté DB, ne jamais l'envoyer).
-  Zone dangereuse : DELETE si nb_interventions=0, sommeil (actif=false) sinon (guard 409).
-  Bouton "Gérer" sur chaque carte contrat → ouvre GestionContratModal.
-- B5 (à faire) : KPI agrégés en-tête (CA total/coût réel/marge/perte cachée) + badges
-- B6 (à faire) : QR par contrat + bouton Dupliquer un contrat
+
+- B1 ✅ LIVRÉ : API GET /api/residences/[id]/contrats — liste contrats + statut_calcule
+  (actif/futur/termine/sommeil) + nb_interventions + nb_zones + agent joint + champ actif.
+  Calcul dates en Europe/Paris. Tri actif>futur>sommeil>termine. Testé ALTHEA.
+
+- B2 ✅ LIVRÉ (commit 4ce7340) : fiche résidence affiche une carte par contrat (lecture seule).
+  Badges statut, type, agent, montant, compteurs, "Aucune intervention planifiée", "Offert 0€".
+
+- B2.5 ✅ LIVRÉ (commit 5fc388a) : accès fiche détail depuis la liste /manager/residences.
+  components/manager/ResidenceCard.tsx : nom résidence → Link vers /manager/residences/[id]
+  + chip "Fiche →" à côté du nom. Chaîne : page.tsx → ManagerResidencesClient → ResidenceCard.
+  Note : commit local-only pendant quelques heures, push oublié — déployé en retard sur Vercel.
+  Apprentissage : toujours vérifier git log origin/main après commit.
+
+- B3 ✅ LIVRÉ (commit 681e209) : bouton "+ Ajouter un contrat" → AjoutContratModal.
+  POST /api/residences/[id]/contrats. qr_code_token NON généré côté code —
+  généré par trigger set_contrat_qr_token (migration 017) à l'INSERT.
+
+- B4 ✅ LIVRÉ (commits 9823cd3 + 8b7601b) : GestionContratModal par-contrat + zone dangereuse.
+  Fichiers : app/api/residences/[id]/contrats/[contratId]/route.ts (GET + PATCH + DELETE)
+             app/manager/residences/[id]/GestionContratModal.tsx (nouveau composant)
+  PATCH : 11 champs éditables (libelle, type_contrat, dates, montant, nb_interventions_mois,
+    agent_prefere_id avec double-écriture residences si parties_communes, taux_horaire_facturation,
+    creneaux_acceptes, jours_interdits, notes_specifiques, actif). JAMAIS qr_code_token.
+  DELETE : garde-fou 409 route (COUNT interventions) + appel RPC delete_contrat_cascade (migration 018).
+  Zone dangereuse contextuelle : "Supprimer définitivement" si nb_interventions=0,
+    "Mettre en sommeil"/"Réactiver" (PATCH actif) si nb_interventions≥1.
+  resolveAndCheck : ownership cookie auth → user.id → résidence (manager_id) → contrat (residence_id)
+    AVANT tout appel admin/RPC. Testé ALTHEA : édition libellé OK, cascade validée.
+  Architecture : Option 2 (nouveau composant, ContratModal existant INTACT pendant transition).
+  Routes REST Option A : /api/residences/[id]/contrats/[contratId] (validée).
+
+- B5 ← EN COURS (prochaine étape) : KPI agrégés en-tête fiche résidence
+  (CA total / coût réel / marge / perte cachée) + badges.
+
+- B6 (à faire) : QR par contrat + bouton Dupliquer un contrat.
+
+### Décisions & schéma P2-11 (session 25 juin 2026)
+
+Migrations appliquées :
+- 017 : triggers QR token (INSERT génère, UPDATE bloque → qr_code_token immutable côté DB)
+  `set_contrat_qr_token` BEFORE INSERT, `lock_contrat_qr_token` BEFORE UPDATE
+- 018 : RPC `delete_contrat_cascade(p_contrat_id UUID)` SECURITY DEFINER
+  Ordre : self-ref NULL sur tache_liee_id → vérification bloquante taches_intervention
+  → DELETE taches_template → DELETE zones_residence → DELETE contrats_residences
+  GRANT EXECUTE ON FUNCTION delete_contrat_cascade(UUID) TO service_role
+
+Règles métier figées :
+- qr_code_token = immutable après création (trigger 017 BEFORE UPDATE lève EXCEPTION)
+- suppression dure = interdit si ≥1 intervention (garde-fou double : route + RPC)
+- toute incohérence DB (taches_intervention orphelines) → la RPC PLANTE et le signale
+  (pas de nettoyage silencieux — "pas de bug silencieux sur ce projet")
+- double-écriture agent_prefere_id : PATCH parties_communes actif → réplique residences
+- actif=false = "sommeil" ; le contrat conserve son historique et ses zones
+
+Structure routes REST P2-11 (validée) :
+- GET/POST  /api/residences/[id]/contrats
+- GET/PATCH/DELETE  /api/residences/[id]/contrats/[contratId]
+- (futur B6) /api/residences/[id]/contrats/[contratId]/qr
+- (futur B6) /api/residences/[id]/contrats/[contratId]/dupliquer
 
 ### DETTE À NETTOYER après B6
 Supprimer les fichiers de l'ancienne architecture mono-contrat une fois
@@ -772,6 +825,7 @@ GestionContratModal généralisé et B6 livré :
 - /api/contrats/route.ts (ancienne route upsert mono-contrat)
 - components/manager/ContratModal.tsx (ancienne modal résidence-centric)
 - Le bouton "Contrat" dans la grille nav de ResidenceDetailClient.tsx (ouvre ContratModal)
+- interventions de test ALTHEA (contrat ec5f0a9a-...) créées en développement → nettoyer
 Avant suppression : vérifier avec grep qu'aucun autre fichier ne les référence.
 
 ### Reste backend non encore basculé (après l'UI)
@@ -1044,3 +1098,24 @@ Arguments de vente à valoriser dans l'app :
 - Toujours pusher sur GitHub + tester sur Vercel
 - Nombres toujours arrondis côté client (Math.round)
 - Calculs dans les vues SQL, jamais côté client
+
+## Key learnings (sessions juin 2026)
+
+### COMMIT ≠ PUSH ≠ DEPLOY (appris B2.5, 25 juin 2026)
+`git commit` = local uniquement. `git push origin main` = GitHub.
+Vercel deploy = déclenché par GitHub push, PAS par commit local.
+Un commit absent de origin/main n'est jamais déployé.
+→ Toujours vérifier `git log origin/main` après un commit critique.
+→ Toujours rapporter le hash de commit ET l'URL Vercel de déploiement.
+
+### Nettoyage interventions de test (leçon P2-11)
+Les interventions créées pendant le dev (ex. tests ALTHEA) sont réelles en base.
+Elles bloquent la suppression dure d'un contrat (garde-fou 409).
+→ Nettoyer avec DELETE FROM interventions WHERE contrat_id='...' avant tout test de cascade.
+→ Ne jamais créer d'interventions de test sur un contrat qu'on voudra supprimer ensuite.
+
+### Noms de colonnes SQL Supabase (cas sensibles au contexte)
+Les colonnes snake_case sont stables côté JS/TS (exemple : `montant_mensuel`, `type_contrat`).
+Mais les noms de fonctions SQL (RPC) sont insensibles à la casse côté Supabase JS client.
+→ Toujours nommer les paramètres de RPC avec le préfixe p_ (ex. `p_contrat_id`)
+  pour éviter les collisions avec les variables locales PL/pgSQL.

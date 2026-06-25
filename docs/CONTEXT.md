@@ -1,33 +1,27 @@
-# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 25 juin 2026 — fin de session)
+# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 25 juin 2026 — fin de session B6b)
 
-Travail en cours : P2-11 Multi-contrats par résidence.
-Backend migré (migrations 015+016+017+018+019+020 appliquées en prod) :
+**BLOC B ENTIÈREMENT TERMINÉ.** P2-11 quasi bouclé — reste dette finale + P2-12/P2-13 à cadrer.
+
+Backend migré (migrations 015+016+017+018+019+020+021 appliquées en prod) :
 modèle Résidence → Contrat → Zone → Tâche. 162 contrats (1 par résidence).
 agent_prefere_id et qr_code_token vivent maintenant sur le CONTRAT.
-Transition sécurisée : double-écriture residences ↔ contrats_residences
-(synchronisés, ne jamais diverger).
-
-Étapes livrées : 3.1 (affectation double-écriture), 3.2 (planning lit le contrat),
-3.3 (duplication zones copie contrat_id).
+Transition sécurisée : double-écriture residences ↔ contrats_residences.
 
 UI multi-contrats — avancement B1→B6 :
-- B1 ✅ LIVRÉ : API GET /api/residences/[id]/contrats (liste + statut calculé + actif)
-- B2 ✅ LIVRÉ : cartes contrats lecture seule sur fiche résidence (commit 4ce7340)
-- B2.5 ✅ LIVRÉ : accès fiche détail depuis la liste résidences (commit 5fc388a)
-- B3 ✅ LIVRÉ : bouton "+ Ajouter un contrat" (AjoutContratModal + POST route, commit 681e209)
-- B4 ✅ LIVRÉ : GestionContratModal par-contrat + zone dangereuse (commits 9823cd3 + 8b7601b)
-- B4.5 ✅ LIVRÉ : parcours contrat unifié + ancien bouton Contrat débranché (commit 5b292ff)
+- B1 ✅ LIVRÉ : API GET /api/residences/[id]/contrats
+- B2 ✅ LIVRÉ : cartes contrats lecture seule (commit 4ce7340)
+- B2.5 ✅ LIVRÉ : accès fiche détail depuis liste résidences (commit 5fc388a)
+- B3 ✅ LIVRÉ : "+ Ajouter un contrat" (commit 681e209)
+- B4 ✅ LIVRÉ : GestionContratModal par-contrat (commits 9823cd3 + 8b7601b)
+- B4.5 ✅ LIVRÉ : parcours contrat unifié + ancien bouton débranché (commit 5b292ff)
+- B5 ✅ LIVRÉ : KPI bande en-tête résidence CA/Coût/Marge/Perte cachée (commit 077089b)
 - B5.5 ✅ LIVRÉ : contrat_id écrit à la génération (migration 019 + commit 966d229)
-- B6d ✅ LIVRÉ : tâches PAR CONTRAT (?contratId= + bouton carte) (commit cbacbaa)
-- B6e ✅ LIVRÉ : planning PAR CONTRAT (migrations 020 + commits 2b0852f+7cf8ee3+090479d)
-- B6c ✅ LIVRÉ : rentabilité 2 NIVEAUX — globale (somme contrats) + par contrat
-  (commits f9b03e6 + 0d15336 + 412d10c — détails section P2-11 ci-dessous)
-- RESTE :
-  · B6a : QR par contrat (déplacer bouton QR vers chaque carte contrat)
-  · B6b : rapports par contrat (?contratId= filtre)
-  · B5 : KPI agrégés en-tête fiche résidence (CA total / coût / marge / perte cachée)
-  · Dette finale : supprimer /api/contrats + ContratModal.tsx, retirer grille résidence-level
-- Après tout B6 : nettoyage dette (ancienne route /api/contrats + ancien ContratModal)
+- B6a ✅ LIVRÉ : QR par contrat — manager PDF + agent scan token→contrat (commit fb80809+)
+- B6b ✅ LIVRÉ : rapports par contrat — filtre ?contratId= + libellé par ligne (commits e35bc9a+)
+- B6c ✅ LIVRÉ : rentabilité 2 niveaux — globale + par contrat (commits f9b03e6+)
+- B6d ✅ LIVRÉ : tâches PAR CONTRAT (commit cbacbaa)
+- B6e ✅ LIVRÉ : planning PAR CONTRAT (migration 020 + commits 2b0852f+)
+- RESTE : dette finale P2-11 (voir liste ci-dessous) + P2-12/P2-13 à cadrer
 
 Cobaye de test : ALTHEA (6537baf8-05ae-493e-9b3a-d404fa190a94).
 État actuel : 2 contrats parties_communes actifs —
@@ -38,6 +32,8 @@ Cobaye de test : ALTHEA (6537baf8-05ae-493e-9b3a-d404fa190a94).
 Note : "Container" est typé parties_communes (devrait être containers — non bloquant).
 Agent Christian (1d46fd73-226c-404d-aeae-e47676955fb2) sur les deux contrats.
 TEST B6e validé : régénérer Bat A laisse Container intact à 53 (DELETE scopé OK).
+TEST B6a validé : scan Bat A → Hall seul ; scan Container → Local Container seul.
+TEST B6b validé ALTHEA : 2 rapports du 25 juin avec libellés "Container" / "Bat A".
 Détail complet : voir section P2-11 plus bas.
 
 ## 🔄 PROTOCOLE CONTEXT! (mise à jour de la mémoire projet)
@@ -852,11 +848,72 @@ Option B validée (refonte complète fiche résidence en hub), découpée en sou
   - TEST VALIDÉ ALTHEA : Bat A 53 interventions, Container 53 interventions.
     Régénérer Bat A laisse Container intact (DELETE scopé OK).
 
-- B5 ← À FAIRE (après B6a/B6b/B6c) : KPI agrégés en-tête fiche résidence
-  (CA total / coût réel / marge / perte cachée) + badges.
+- B5 ✅ LIVRÉ (commit 077089b) : KPI bande en-tête fiche résidence.
+  Voir section dédiée B5 ci-dessous.
 
-- B6a (à faire) : QR par contrat — déplacer bouton QR de la grille résidence vers chaque carte contrat.
-- B6b (à faire) : rapports par contrat — page rapports accepte ?contratId= pour filtrer.
+- B6a ✅ LIVRÉ (commits fb80809, a464925, 8127236, b655043) : QR par contrat.
+  Voir section dédiée B6a ci-dessous.
+
+- B6b ✅ LIVRÉ (commits e35bc9a, 3fcc03d, a3fe8ea) : rapports par contrat.
+  Voir section dédiée B6b ci-dessous.
+
+- B5 ✅ LIVRÉ (commit 077089b) : KPI bande en-tête fiche résidence.
+  Bande KPI dans l'en-tête ResidenceDetailClient : CA/mois · Coût/mois · Marge/mois (+taux%)
+  + badge "⚠ Perte cachée". OPTION B validée : perte_cachee = true si AU MOINS UN contrat actif
+  en marge négative, MÊME si marge globale positive.
+  Calcul dans page.tsx (Server Component SSR), prop kpi passée au client.
+  Route /rentabilite mode global enrichie flag perteCachee.
+  FACTORISATION : lib/rentabilite.ts (calcMinutesAnnuelles, calcDureTotaux, calcCoutMensuel,
+  KpiResidence) = source unique partagée page.tsx + route + RentabiliteModal.
+  Validé ALTHEA : CA 458€ · Coût 42€ · Marge +416€ (90.9%) + badge perte cachée.
+
+- B6a ✅ LIVRÉ (commits fb80809, a464925, 8127236, b655043) : QR par contrat (manager + agent).
+  LE PLUS CORIACE. 5 bugs/apprentissages majeurs.
+  MANAGER : bouton QR par carte contrat (PDF token DU CONTRAT + "ALTHEA — Bat A") ;
+  bouton haut → PDF multi-pages tous QR contrats actifs. Helper renderQRPage.
+  URL QR : {origin}/agent/scan?token={contrat.qr_code_token}.
+  AGENT (scan/page.tsx restructuré) : token → contrats_residences (PAS residences) →
+  intervention DU CONTRAT. Tâches scopées zones du contrat.
+  LIBELLÉ CONTRAT ajouté : en-tête parcours agent, planning général manager, dashboard agent J→J+7.
+  Migration 021 (version 20260625190943, renommée depuis 017 pour éviter conflit numérotation) :
+  POLICY contrats_read_agent FOR SELECT USING (auth.uid() IS NOT NULL) sur contrats_residences.
+  ⚠️ DETTE SÉCURITÉ : policy trop large, à resserrer.
+  5 BUGS RÉSOLUS :
+  1. BUG ZONES pre-B6a : scan insérait tâches de TOUTES les zones résidence (taches_template
+     WHERE residence_id). Fix : zones WHERE contrat_id → tâches WHERE zone_id IN (ces zones).
+  2. RLS MANQUANTE : agents ne pouvaient lire contrats_residences → "QR non reconnu".
+     Fix : migration 021. Policy FOR ALL précédente (manager OR directeur) bloquait les agents.
+  3. RESCAN en_cours : DELETE+INSERT ne se déclenchait qu'à planifiee→en_cours. Fix :
+     stale-detection sur chemin en_cours (rebuild si zone hors-contrat, sinon préserve progrès).
+  4. TOKEN PARTAGÉ : Bat A = token résidence (migration 016 copy). Ancien code trouvait Bat A
+     par coïncidence, Container jamais trouvé. Les 2 fonctionnent maintenant via contrats_residences.
+  5. CACHE PWA : sert ancien code après déploiement. ⚠️ DETTE : versioning service worker.
+     En dev : Safari onglet normal, PAS PWA installée. Tester sur archipropre-app.vercel.app (prod).
+  VALIDÉ : scan Bat A → Hall seul ; scan Container → Local Container seul ; étanche 2 sens.
+  Cleanup direct DB : tache "Nettoyage Poubelles / Local Container" retirée de l'intervention
+  47668efb (taches_intervention.zone_nom absent des zones du contrat → DELETE SQL direct).
+
+- B6b ✅ LIVRÉ (commits e35bc9a, 3fcc03d, a3fe8ea) : rapports par contrat.
+  DISTINCTION DEUX OBJETS RAPPORT (validée avec Julien) :
+  - OBJET 1 — RAPPORT D'INTERVENTION (par contrat) : 1 par intervention terminee/validee,
+    lié à un contrat via contrat_id. Contenu : tâches+photos+durée de CETTE intervention.
+    Listé par la page rapports résidence, filtrable ?contratId=. Base du futur rapport client P3-2.
+    Bouton "Voir" → /manager/interventions/[id]/rapport.
+  - OBJET 2 — RAPPORT JOURNALIER AGENT (journees_agent) : agrège journée complète agent
+    TOUS contrats/résidences + trajets inter-chantiers (temps payé). PAS de contrat_id.
+    Sert à la paie/RH UNIQUEMENT. Reste dans charge/[id] / validation journalière.
+    NE DOIT PAS apparaître dans la page rapports filtrée par contrat.
+  Implémenté :
+  - rapports/page.tsx : liste interventions (objet 1), accepte searchParams.contratId optionnel,
+    filtre contrat_id, récupère libellé contrat, header "Rapports — <libellé>" si filtré,
+    retour vers fiche résidence si filtré.
+  - SELECT inclut contrats_residences(libelle) → libellé affiché en teal par ligne.
+  - En vue globale : libellé visible ; en vue filtrée : masqué (redondant avec header).
+  - Bouton "Rapports" par carte contrat (?contratId=) dans ResidenceDetailClient.
+  - RETRAIT bouton RapportsActions ("Journée de <prenom>", objet 2) de cette page (a3fe8ea) —
+    polluait visuellement la page et faisait croire à l'utilisateur que les rapports listés
+    étaient des journées agent.
+  NOTA : RapportsActions + JourneeAgentPanel restent intacts dans charge/[id] (leur contexte).
 
 - B6c ✅ LIVRÉ (commits f9b03e6 + 0d15336 + 412d10c — poussés en prod) :
   Rentabilité 2 NIVEAUX validée en prod sur ALTHEA — chiffres exacts :
@@ -960,35 +1017,68 @@ Structure routes REST P2-11 (validée) :
 - (futur B6) /api/residences/[id]/contrats/[contratId]/qr
 - (futur B6) /api/residences/[id]/contrats/[contratId]/dupliquer
 
-### DETTE À NETTOYER après B6
-Supprimer les fichiers de l'ancienne architecture mono-contrat une fois
-GestionContratModal généralisé et B6 livré :
-- /api/contrats/route.ts (ancienne route upsert mono-contrat)
-- components/manager/ContratModal.tsx (ancienne modal résidence-centric)
-- Le bouton "Contrat" dans la grille nav de ResidenceDetailClient.tsx (ouvre ContratModal)
-- Retirer le bouton "Tâches" résidence-level (grille du haut dans ResidenceDetailClient) —
-  crée des zones orphelines (contrat_id NULL) ; à supprimer une fois toutes fonctions par contrat.
-- Retirer toute la grille du haut (Planning/Rapports/Tâches/QR résidence-level — NOTE : garder
-  Rentabilité globale qui est intentionnel) une fois toutes les fonctions migrées par contrat
-  (B6a/B6b terminés). Le bouton Rentabilité du haut = vue globale = légitime à garder.
-- Régler le fallback agent dans generer/route.ts :
+### DETTE FINALE P2-11 (B6 terminé — à traiter)
+- Supprimer /api/contrats/route.ts (ancienne route upsert mono-contrat) — débranchée.
+- Supprimer components/manager/ContratModal.tsx (ancienne modal résidence-centric) — débranchée.
+- Supprimer le bouton "Contrat" dans la grille nav ResidenceDetailClient.tsx (ouvre ContratModal).
+- Retirer le bouton "Tâches" résidence-level (grille du haut) — crée des zones orphelines
+  (contrat_id NULL). À supprimer : seul chemin restant hors contrat.
+- Retirer la grille du haut (Planning/QR résidence-level) — NOTE : GARDER intentionnellement :
+  · Rentabilité globale (vue agrégée de tous les contrats, légitime)
+  · Rapports global (vue tous les rapports de la résidence, cohérente)
+  · QR Codes multi (PDF multi-pages tous contrats actifs, utile en impression batch)
+- Régler fallback agent dans generer/route.ts :
   effectiveAgentId = contrat.agent_prefere_id ?? res.agent_prefere_id
   (fallback résidence peut être faux pour un contrat avec son propre agent).
 - Re-typer "Container" ALTHEA : type_contrat = 'containers' au lieu de 'parties_communes'.
-- interventions de test ALTHEA (106 = 53 × Bat A + 53 × Container) → à nettoyer avant prod.
-- Modal rentabilité mode global : texte "pas encore de données réelles pour ce contrat" → à
+- Interventions de test ALTHEA (106 = 53×Bat A + 53×Container) → à nettoyer avant prod.
+- Modal rentabilité mode global : texte "pas encore de données réelles pour ce contrat" →
   corriger en "pour cette résidence" quand contratId === null (cosmétique).
-- Lisibilité modal rentabilité : 3 blocs (Heures / Estimé € / Réel) → à terme, envisager
-  tableau comparatif unique Temps vendu / estimé / réel pour une lecture plus directe.
-Avant suppression : vérifier avec grep qu'aucun autre fichier ne les référence.
+- Libellé modal rentabilité global "ce contrat" → "ces contrats" dans d'autres occurrences.
+- Resserrer RLS contrats_read_agent (migration 021 — POLICY trop large : auth.uid() IS NOT NULL
+  = tout utilisateur authentifié peut lire tous les contrats). Resserrer à manager_id ou
+  agent attitré.
+- Versioning service worker PWA (cache sert ancien code après déploiement).
+- DETTE TRAÇABILITÉ MIGRATIONS : triggers QR (017) + migrations 018-020 existent en prod
+  (SQL Editor Supabase) mais leurs fichiers locaux 018/019/020 ne correspondent pas
+  exactement (vérifier que les RPC en prod matchent les fichiers). À régulariser proprement.
+- Nettoyer interventions de test ALTHEA avant mise en prod réelle.
+Avant suppression des fichiers : vérifier avec grep qu'aucun autre fichier ne les référence.
 
 ### Reste backend non encore basculé (après l'UI)
-- Scan QR (app/agent/scan/page.tsx) lit encore residences.qr_code_token —
-  à faire évoluer vers QR par contrat (étape future, quand UI stable)
-- Fiche résidence affiche encore qr_code_token depuis residences
+- Scan QR (app/agent/scan/page.tsx) ← FAIT en B6a : lit contrats_residences.qr_code_token
+  (plus residences.qr_code_token). Migration 021 : agents peuvent lire contrats_residences.
+- Fiche résidence : qr_code_token résidence-level conservé en base (synchronisé avec Bat A),
+  mais la logique scan+PDF utilise désormais contrats_residences.qr_code_token.
 
 Ne pas oublier de mettre à jour cette section ET le bloc "⚡ ÉTAT ACTUEL" du haut
 à chaque sous-étape B livrée.
+
+### P2-12 — Scan hors planning (spec, non implémenté — à cadrer avec Ana)
+Scan QR contrat sans intervention prévue ce jour.
+B6a détecte déjà + double alerte (agent + manager, alerte 'scan_hors_planning' metadata JSONB)
+SANS rien autoriser (scan bloqué). À cadrer avec Ana : autorise-t-on l'intervention ?
+3 postures possibles :
+1. BLOQUANT : scan refusé, agent voit "Pas d'intervention prévue aujourd'hui".
+2. PERMISSIF TRACÉ : crée une intervention extra, alerte manager pour validation a posteriori.
+3. PERMISSIF + VALIDATION MANAGER : crée une intervention extra EN ATTENTE de validation
+   (manager approuve ou refuse depuis son dashboard).
+Question quelle intervention planifiée elle consomme (anticipation futur créneau →
+retrait de l'origine évite double comptage) ou est-ce une extra ?
+Réutiliser moteur ANA (cousin P2-10 : congés → analyse impact).
+
+### P2-13 — Tâches partagées en binôme (spec, non implémenté — à cadrer)
+Les agents se RÉPARTISSENT les tâches entre eux (confirmé Julien). PAS de synchro miroir,
+mais UNE SEULE liste tâches/zones/photos PARTAGÉE. Comportement visé :
+- 2 interventions restent dédoublées (charge/paie facteur 0.5).
+- taches_intervention + zones_intervention + photos_zone rattachées à
+  une intervention "maître" commune (ou identifiée par couple contrat+date).
+- Premier agent qui coche une tâche = fait pour le binôme entier.
+- Un seul rapport par intervention-résidence (pas 2 rapports quasi-identiques).
+À cadrer : désignation de l'intervention "maître" (premier à scanner ?),
+impact sur le rapport manager (un seul affiché ou fusion), affichage côté agent
+(chaque agent voit les coches de l'autre en temps réel ?).
+Tech probable : Supabase Realtime sur taches_intervention + intervention_id partagé.
 
 ## À faire Phase 3
 
@@ -1316,3 +1406,39 @@ Possibles si zones créées via l'ancien chemin "Tâches résidence-level" (bout
 Régularisées manuellement sur ALTHEA le 25/06 :
   UPDATE zones_residence SET contrat_id='4aabed0b-...' WHERE id='<zone_container_id>';
 → Cause à supprimer : retirer le bouton Tâches résidence-level en dette finale.
+
+### RLS Supabase : FOR ALL ≠ FOR SELECT (appris B6a, 25 juin 2026)
+Une policy `FOR ALL USING (manager OR directeur)` ne couvre QUE les opérations de lecture
+des managers/directeurs. Les agents ne peuvent pas lire la table, même si aucune policy
+"interdite" n'est explicite. Supabase retourne NULL silencieusement (pas d'erreur).
+→ Ajouter une policy FOR SELECT séparée pour chaque rôle qui doit lire.
+→ Tester avec le client JS authentifié en tant qu'agent (createClient(), pas createAdminClient()).
+→ createAdminClient() bypasse toujours la RLS (service_role key) → ne révèle pas les bugs RLS.
+
+### Numérotation migrations locales vs prod (appris B6a, 25 juin 2026)
+Les fichiers supabase/migrations/ sont numérotés 001→021 (locaux, mnémotechniques).
+La table supabase_migrations.schema_migrations en prod utilise des TIMESTAMPS comme version.
+Il n'y a pas de lien automatique entre le N° de fichier et le timestamp en prod.
+→ Quand on crée un fichier 017_xxx.sql mais que des migrations 017-020 ont été appliquées
+  directement via SQL Editor (sans fichier), le numéro du fichier peut entrer en conflit
+  avec la numérotation mentale du projet. Solution : renommer le fichier 021+ et mettre
+  à jour le nom dans supabase_migrations (UPDATE SET name=... WHERE version=...).
+
+### Cache Vercel / PWA (appris B6a, 25 juin 2026)
+Une PWA iPhone installée sert l'ancien Service Worker même après un déploiement Vercel.
+L'agent peut scanner et voir "QR non reconnu" alors que le code en prod est correct,
+parce qu'il tourne sur le cache installé.
+→ Toujours tester les fonctions scan/agent sur archipropre-app.vercel.app en Safari onglet
+  normal (pas la PWA installée) pendant le dev.
+→ DETTE : implémenter le versioning Service Worker pour forcer la mise à jour.
+Un déploiement Vercel peut aussi rester bloqué en "Deploying outputs" malgré build réussi
+→ annuler + redeploy dans le dashboard Vercel débloque.
+
+### Deux objets "rapport" distincts (appris B6b, 25 juin 2026)
+Ne pas confondre :
+- RAPPORT D'INTERVENTION (table interventions, statut terminee/validee) : 1 par contrat/jour.
+  Accès : /manager/interventions/[id]/rapport. Source de vérité pour le suivi client.
+- RAPPORT JOURNALIER AGENT (table journees_agent) : 1 par agent/jour, tous contrats confondus.
+  Accès : charge/[id] + JourneeAgentPanel. Source de vérité pour la paie/RH.
+Le composant RapportsActions ouvre JourneeAgentPanel (objet 2) — ne pas l'utiliser dans
+des listes d'interventions par contrat, il y crée une confusion UX majeure.

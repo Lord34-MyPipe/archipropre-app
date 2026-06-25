@@ -11,10 +11,10 @@ Transition sécurisée : double-écriture residences ↔ contrats_residences
 3.3 (duplication zones copie contrat_id).
 
 EN COURS : UI multi-contrats, découpage B1→B6.
-- B1 : API GET /api/residences/[id]/contrats (liste + statut calculé) ← étape actuelle
-- B2 : cartes par contrat sur la fiche résidence (lecture seule)
-- B3 : bouton + Ajouter un contrat
-- B4 : ContratModal par-contrat + libellé + type + zone dangereuse suppression
+- B1 ✅ : API GET /api/residences/[id]/contrats (liste + statut calculé)
+- B2 ✅ : cartes par contrat sur la fiche résidence (lecture seule)
+- B3 ✅ : bouton "+ Ajouter un contrat" (AjoutContratModal + POST route)
+- B4 ← EN COURS : nouveau GestionContratModal + PATCH/DELETE /api/residences/[id]/contrats/[contratId]
 - B5 : KPI agrégés + badges (perte cachée, offert 0€)
 - B6 : QR par contrat + Dupliquer
 
@@ -748,15 +748,31 @@ Le code bascule progressivement vers la lecture du contrat, residences reste un 
 
 ### UI multi-contrats — découpage B1→B6 (EN COURS)
 Option B validée (refonte complète fiche résidence en hub), découpée en sous-étapes testables :
-- B1 (EN COURS) : API GET /api/residences/[id]/contrats — liste contrats + statut_calcule
+- B1 (LIVRÉ) : API GET /api/residences/[id]/contrats — liste contrats + statut_calcule
   (actif/futur/termine/sommeil) + nb_interventions + nb_zones + agent joint.
   Calcul dates en Europe/Paris. Tri actif>futur>sommeil>termine.
-- B2 (à faire) : fiche résidence affiche une carte par contrat (lecture seule)
-- B3 (à faire) : bouton "+ Ajouter un contrat" (libellé + type + dates + montant)
-- B4 (à faire) : ContratModal devient par-contrat (édite UN contrat) + libelle + type
-  + zone dangereuse (suppression dure si 0 interv, sinon sommeil)
+- B2 (LIVRÉ) : fiche résidence affiche une carte par contrat (lecture seule)
+  badges statut+type+agent, alertes "Aucune intervention planifiée" + "Offert 0€"
+- B3 (LIVRÉ) : bouton "+ Ajouter un contrat" → AjoutContratModal
+  POST /api/residences/[id]/contrats, qr_code_token généré par trigger migration 017
+- B4 (EN COURS) : nouveau composant GestionContratModal (édite UN contrat par id)
+  Architecture : Option 2 (nouveau composant, ContratModal existant intact).
+  Routes : PATCH + DELETE sur /api/residences/[id]/contrats/[contratId]/route.ts
+  Champs éditables : libelle, type_contrat, date_debut, date_fin, montant_mensuel,
+  nb_interventions_mois, agent_prefere_id, taux_horaire_facturation, creneaux_acceptes.
+  INTERDIT : qr_code_token (trigger 017 le bloque côté DB, ne jamais l'envoyer).
+  Zone dangereuse : DELETE si nb_interventions=0, sommeil (actif=false) sinon (guard 409).
+  Bouton "Gérer" sur chaque carte contrat → ouvre GestionContratModal.
 - B5 (à faire) : KPI agrégés en-tête (CA total/coût réel/marge/perte cachée) + badges
 - B6 (à faire) : QR par contrat + bouton Dupliquer un contrat
+
+### DETTE À NETTOYER après B6
+Supprimer les fichiers de l'ancienne architecture mono-contrat une fois
+GestionContratModal généralisé et B6 livré :
+- /api/contrats/route.ts (ancienne route upsert mono-contrat)
+- components/manager/ContratModal.tsx (ancienne modal résidence-centric)
+- Le bouton "Contrat" dans la grille nav de ResidenceDetailClient.tsx (ouvre ContratModal)
+Avant suppression : vérifier avec grep qu'aucun autre fichier ne les référence.
 
 ### Reste backend non encore basculé (après l'UI)
 - Scan QR (app/agent/scan/page.tsx) lit encore residences.qr_code_token —

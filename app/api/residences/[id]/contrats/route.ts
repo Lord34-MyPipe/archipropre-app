@@ -100,6 +100,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         agent_prenom:             agent?.prenom ?? null,
         agent_nom:                agent?.nom    ?? null,
         qr_code_token:            c.qr_code_token,
+        actif:                    c.actif ?? false,
         statut_calcule:           statut,
         nb_zones:                 zonesByContrat.get(c.id) ?? 0,
         nb_interventions:         intByContrat.get(c.id)   ?? 0,

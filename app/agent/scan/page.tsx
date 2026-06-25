@@ -46,7 +46,7 @@ function ScanPageInner() {
     // 2. Résidence (géoloc + manager_id pour alertes)
     const { data: residence } = await supabase
       .from('residences')
-      .select('id, lat, lng, manager_id')
+      .select('id, nom, lat, lng, manager_id')
       .eq('id', contrat.residence_id)
       .single()
 
@@ -80,13 +80,22 @@ function ScanPageInner() {
       // Géoloc refusée ou indisponible — on continue sans bloquer
     }
 
-    // 4. Utilisateur
+    // 4. Utilisateur + profil agent
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
       setStatus('error')
       setMessage('Session expirée. Reconnectez-vous.')
       return
     }
+
+    const { data: agentProfil } = await supabase
+      .from('profiles')
+      .select('prenom, nom')
+      .eq('id', user.id)
+      .maybeSingle()
+    const agentNom = agentProfil
+      ? `${agentProfil.prenom ?? ''} ${agentProfil.nom ?? ''}`.trim()
+      : user.email ?? user.id
 
     const today = new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' })
 
@@ -123,22 +132,49 @@ function ScanPageInner() {
         return
       }
 
-      // Hors planning : alerte manager + message agent
+      // Hors planning : alerte manager + message agent (dédoublonnée par agent+contrat+date)
       if (residence.manager_id) {
-        const now = new Date().toISOString()
-        await supabase.from('alertes').insert({
-          intervention_id: null,
-          type:            'scan_hors_planning',
-          message:         `Scan hors planning sur le contrat "${contrat.libelle ?? contrat.id}" le ${today}.`,
-          destinataire_id: residence.manager_id,
-          metadata: {
-            agent_id:     user.id,
-            contrat_id:   contrat.id,
-            residence_id: contrat.residence_id,
-            date:         today,
-            heure:        now,
-          },
+        const now = new Date()
+        const heureFR = now.toLocaleTimeString('fr-FR', {
+          hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris',
         })
+        const dateFR = new Date(today + 'T12:00:00').toLocaleDateString('fr-FR', {
+          day: '2-digit', month: '2-digit', timeZone: 'Europe/Paris',
+        })
+
+        // Anti-doublon : skip si une alerte non lue existe déjà pour ce même événement
+        const { data: existante } = await supabase
+          .from('alertes')
+          .select('id')
+          .eq('type', 'scan_hors_planning')
+          .eq('destinataire_id', residence.manager_id)
+          .eq('lue', false)
+          .filter('metadata->>agent_id', 'eq', user.id)
+          .filter('metadata->>contrat_id', 'eq', contrat.id)
+          .filter('metadata->>date', 'eq', today)
+          .limit(1)
+          .maybeSingle()
+
+        if (!existante) {
+          const residenceNom = residence.nom ?? contrat.residence_id
+          const contratLibelle = contrat.libelle ?? 'contrat'
+          await supabase.from('alertes').insert({
+            intervention_id: null,
+            type:            'scan_hors_planning',
+            message:         `${agentNom} a scanné le contrat ${contratLibelle} (${residenceNom}) hors planning le ${dateFR} à ${heureFR}.`,
+            destinataire_id: residence.manager_id,
+            metadata: {
+              agent_id:        user.id,
+              agent_nom:       agentNom,
+              contrat_id:      contrat.id,
+              contrat_libelle: contratLibelle,
+              residence_id:    contrat.residence_id,
+              residence_nom:   residenceNom,
+              date:            today,
+              heure:           now.toISOString(),
+            },
+          })
+        }
       }
 
       setStatus('error')

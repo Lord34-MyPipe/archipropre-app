@@ -174,6 +174,7 @@ export async function POST(req: NextRequest) {
   type InterventionRow = {
     agent_id: string
     residence_id: string
+    contrat_id: string
     date_prevue: string
     heure_debut_prevue: string
     heure_fin_prevue: string
@@ -199,6 +200,7 @@ export async function POST(req: NextRequest) {
       rows.push({
         agent_id:           effectiveAgentId,
         residence_id:       residenceId,
+        contrat_id:         contrat.id,
         date_prevue:        dateStr,
         heure_debut_prevue: hDebut,
         heure_fin_prevue:   hFin,

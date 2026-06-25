@@ -1,3 +1,28 @@
+# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 25 juin 2026)
+
+Travail en cours : P2-11 Multi-contrats par résidence.
+Backend migré (migrations 015+016 appliquées en prod) :
+modèle Résidence → Contrat → Zone → Tâche. 162 contrats (1 par résidence).
+agent_prefere_id et qr_code_token vivent maintenant sur le CONTRAT.
+Transition sécurisée : double-écriture residences ↔ contrats_residences
+(synchronisés, ne jamais diverger).
+
+Étapes livrées : 3.1 (affectation double-écriture), 3.2 (planning lit le contrat),
+3.3 (duplication zones copie contrat_id).
+
+EN COURS : UI multi-contrats, découpage B1→B6.
+- B1 : API GET /api/residences/[id]/contrats (liste + statut calculé) ← étape actuelle
+- B2 : cartes par contrat sur la fiche résidence (lecture seule)
+- B3 : bouton + Ajouter un contrat
+- B4 : ContratModal par-contrat + libellé + type + zone dangereuse suppression
+- B5 : KPI agrégés + badges (perte cachée, offert 0€)
+- B6 : QR par contrat + Dupliquer
+
+Cobaye de test : ALTHEA (6537baf8-05ae-493e-9b3a-d404fa190a94), agent Christian Marquant.
+Détail complet : voir section P2-11 plus bas.
+
+---
+
 # Contexte projet Archipropre
 
 ## Projet

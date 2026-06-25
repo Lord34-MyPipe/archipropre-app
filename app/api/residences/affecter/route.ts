@@ -50,5 +50,16 @@ export async function PATCH(req: NextRequest) {
   }).eq('id', residenceId)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+
+  // Double-écriture : synchroniser contrats_residences pour ne jamais désynchroniser
+  // Cible le contrat parties_communes (ou l'unique contrat si un seul existe)
+  const { error: errContrat } = await admin.from('contrats_residences').update({
+    agent_prefere_id: agentPrefereId ?? null,
+  })
+    .eq('residence_id', residenceId)
+    .eq('type_contrat', 'parties_communes')
+  if (errContrat) return NextResponse.json(
+    { error: 'Échec sync contrat: ' + errContrat.message }, { status: 400 })
+
   return NextResponse.json({ ok: true, binomeNom })
 }

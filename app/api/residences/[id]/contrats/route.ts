@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { randomUUID } from 'crypto'
 import { createClient, createAdminClient } from '@/lib/supabase-server'
 
 const STATUT_ORDER: Record<string, number> = { actif: 0, futur: 1, sommeil: 2, termine: 3 }
@@ -164,9 +163,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     date_fin,
     montant_mensuel:       montant_mensuel ?? null,
     nb_interventions_mois: nb_interventions_mois ?? null,
-    actif:                 true,
-    creneaux_acceptes:     [],
-    qr_code_token:         randomUUID(),
+    actif:             true,
+    creneaux_acceptes: [],
+    // qr_code_token généré automatiquement par le trigger set_contrat_qr_token (migration 017)
   }).select().single()
 
   if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 400 })

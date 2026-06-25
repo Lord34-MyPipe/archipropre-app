@@ -18,6 +18,8 @@ export interface InterventionRow {
   statut: string
   agent_id: string
   agent_nom: string | null
+  contrat_id: string | null
+  contrat_libelle: string | null
 }
 
 export default async function PlanningPage({ params, searchParams }: Props) {
@@ -36,7 +38,7 @@ export default async function PlanningPage({ params, searchParams }: Props) {
     .eq('id', id).eq('manager_id', user.id).single()
   if (!residence) redirect('/manager/residences')
 
-  // Contrat : explicite si contratId fourni, sinon guess actif le plus récent
+  // Contrat : explicite si contratId fourni, sinon créneaux du plus récent (affichage uniquement)
   let creneaux: Creneau[] = []
   let contratLibelle: string | undefined
   let agentSourceId: string | null = residence.agent_prefere_id
@@ -63,19 +65,19 @@ export default async function PlanningPage({ params, searchParams }: Props) {
     creneaux = (contrat?.creneaux_acceptes ?? []) as Creneau[]
   }
 
-  // Agent
+  // Agent (pour l'en-tête en vue par contrat)
   let agentNom: string | null = null
-  if (agentSourceId) {
+  if (agentSourceId && contratId) {
     const { data: agent } = await admin.from('profiles')
       .select('prenom, nom').eq('id', agentSourceId).single()
     if (agent) agentNom = `${agent.prenom} ${agent.nom}`
   }
 
-  // Interventions planifiées et en cours
+  // Interventions — tous statuts pour l'agenda (pas seulement planifiée/en_cours)
   let interventionsQuery = admin.from('interventions')
-    .select('id, date_prevue, heure_debut_prevue, heure_fin_prevue, statut, agent_id')
+    .select('id, date_prevue, heure_debut_prevue, heure_fin_prevue, statut, agent_id, contrat_id')
     .eq('residence_id', id)
-    .in('statut', ['planifiee', 'en_cours'])
+    .in('statut', ['planifiee', 'en_cours', 'terminee', 'validee', 'annulee', 'non_demarree'])
     .order('date_prevue', { ascending: true })
 
   if (contratId) interventionsQuery = interventionsQuery.eq('contrat_id', contratId)
@@ -91,6 +93,15 @@ export default async function PlanningPage({ params, searchParams }: Props) {
     ;(agents ?? []).forEach(a => agentMap.set(a.id, `${a.prenom} ${a.nom}`))
   }
 
+  // Libellés des contrats (pour l'agenda multi-contrats)
+  const contratIds = [...new Set((rawInters ?? []).map(i => i.contrat_id).filter(Boolean))]
+  const contratLabelMap = new Map<string, string>()
+  if (contratIds.length > 0) {
+    const { data: contrats } = await admin.from('contrats_residences')
+      .select('id, libelle').in('id', contratIds)
+    ;(contrats ?? []).forEach(c => contratLabelMap.set(c.id, c.libelle ?? c.id.slice(0, 8)))
+  }
+
   const interventions: InterventionRow[] = (rawInters ?? []).map(i => ({
     id:                  i.id,
     date_prevue:         i.date_prevue,
@@ -99,14 +110,18 @@ export default async function PlanningPage({ params, searchParams }: Props) {
     statut:              i.statut,
     agent_id:            i.agent_id,
     agent_nom:           agentMap.get(i.agent_id) ?? null,
+    contrat_id:          i.contrat_id ?? null,
+    contrat_libelle:     i.contrat_id ? (contratLabelMap.get(i.contrat_id) ?? null) : null,
   }))
 
-  // Stats
+  // Stats (pour l'en-tête)
   const now        = new Date().toISOString().split('T')[0]
   const monthStart = now.slice(0, 7) + '-01'
   const monthEnd   = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0]
-  const prochaine  = interventions.find(i => i.date_prevue >= now)?.date_prevue ?? null
-  const ceMois     = interventions.filter(i => i.date_prevue >= monthStart && i.date_prevue <= monthEnd).length
+  const prochaine  = interventions.find(i => i.date_prevue >= now && i.statut === 'planifiee')?.date_prevue ?? null
+  const ceMois     = interventions.filter(i =>
+    i.date_prevue >= monthStart && i.date_prevue <= monthEnd && i.statut === 'planifiee'
+  ).length
 
   return (
     <PlanningClient

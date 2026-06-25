@@ -235,7 +235,21 @@ export default function ResidenceCard({ residence: initial }: Props) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-lg leading-none">🏢</span>
-              <h3 className="font-semibold text-slate-800 leading-snug">{initial.nom}</h3>
+              <Link
+                href={`/manager/residences/${initial.id}`}
+                className="font-semibold text-slate-800 leading-snug hover:text-[#1A5FA8] transition-colors"
+              >
+                {initial.nom}
+              </Link>
+              <Link
+                href={`/manager/residences/${initial.id}`}
+                className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#1A5FA8]/10 text-[#1A5FA8] hover:bg-[#1A5FA8]/20 transition-colors shrink-0"
+              >
+                Fiche
+                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
+                </svg>
+              </Link>
               {enSommeil && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full font-medium" style={{ background: '#F1EFE8', color: '#5F5E5A' }}>
                   <IcoPause/> En sommeil

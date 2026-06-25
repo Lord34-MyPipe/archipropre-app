@@ -892,6 +892,15 @@ Option B validée (refonte complète fiche résidence en hub), découpée en sou
   VALIDÉ : scan Bat A → Hall seul ; scan Container → Local Container seul ; étanche 2 sens.
   Cleanup direct DB : tache "Nettoyage Poubelles / Local Container" retirée de l'intervention
   47668efb (taches_intervention.zone_nom absent des zones du contrat → DELETE SQL direct).
+  FIX ALERTES scan_hors_planning (commit 535b4ab) :
+  - Message enrichi : "Christian Marquant a scanné le contrat Container (ALTHEA) hors planning
+    le 25/06 à 20h26." — agent_nom + residence_nom + contrat_libelle stockés dans metadata JSONB
+    à la création (point-in-time, pas de join au render). residences SELECT + nom ; profiles
+    SELECT ajouté pour prenom+nom de l'agent.
+  - Dédoublonnage : avant INSERT, check PostgREST .filter('metadata->>agent_id','eq',user.id)
+    + contrat_id + date + lue=false → si alerte non lue existante → skip. 1 alerte max par
+    (agent, contrat, jour). Pas de compteur.
+  - Nettoyage DB : 67 alertes de test supprimées (contrat Container ALTHEA).
 
 - B6b ✅ LIVRÉ (commits e35bc9a, 3fcc03d, a3fe8ea) : rapports par contrat.
   DISTINCTION DEUX OBJETS RAPPORT (validée avec Julien) :
@@ -1433,6 +1442,18 @@ parce qu'il tourne sur le cache installé.
 → DETTE : implémenter le versioning Service Worker pour forcer la mise à jour.
 Un déploiement Vercel peut aussi rester bloqué en "Deploying outputs" malgré build réussi
 → annuler + redeploy dans le dashboard Vercel débloque.
+
+### Alertes JSONB enrichies + dédoublonnage PostgREST (appris fix alertes, 25 juin 2026)
+Stocker les LIBELLÉS (noms d'agents, de résidences, de contrats) directement dans
+alertes.metadata à la création — pas d'ID seuls. Raison : évite un join supplémentaire
+au render (DashboardAlertes affiche déjà al.message), et les données restent correctes
+même si l'entité est renommée plus tard (point-in-time).
+Pour dédoublonner sur des champs JSONB en PostgREST :
+  .filter('metadata->>champ', 'eq', valeur)  ← opérateur ->> (text cast)
+  .filter('metadata->champ', 'eq', '"valeur"') ← opérateur -> (JSON, avec guillemets)
+Préférer ->> pour les comparaisons de scalaires (text, uuid, date).
+Pattern : check avant insert (SELECT → si trouvé → skip), pas d'UPSERT ON CONFLICT
+(JSONB n'a pas de contrainte UNIQUE exploitable facilement).
 
 ### Deux objets "rapport" distincts (appris B6b, 25 juin 2026)
 Ne pas confondre :

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase-server'
+import { calcCoutMensuel, type TacheFrequence } from '@/lib/rentabilite'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -97,20 +98,38 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
   const heuresVenduesMois = hasHeures ? heuresVenduesMoisTotal : null
 
-  // Tâches : toutes les zones de tous les contrats actifs
+  // Tâches : toutes les zones de tous les contrats actifs (avec contrat_id pour perteCachee)
   let taches: Record<string, unknown>[] = []
+  let perteCachee = false
   if (contrats.length > 0) {
     const contratIds = contrats.map(c => c.id)
     const { data: zones } = await admin.from('zones_residence')
-      .select('id')
+      .select('id, contrat_id')
       .in('contrat_id', contratIds)
-    const zoneIds = (zones ?? []).map((z: { id: string }) => z.id)
+    const typedZones = (zones ?? []) as { id: string; contrat_id: string }[]
+    const zoneIds = typedZones.map(z => z.id)
     if (zoneIds.length > 0) {
       const { data: t } = await admin.from('taches_template')
         .select('*')
         .in('zone_id', zoneIds)
         .order('zone_id').order('ordre')
       taches = t ?? []
+    }
+
+    // Calcul perteCachee : ≥1 contrat actif avec marge (CA - coût estimé) < 0
+    const tauxAgent = parametres?.taux_horaire_agent ?? 23
+    const zoneToContrat = new Map<string, string>(typedZones.map(z => [z.id, z.contrat_id]))
+    const tachesParContrat = new Map<string, TacheFrequence[]>()
+    for (const t of taches) {
+      const cid = zoneToContrat.get((t as { zone_id: string }).zone_id)
+      if (!cid) continue
+      if (!tachesParContrat.has(cid)) tachesParContrat.set(cid, [])
+      tachesParContrat.get(cid)!.push(t as unknown as TacheFrequence)
+    }
+    for (const c of contrats) {
+      const ca = c.montant_mensuel ?? 0
+      const cout = calcCoutMensuel(tachesParContrat.get(c.id) ?? [], tauxAgent)
+      if (ca - cout < 0) perteCachee = true
     }
   }
 
@@ -125,7 +144,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const statsReel = buildStatsReel(intersReel ?? [])
 
-  return NextResponse.json({ taches, contrat: contratAgg, parametres, statsReel, heuresVenduesMois })
+  return NextResponse.json({ taches, contrat: contratAgg, parametres, statsReel, heuresVenduesMois, perteCachee })
 }
 
 function buildStatsReel(

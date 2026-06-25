@@ -1,13 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-
-interface TacheTemplate {
-  duree_minutes: number | null
-  frequence_type: string
-  jours_semaine: string[] | null
-  frequence_valeur?: number | null
-}
+import { calcDureBreakdown, type TacheFrequence } from '@/lib/rentabilite'
 
 interface Contrat {
   libelle: string | null
@@ -26,7 +20,7 @@ interface StatsReel {
 }
 
 interface Data {
-  taches: TacheTemplate[]
+  taches: TacheFrequence[]
   contrat: Contrat | null
   parametres: Parametres | null
   statsReel: StatsReel | null
@@ -40,32 +34,6 @@ function formatDuree(minutes: number): string {
   return h > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${m}min`
 }
 
-function calcDureTotaux(taches: TacheTemplate[]) {
-  let annuel = 0
-  let incompleteCount = 0
-
-  taches.forEach(t => {
-    const d = t.duree_minutes ?? 0
-    if (!d) { incompleteCount++; return }
-    const ft = t.frequence_type
-    const nJours = Math.max((t.jours_semaine ?? []).length, 1)
-    switch (ft) {
-      case 'hebdo':
-      case 'contrainte_horaire':
-        annuel += d * 52 * nJours; break
-      case 'mensuel':
-        annuel += d * 12 * Math.max(t.frequence_valeur || 1, 1); break
-      case 'trimestriel':
-        annuel += d * 4; break
-      case 'semestriel':
-        annuel += d * 2; break
-      case 'annuel':
-        annuel += d; break
-    }
-  })
-
-  return { annuel, mois: annuel / 12, semaine: annuel / 52, incompleteCount }
-}
 
 function margeColor(pct: number): string {
   if (pct >= 40) return 'text-green-600'
@@ -147,7 +115,7 @@ export default function RentabiliteModal({
           )}
           {data && (() => {
             const { taches, contrat, parametres, statsReel, heuresVenduesMois } = data
-            const duree  = calcDureTotaux(taches)
+            const duree  = calcDureBreakdown(taches)
             const taux   = parametres?.taux_horaire_agent ?? 23
             const ca     = contrat?.montant_mensuel ?? 0
             const caAnn  = ca * 12

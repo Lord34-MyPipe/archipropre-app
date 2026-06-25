@@ -40,6 +40,7 @@ interface Props {
   etat: ResidenceEtat
   agentNom: string | null
   contrat: Contrat | null
+  kpi: import('@/lib/rentabilite').KpiResidence | null
 }
 
 // ── Config cartes contrats ────────────────────────────────────────────────────
@@ -123,7 +124,7 @@ const IcoQr = () => (
 
 // ── Composant ─────────────────────────────────────────────────────────────────
 
-export default function ResidenceDetailClient({ residence: r, etat, agentNom, contrat }: Props) {
+export default function ResidenceDetailClient({ residence: r, etat, agentNom, contrat, kpi }: Props) {
   const router = useRouter()
   // null = modal fermé ; { contratId: null } = global ; { contratId: id } = par contrat
   const [rentabiliteState, setRentabiliteState] = useState<{ contratId: string | null } | null>(null)
@@ -205,12 +206,36 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
             Agent attitré : <span className="font-semibold text-white">{agentNom}</span>
           </p>
         )}
-        {contrat && (
-          <p className="text-blue-300 text-sm mt-1">
-            {contrat.montant_mensuel != null && `${contrat.montant_mensuel} €/mois`}
-            {contrat.montant_mensuel != null && contrat.nb_interventions_mois != null && ' · '}
-            {contrat.nb_interventions_mois != null && `${contrat.nb_interventions_mois} intervention${contrat.nb_interventions_mois > 1 ? 's' : ''}/mois`}
-          </p>
+        {/* Bande KPI agrégée */}
+        {kpi !== null && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3">
+            {!kpi.hasContrats ? (
+              <span className="text-blue-300 text-sm">Aucun contrat actif</span>
+            ) : (
+              <>
+                <span className="text-sm text-white/90">
+                  <span className="text-blue-300 mr-1">CA</span>
+                  {Math.round(kpi.caMois).toLocaleString('fr-FR')} €/mois
+                </span>
+                <span className="text-blue-600">·</span>
+                <span className="text-sm text-white/90">
+                  <span className="text-blue-300 mr-1">Coût</span>
+                  {Math.round(kpi.coutMoisEstime).toLocaleString('fr-FR')} €/mois
+                </span>
+                <span className="text-blue-600">·</span>
+                <span className={`text-sm font-semibold ${kpi.margeMois >= 0 ? 'text-green-300' : 'text-red-300'}`}>
+                  <span className="font-normal text-blue-300 mr-1">Marge</span>
+                  {kpi.margeMois >= 0 ? '+' : ''}{Math.round(kpi.margeMois).toLocaleString('fr-FR')} €
+                  {kpi.tauxMarge !== null && ` (${kpi.tauxMarge.toFixed(1)} %)`}
+                </span>
+                {kpi.perteCachee && (
+                  <span className="px-2 py-0.5 text-xs font-semibold bg-red-500/30 text-red-200 rounded-full border border-red-400/40">
+                    ⚠ Perte cachée
+                  </span>
+                )}
+              </>
+            )}
+          </div>
         )}
       </div>
 

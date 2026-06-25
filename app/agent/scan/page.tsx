@@ -193,15 +193,17 @@ function ScanPageInner() {
         )
       }
 
+      // Supprimer les tâches stale (scans pré-B6a ou mauvais contrat) avant de réinsérer
+      await supabase.from('taches_intervention').delete().eq('intervention_id', inter.id)
+
       if (tachesDuJour.length > 0) {
-        await supabase.from('taches_intervention').upsert(
+        await supabase.from('taches_intervention').insert(
           tachesDuJour.map(t => ({
             intervention_id:   inter.id,
             tache_template_id: t.id,
             libelle:           t.libelle,
             zone_nom:          t.zone_id ? (zoneMap[t.zone_id] ?? null) : null,
-          })),
-          { onConflict: 'intervention_id,tache_template_id', ignoreDuplicates: true }
+          }))
         )
       }
 

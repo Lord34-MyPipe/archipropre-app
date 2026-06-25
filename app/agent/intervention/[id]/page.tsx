@@ -5,7 +5,10 @@ import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import type { TacheIntervention, Intervention, Residence } from '@/lib/types'
 
-type FullIntervention = Intervention & { residences: Residence }
+type FullIntervention = Intervention & {
+  residences: Residence
+  contrats_residences: { libelle: string | null } | null
+}
 
 interface PhotoZoneItem {
   id: string
@@ -31,7 +34,7 @@ export default function InterventionPage() {
   const load = useCallback(async () => {
     const supabase = createClient()
     const [{ data: inter }, { data: t }, { data: pz }] = await Promise.all([
-      supabase.from('interventions').select('*, residences(*)').eq('id', params.id).single(),
+      supabase.from('interventions').select('*, residences(*), contrats_residences(libelle)').eq('id', params.id).single(),
       supabase.from('taches_intervention').select('*').eq('intervention_id', params.id)
         .order('zone_nom').order('created_at'),
       supabase.from('photos_zone').select('id, zone_nom, photo_url').eq('intervention_id', params.id),
@@ -277,6 +280,9 @@ export default function InterventionPage() {
         </button>
 
         <h1 className="text-xl font-bold text-white truncate">{intervention.residences?.nom}</h1>
+        {intervention.contrats_residences?.libelle && (
+          <p className="text-[#0BBFBF] text-sm font-semibold truncate mt-0.5">{intervention.contrats_residences.libelle}</p>
+        )}
         <p className="text-blue-200 text-sm truncate mt-0.5">{intervention.residences?.adresse}</p>
 
         <div className="mt-3 flex items-center gap-3 flex-wrap">

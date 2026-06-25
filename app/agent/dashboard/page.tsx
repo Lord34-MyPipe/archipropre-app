@@ -6,7 +6,10 @@ import Link from 'next/link'
 import type { Intervention, Residence, Profile } from '@/lib/types'
 import { wazeUrl } from '@/lib/navigation'
 
-type InterventionJoined = Intervention & { residences: Residence }
+type InterventionJoined = Intervention & {
+  residences: Residence
+  contrats_residences: { libelle: string | null } | null
+}
 
 // ── Helpers date (toujours en Europe/Paris, jamais new Date() brut pour dériver) ──
 
@@ -72,7 +75,7 @@ export default async function AgentDashboard({ searchParams }: Props) {
   // Interventions du jour sélectionné
   const { data: interventions } = await supabase
     .from('interventions')
-    .select('*, residences(*)')
+    .select('*, residences(*), contrats_residences(libelle)')
     .eq('agent_id', user.id)
     .eq('date_prevue', selectedDate)
     .order('heure_debut_prevue', { ascending: true }) as { data: InterventionJoined[] | null }
@@ -207,6 +210,9 @@ export default async function AgentDashboard({ searchParams }: Props) {
                 <span className="text-amber-700 text-sm font-semibold">En cours — continuer</span>
               </div>
               <p className="text-lg font-bold text-slate-800">{inter.residences?.nom}</p>
+              {inter.contrats_residences?.libelle && (
+                <p className="text-sm font-semibold mt-0.5" style={{ color: '#0BBFBF' }}>{inter.contrats_residences.libelle}</p>
+              )}
               <p className="text-sm text-slate-500 mt-0.5">{inter.residences?.adresse}</p>
               {inter.heure_debut_prevue && (
                 <p className="text-xs text-slate-400 mt-1">
@@ -273,6 +279,9 @@ export default async function AgentDashboard({ searchParams }: Props) {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-slate-800 truncate">{inter.residences?.nom}</p>
+                        {inter.contrats_residences?.libelle && (
+                          <p className="text-xs font-semibold truncate" style={{ color: '#0BBFBF' }}>{inter.contrats_residences.libelle}</p>
+                        )}
                         <p className="text-sm text-slate-500 truncate">{inter.residences?.adresse}</p>
                         {inter.heure_debut_prevue && (
                           <p className="text-xs text-slate-400 mt-0.5">
@@ -317,6 +326,9 @@ export default async function AgentDashboard({ searchParams }: Props) {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-slate-800 truncate">{inter.residences?.nom}</p>
+                      {inter.contrats_residences?.libelle && (
+                        <p className="text-xs font-semibold truncate" style={{ color: '#0BBFBF' }}>{inter.contrats_residences.libelle}</p>
+                      )}
                       <p className="text-sm text-slate-500 truncate">{inter.residences?.adresse}</p>
                       {inter.heure_debut_prevue && (
                         <p className="text-sm font-semibold mt-1" style={{ color: '#0BBFBF' }}>

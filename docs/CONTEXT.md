@@ -21,8 +21,6 @@ EN COURS : UI multi-contrats, découpage B1→B6.
 Cobaye de test : ALTHEA (6537baf8-05ae-493e-9b3a-d404fa190a94), agent Christian Marquant.
 Détail complet : voir section P2-11 plus bas.
 
----
-
 # Contexte projet Archipropre
 
 ## Projet
@@ -729,7 +727,8 @@ Option B validée (refonte complète fiche résidence en hub), découpée en sou
   à faire évoluer vers QR par contrat (étape future, quand UI stable)
 - Fiche résidence affiche encore qr_code_token depuis residences
 
-Ne pas oublier de mettre à jour cette section à chaque sous-étape B livrée.
+Ne pas oublier de mettre à jour cette section ET le bloc "⚡ ÉTAT ACTUEL" du haut
+à chaque sous-étape B livrée.
 
 ## À faire Phase 3
 

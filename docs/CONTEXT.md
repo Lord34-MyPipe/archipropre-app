@@ -1,7 +1,7 @@
-# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 25 juin 2026 — soir)
+# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 25 juin 2026 — soir, suite)
 
 Travail en cours : P2-11 Multi-contrats par résidence.
-Backend migré (migrations 015+016+017+018 appliquées en prod) :
+Backend migré (migrations 015+016+017+018+019+020 appliquées en prod) :
 modèle Résidence → Contrat → Zone → Tâche. 162 contrats (1 par résidence).
 agent_prefere_id et qr_code_token vivent maintenant sur le CONTRAT.
 Transition sécurisée : double-écriture residences ↔ contrats_residences
@@ -16,14 +16,27 @@ UI multi-contrats — avancement B1→B6 :
 - B2.5 ✅ LIVRÉ : accès fiche détail depuis la liste résidences (commit 5fc388a)
 - B3 ✅ LIVRÉ : bouton "+ Ajouter un contrat" (AjoutContratModal + POST route, commit 681e209)
 - B4 ✅ LIVRÉ : GestionContratModal par-contrat + zone dangereuse (commits 9823cd3 + 8b7601b)
-- B5 ← EN COURS : KPI agrégés en-tête fiche résidence (prochaine étape)
-- B6 : QR par contrat + Dupliquer
-- Après B6 : nettoyage dette (ancienne route /api/contrats + ancien ContratModal)
+- B4.5 ✅ LIVRÉ : parcours contrat unifié + ancien bouton Contrat débranché (commit 5b292ff)
+- B5.5 ✅ LIVRÉ : contrat_id écrit à la génération (migration 019 + commit 966d229)
+- B6d ✅ LIVRÉ : tâches PAR CONTRAT (?contratId= + bouton carte) (commit cbacbaa)
+- B6e ✅ LIVRÉ : planning PAR CONTRAT (migrations 020 + commits 2b0852f+7cf8ee3+090479d)
+- RESTE :
+  · B6a : QR par contrat (déplacer bouton QR vers chaque carte contrat)
+  · B6c : rentabilité par contrat (corrige bug calcul CA multi-contrats — maybeSingle faux)
+  · B6b : rapports par contrat (?contratId= filtre)
+  · B5 : KPI agrégés en-tête fiche résidence (CA total / coût / marge / perte cachée)
+  · Dette finale : supprimer /api/contrats + ContratModal.tsx, retirer grille résidence-level
+- Après tout B6 : nettoyage dette (ancienne route /api/contrats + ancien ContratModal)
 
 Cobaye de test : ALTHEA (6537baf8-05ae-493e-9b3a-d404fa190a94).
-État actuel : 1 contrat "Bat A" (ec5f0a9a-4b2e-4b8d-b27b-ac6b93088c3b), 0 zone,
-0 intervention, agent détaché côté résidence, badge "À configurer".
-→ À reconfigurer (agent Christian + zones) pour futurs tests B5/B6.
+État actuel : 2 contrats parties_communes actifs —
+  "Bat A" (ec5f0a9a-4b2e-4b8d-b27b-ac6b93088c3b) : créneau jeu 14-18h, zone Hall,
+    tâche Ascenseur, 53 interventions, agent Christian
+  "Container" (4aabed0b-4890-4e5a-897d-462cf90a8964) : créneau jeu 8-9h,
+    zone Local Container, tâche Nettoyage Poubelles, 53 interventions, agent Christian
+Note : "Container" est typé parties_communes (devrait être containers — non bloquant).
+Agent Christian (1d46fd73-226c-404d-aeae-e47676955fb2) sur les deux contrats.
+TEST B6e validé : régénérer Bat A laisse Container intact à 53 (DELETE scopé OK).
 Détail complet : voir section P2-11 plus bas.
 
 ## 🔄 PROTOCOLE CONTEXT! (mise à jour de la mémoire projet)
@@ -472,10 +485,12 @@ WHERE email LIKE '%@archipropre-services.com';
    - 4 résidences avec notes_import='doublon_potentiel' à vérifier
    - Contrat MACJ : montant_mensuel = 355 € HT (valeur de test actuellement)
    - taux_horaire_facturation_defaut : mettre à jour (actuellement 25 €/h)
-   - Interventions de test créées sur ALTHEA pendant le dev P2-11 : à nettoyer si besoin
-     (vérifier avec SELECT * FROM interventions WHERE residence_id='6537baf8-...')
-ℹ️ ALTHEA à reconfigurer (agent Christian + zones) après tests B5/B6 :
-   contrat "Bat A" (ec5f0a9a) — actuellement 0 zone, agent détaché
+   - Interventions ALTHEA (53 × Bat A + 53 × Container = 106) créées en dev B6e — à nettoyer
+     avant mise en prod réelle. SELECT contrat_id, COUNT(*) FROM interventions GROUP BY contrat_id.
+ℹ️ ALTHEA reconfigurée le 25/06 (agent Christian, zones, tâches, créneaux — 2 contrats actifs).
+   À re-nettoyer avant mise en prod (106 interventions de test).
+ℹ️ "Container" ALTHEA typé parties_communes au lieu de containers — non bloquant pour les tests,
+   à corriger pour cohérence type_contrat.
 
 ## À faire Phase 1 (dans l'ordre)
 
@@ -752,6 +767,9 @@ Le code bascule progressivement vers la lecture du contrat, residences reste un 
   (fallback residences pendant transition). Validation bloquante déplacée après fetch contrat.
   Requête contrat filtrée : residence_id + actif=true + type_contrat=parties_communes +
   plus récent. Testé ALTHEA : 209 interventions futures rattachées à Christian. Commit 2c74e92.
+  → DÉPASSÉE le 25/06 (B6e) : la génération n'utilise plus ce "guess". Le contrat_id est
+    désormais explicite (body { residenceId, contratId }). Le "plus récent" prenait le mauvais
+    contrat en cas de 2 contrats parties_communes actifs simultanés (Bat A + Container).
 - 3.3 ✅ Duplication zones (/api/zones/dupliquer) copie contrat_id de la zone source,
   fallback lookup contrat parties_communes si source NULL.
 
@@ -790,10 +808,56 @@ Option B validée (refonte complète fiche résidence en hub), découpée en sou
   Architecture : Option 2 (nouveau composant, ContratModal existant INTACT pendant transition).
   Routes REST Option A : /api/residences/[id]/contrats/[contratId] (validée).
 
-- B5 ← EN COURS (prochaine étape) : KPI agrégés en-tête fiche résidence
+- B4.5 ✅ LIVRÉ (commit 5b292ff) : parcours contrat unifié.
+  - AjoutContratModal enrichi : création COMPLÈTE (libelle, type, dates, montant,
+    nb_interventions_mois, agent_prefere_id, taux_horaire_facturation toggle,
+    creneaux_acceptes, jours_interdits, notes_specifiques) + bloc heures vendues live.
+  - POST /api/residences/[id]/contrats accepte ces 11 champs (creneaux_acceptes/jours_interdits
+    insérés en arrays natifs, pas stringifiés).
+  - Ancien bouton "Contrat" RETIRÉ (débranché) de ResidenceDetailClient ET ResidenceCard.
+    Fichiers components/manager/ContratModal.tsx + /api/contrats NON supprimés (dette après B6),
+    juste débranchés. planning importe seulement le type Creneau (intact).
+
+- B5.5 ✅ LIVRÉ (commit 966d229 + migration 019) : contrat_id écrit à la génération.
+  - Migration 019 : CREATE OR REPLACE planifier_interventions — ajout contrat_id dans INSERT+SELECT,
+    DELETE idempotent restreint à statut='planifiee' uniquement (avant : NOT IN terminee/en_cours).
+    Raison : ne jamais supprimer validee (RH) ni annulee (intentionnel) ni non_demarree (historique).
+    Liste blanche > liste noire.
+  - Route /api/planning/generer : contrat_id: contrat.id ajouté au type InterventionRow et à
+    chaque rows.push(). Miroirs binôme héritent contrat_id via spread {...r}.
+
+- B6d ✅ LIVRÉ (commit cbacbaa) : tâches PAR CONTRAT.
+  - taches/page.tsx accepte searchParams.contratId : zones filtrées par contrat_id,
+    tâches via zone_id IN (zones du contrat). Sans param = comportement résidence inchangé.
+  - /api/zones POST accepte contratId optionnel → contrat_id dans l'INSERT (avant : NULL).
+  - TachesClient propage contratId à handleAddZone + titre "Tâches — <libelle>".
+  - Bouton "Tâches" sur chaque carte contrat (?contratId=) dans ResidenceDetailClient.
+  - lib/types.ts : ContratResidence.libelle ajouté (manquait depuis migration 015).
+  - DETTE : le bouton "Tâches" résidence-level (grille du haut) crée encore des zones sans
+    contrat_id (NULL) → à retirer en dette finale pour éviter zones orphelines.
+
+- B6e ✅ LIVRÉ (commits 2b0852f + 7cf8ee3 + 090479d + migration 020) : planning PAR CONTRAT.
+  - Migration 020 : DROP FUNCTION planifier_interventions(uuid,jsonb) PUIS CREATE nouvelle
+    signature (uuid p_residence_id, uuid p_contrat_id, jsonb p_lignes). DELETE scopé
+    AND contrat_id = p_contrat_id → régénérer un contrat ne touche plus les autres.
+    GRANT EXECUTE TO service_role sur la nouvelle signature.
+    (DROP nécessaire : changer la signature sans DROP = surcharge PostgreSQL = 2 fonctions.)
+  - generer/route.ts : body { residenceId, contratId } requis ; résolution explicite
+    .eq('id', contratId).eq('residence_id', residenceId) ; tâches via zones du contrat ;
+    RPC avec p_contrat_id. Regen sans contratId → 400. DETTE agent commentée dans le code.
+  - planning/page.tsx + PlanningClient : searchParams.contratId, interventions filtrées,
+    body regen { residenceId, contratId }, header "Planning — <libelle>".
+  - Bouton "Planning" sur chaque carte contrat (?contratId=).
+  - TEST VALIDÉ ALTHEA : Bat A 53 interventions, Container 53 interventions.
+    Régénérer Bat A laisse Container intact (DELETE scopé OK).
+
+- B5 ← À FAIRE (après B6a/B6b/B6c) : KPI agrégés en-tête fiche résidence
   (CA total / coût réel / marge / perte cachée) + badges.
 
-- B6 (à faire) : QR par contrat + bouton Dupliquer un contrat.
+- B6a (à faire) : QR par contrat — déplacer bouton QR de la grille résidence vers chaque carte contrat.
+- B6b (à faire) : rapports par contrat — page rapports accepte ?contratId= pour filtrer.
+- B6c (à faire) : rentabilité par contrat — corrige bug maybeSingle() qui retourne le mauvais CA
+  en multi-contrats (prend le 1er actif au lieu du bon). Bug identifié en audit architecture.
 
 ### Décisions & schéma P2-11 (session 25 juin 2026)
 
@@ -804,6 +868,26 @@ Migrations appliquées :
   Ordre : self-ref NULL sur tache_liee_id → vérification bloquante taches_intervention
   → DELETE taches_template → DELETE zones_residence → DELETE contrats_residences
   GRANT EXECUTE ON FUNCTION delete_contrat_cascade(UUID) TO service_role
+- 019 : CREATE OR REPLACE planifier_interventions(p_residence_id uuid, p_lignes jsonb)
+  Changements : ajout contrat_id dans INSERT/SELECT ; DELETE limité à statut='planifiee'
+  (avant : NOT IN 'terminee','en_cours' — trop large, supprimait validee/annulee/non_demarree).
+  Règle : liste blanche (= 'planifiee') > liste noire pour le DELETE de régénération.
+- 020 : DROP FUNCTION planifier_interventions(uuid,jsonb)
+       + CREATE planifier_interventions(p_residence_id uuid, p_contrat_id uuid, p_lignes jsonb)
+  Changement signature : 3 paramètres au lieu de 2. DROP obligatoire avant CREATE car
+  PostgreSQL crée une surcharge sans DROP (2 fonctions coexistantes = bug silencieux).
+  DELETE scopé : AND contrat_id = p_contrat_id → isolation totale entre contrats d'une même résidence.
+  GRANT EXECUTE ON FUNCTION planifier_interventions(uuid, uuid, jsonb) TO service_role.
+
+GÉNÉRATION DE PLANNING = PAR CONTRAT (décision actée 25/06 — B6e) :
+- Chaque contrat génère SON planning depuis SES créneaux + SES zones/tâches + SON agent.
+- Le contrat_id est EXPLICITE (body { residenceId, contratId } obligatoire), jamais deviné.
+- Raison : avec Bat A + Container actifs simultanément, le "plus récent" prenait le mauvais.
+  Confirmé en test ALTHEA.
+- Regen sans contratId → 400 (force l'usage par contrat depuis l'UI).
+- DELETE scopé par contrat_id (migration 020) : isolation totale entre contrats.
+- DETTE restante : agent = contrat.agent_prefere_id ?? res.agent_prefere_id (fallback résidence
+  peut être faux si un contrat a son propre agent). Commentaire dans generer/route.ts.
 
 Règles métier figées :
 - qr_code_token = immutable après création (trigger 017 BEFORE UPDATE lève EXCEPTION)
@@ -825,7 +909,15 @@ GestionContratModal généralisé et B6 livré :
 - /api/contrats/route.ts (ancienne route upsert mono-contrat)
 - components/manager/ContratModal.tsx (ancienne modal résidence-centric)
 - Le bouton "Contrat" dans la grille nav de ResidenceDetailClient.tsx (ouvre ContratModal)
-- interventions de test ALTHEA (contrat ec5f0a9a-...) créées en développement → nettoyer
+- Retirer le bouton "Tâches" résidence-level (grille du haut dans ResidenceDetailClient) —
+  crée des zones orphelines (contrat_id NULL) ; à supprimer une fois toutes fonctions par contrat.
+- Retirer toute la grille du haut (Planning/Rapports/Tâches/Rentabilité/QR résidence-level)
+  une fois toutes les fonctions migrées par contrat (B6a/B6b/B6c terminés).
+- Régler le fallback agent dans generer/route.ts :
+  effectiveAgentId = contrat.agent_prefere_id ?? res.agent_prefere_id
+  (fallback résidence peut être faux pour un contrat avec son propre agent).
+- Re-typer "Container" ALTHEA : type_contrat = 'containers' au lieu de 'parties_communes'.
+- interventions de test ALTHEA (106 = 53 × Bat A + 53 × Container) → à nettoyer avant prod.
 Avant suppression : vérifier avec grep qu'aucun autre fichier ne les référence.
 
 ### Reste backend non encore basculé (après l'UI)
@@ -1119,3 +1211,37 @@ Les colonnes snake_case sont stables côté JS/TS (exemple : `montant_mensuel`, 
 Mais les noms de fonctions SQL (RPC) sont insensibles à la casse côté Supabase JS client.
 → Toujours nommer les paramètres de RPC avec le préfixe p_ (ex. `p_contrat_id`)
   pour éviter les collisions avec les variables locales PL/pgSQL.
+
+### Types SQL à ne pas confondre (appris B6d/B6e, 25 juin 2026)
+- taches_template.jours_semaine = text[] natif → utiliser ARRAY['jeudi'], PAS '["jeudi"]'::jsonb
+- contrats_residences.creneaux_acceptes = JSONB → utiliser '[...]'::jsonb
+- taches_template : colonne s'appelle `libelle` (pas `nom`)
+- interventions : colonne date = `date_prevue` (pas `date`)
+
+### Conditions pour générer un planning (leçon B6e)
+La génération exige TOUTES ces conditions réunies sur le contrat cible :
+1. creneaux_acceptes non vide ET couvrant le jour de la tâche hebdo
+2. taches_template avec frequence_type='hebdo', jours_semaine matchant, duree_minutes > 0
+3. zones rattachées au contrat (zone.contrat_id = contrat.id)
+4. agent_prefere_id rempli sur le contrat (ou fallback résidence)
+5. dates du contrat couvrant la plage de génération
+Un seul manquant = 0 intervention générée (avec message d'erreur explicite).
+
+### Changer la signature d'une fonction PostgreSQL (leçon migration 020)
+CREATE OR REPLACE ne remplace QUE si la signature (types des paramètres) est identique.
+Ajouter un paramètre = PostgreSQL crée une 2e fonction surchargée, l'ancienne reste appelable.
+→ Toujours DROP FUNCTION IF EXISTS ancienne_signature AVANT le CREATE OR REPLACE nouvelle signature.
+Format : DROP FUNCTION IF EXISTS public.ma_fonction(type1, type2);  -- ancienne
+         CREATE OR REPLACE FUNCTION public.ma_fonction(type1, type2, type3) ...  -- nouvelle
+
+### Suppression manuelle d'une zone en SQL (leçon B6d)
+La FK taches_template.zone_id → zones_residence est RESTRICT (pas CASCADE).
+→ Supprimer d'abord les tâches (DELETE FROM taches_template WHERE zone_id='...'),
+  puis la zone (DELETE FROM zones_residence WHERE id='...').
+La RPC delete_contrat_cascade gère cet ordre automatiquement pour la cascade contrat entier.
+
+### Zones orphelines (contrat_id NULL)
+Possibles si zones créées via l'ancien chemin "Tâches résidence-level" (bouton grille du haut).
+Régularisées manuellement sur ALTHEA le 25/06 :
+  UPDATE zones_residence SET contrat_id='4aabed0b-...' WHERE id='<zone_container_id>';
+→ Cause à supprimer : retirer le bouton Tâches résidence-level en dette finale.

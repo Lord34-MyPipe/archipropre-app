@@ -53,7 +53,7 @@ export default async function RapportsPage({ params, searchParams }: Props) {
   }
 
   const query = admin.from('interventions')
-    .select('id, agent_id, date_prevue, heure_scan, heure_fin, statut, validee_at, profiles!interventions_agent_id_fkey(prenom, nom)')
+    .select('id, agent_id, contrat_id, date_prevue, heure_scan, heure_fin, statut, validee_at, contrats_residences(libelle), profiles!interventions_agent_id_fkey(prenom, nom)')
     .eq('residence_id', id)
     .in('statut', ['terminee', 'validee'])
     .order('date_prevue', { ascending: false })
@@ -105,6 +105,10 @@ export default async function RapportsPage({ params, searchParams }: Props) {
                 ? `${(agent as { prenom: string; nom: string }).prenom} ${(agent as { prenom: string; nom: string }).nom}`
                 : 'Agent inconnu'
               const agentId = (iv as unknown as Record<string, string>).agent_id ?? null
+              const contratRaw = (iv as Record<string, unknown>).contrats_residences
+              const ligneContrat = contratRaw
+                ? (contratRaw as { libelle: string | null }).libelle
+                : null
 
               const debut = parseMin(iv.heure_scan)
               const fin   = parseMin(iv.heure_fin)
@@ -128,6 +132,11 @@ export default async function RapportsPage({ params, searchParams }: Props) {
                         </>
                       )}
                     </div>
+                    {ligneContrat && !contratId && (
+                      <p className="text-xs font-semibold mt-0.5" style={{ color: '#0BBFBF' }}>
+                        {ligneContrat}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {iv.statut === 'validee' ? (

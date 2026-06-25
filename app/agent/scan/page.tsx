@@ -30,20 +30,33 @@ function ScanPageInner() {
 
     const supabase = createClient()
 
-    // 1. Retrouver la résidence
+    // 1. Token → contrat (contrats_residences.qr_code_token)
+    const { data: contrat } = await supabase
+      .from('contrats_residences')
+      .select('id, libelle, residence_id')
+      .eq('qr_code_token', token)
+      .maybeSingle()
+
+    if (!contrat) {
+      setStatus('error')
+      setMessage('QR code non reconnu. Vérifiez que vous utilisez le bon QR code.')
+      return
+    }
+
+    // 2. Résidence (géoloc + manager_id pour alertes)
     const { data: residence } = await supabase
       .from('residences')
       .select('id, lat, lng, manager_id')
-      .eq('qr_code_token', token)
+      .eq('id', contrat.residence_id)
       .single()
 
     if (!residence) {
       setStatus('error')
-      setMessage('QR code non reconnu. Vérifiez que vous êtes dans la bonne résidence.')
+      setMessage('QR code non reconnu. Vérifiez que vous utilisez le bon QR code.')
       return
     }
 
-    // 2. Géolocalisation
+    // 3. Géolocalisation
     let geoloc_lat: number | null = null
     let geoloc_lng: number | null = null
     let hors_zone = false
@@ -59,78 +72,125 @@ function ScanPageInner() {
       geoloc_lat = pos.coords.latitude
       geoloc_lng = pos.coords.longitude
 
-      // Vérifier la distance si la résidence a des coordonnées
       if (residence.lat && residence.lng) {
         const dist = distanceMetres(geoloc_lat, geoloc_lng, residence.lat, residence.lng)
-        if (dist > 200) {
-          hors_zone = true
-        }
+        if (dist > 200) hors_zone = true
       }
     } catch {
       // Géoloc refusée ou indisponible — on continue sans bloquer
     }
 
-    // 3. Trouver l'intervention du jour
+    // 4. Utilisateur
     const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      setStatus('error')
+      setMessage('Session expirée. Reconnectez-vous.')
+      return
+    }
+
     const today = new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' })
 
     setMessage('Recherche de l\'intervention…')
 
+    // 5. Intervention active de CE CONTRAT pour aujourd'hui (binôme : agent_id = user.id)
     const { data: inter } = await supabase
       .from('interventions')
       .select('id, statut')
-      .eq('agent_id', user!.id)
-      .eq('residence_id', residence.id)
+      .eq('agent_id', user.id)
+      .eq('contrat_id', contrat.id)
       .eq('date_prevue', today)
       .in('statut', ['planifiee', 'en_cours'])
       .order('heure_debut_prevue')
       .limit(1)
-      .single()
+      .maybeSingle()
 
     if (!inter) {
+      // Anti-doublon : intervention déjà terminée/validée → rouvrir sans alerte
+      const { data: interDone } = await supabase
+        .from('interventions')
+        .select('id')
+        .eq('agent_id', user.id)
+        .eq('contrat_id', contrat.id)
+        .eq('date_prevue', today)
+        .in('statut', ['terminee', 'validee'])
+        .limit(1)
+        .maybeSingle()
+
+      if (interDone) {
+        streamRef.current?.getTracks().forEach(t => t.stop())
+        cancelAnimationFrame(rafRef.current)
+        router.push(`/agent/intervention/${interDone.id}`)
+        return
+      }
+
+      // Hors planning : alerte manager + message agent
+      if (residence.manager_id) {
+        const now = new Date().toISOString()
+        await supabase.from('alertes').insert({
+          intervention_id: null,
+          type:            'scan_hors_planning',
+          message:         `Scan hors planning sur le contrat "${contrat.libelle ?? contrat.id}" le ${today}.`,
+          destinataire_id: residence.manager_id,
+          metadata: {
+            agent_id:     user.id,
+            contrat_id:   contrat.id,
+            residence_id: contrat.residence_id,
+            date:         today,
+            heure:        now,
+          },
+        })
+      }
+
       setStatus('error')
-      setMessage('Aucune intervention planifiée pour cette résidence aujourd\'hui.')
+      setMessage(
+        `Aucune intervention prévue aujourd'hui pour ce contrat` +
+        `${contrat.libelle ? ` (${contrat.libelle})` : ''}.` +
+        ` Votre manager a été informé.`
+      )
       return
     }
 
-    // 4. Démarrer l'intervention si planifiée
+    // 6. Démarrer si planifiée
     if (inter.statut === 'planifiee') {
       setMessage('Démarrage de l\'intervention…')
 
       await supabase.from('interventions').update({
-        statut: 'en_cours',
+        statut:     'en_cours',
         heure_scan: new Date().toISOString(),
         geoloc_lat,
         geoloc_lng,
       }).eq('id', inter.id)
 
-      // Copier les tâches template du jour
-      const jourCourant = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', weekday: 'long' }).format(new Date())
+      const jourCourant = new Intl.DateTimeFormat('fr-FR', {
+        timeZone: 'Europe/Paris', weekday: 'long',
+      }).format(new Date())
 
-      // Fetch explicite : zone_id dans taches_template, puis lookup zones_residence séparé
-      // (évite la jointure PostgREST embedded qui échoue silencieusement côté client navigateur)
-      const { data: taches } = await supabase
-        .from('taches_template')
-        .select('id, libelle, jours_semaine, zone_id')
-        .eq('residence_id', residence.id)
-        .order('ordre')
+      // Zones de CE CONTRAT (scopé)
+      const { data: zones } = await supabase
+        .from('zones_residence')
+        .select('id, nom')
+        .eq('contrat_id', contrat.id)
 
-      type TacheRaw = { id: string; libelle: string; jours_semaine: string[]; zone_id: string | null }
-      const tachesDuJour = (taches as TacheRaw[] ?? []).filter(t =>
-        !t.jours_semaine?.length || t.jours_semaine.includes(jourCourant)
-      )
-
-      // Fetch zones en une seule requête pour les zone_id présents
-      const zoneIds = [...new Set(tachesDuJour.map(t => t.zone_id).filter(Boolean))] as string[]
       const zoneMap: Record<string, string> = {}
+      const zoneIds: string[] = []
+      for (const z of zones ?? []) {
+        zoneMap[z.id] = z.nom
+        zoneIds.push(z.id)
+      }
+
+      // Tâches des zones de ce contrat
+      type TacheRaw = { id: string; libelle: string; jours_semaine: string[]; zone_id: string | null }
+      let tachesDuJour: TacheRaw[] = []
       if (zoneIds.length > 0) {
-        const { data: zones } = await supabase
-          .from('zones_residence')
-          .select('id, nom')
-          .in('id', zoneIds)
-        for (const z of zones ?? []) {
-          zoneMap[z.id] = z.nom
-        }
+        const { data: taches } = await supabase
+          .from('taches_template')
+          .select('id, libelle, jours_semaine, zone_id')
+          .in('zone_id', zoneIds)
+          .order('ordre')
+
+        tachesDuJour = (taches as TacheRaw[] ?? []).filter(t =>
+          !t.jours_semaine?.length || t.jours_semaine.includes(jourCourant)
+        )
       }
 
       if (tachesDuJour.length > 0) {
@@ -145,7 +205,7 @@ function ScanPageInner() {
         )
       }
 
-      // 5. Alerte hors zone au manager
+      // Alerte hors zone
       if (hors_zone && residence.manager_id) {
         await supabase.from('alertes').insert({
           intervention_id: inter.id,
@@ -156,10 +216,9 @@ function ScanPageInner() {
       }
     }
 
-    // Couper la caméra avant de naviguer
+    // 7. Naviguer vers l'intervention
     streamRef.current?.getTracks().forEach(t => t.stop())
     cancelAnimationFrame(rafRef.current)
-
     router.push(`/agent/intervention/${inter.id}`)
   }, [status, router])
 

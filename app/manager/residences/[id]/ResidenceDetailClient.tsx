@@ -273,23 +273,21 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
             <span className="text-sm font-semibold text-slate-700">Rentabilité</span>
           </button>
 
-          {r.qr_code_token && (
-            <button
-              onClick={async () => {
-                const { downloadQRCodePDF } = await import('@/lib/qr-pdf')
-                downloadQRCodePDF(
-                  { nom: r.nom, adresse: r.adresse ?? '', token: r.qr_code_token },
-                  window.location.origin
-                )
-              }}
-              className="bg-white rounded-xl p-5 flex flex-col items-center gap-2 shadow-sm hover:shadow-md hover:bg-slate-50 transition-all border border-slate-100 text-center"
-            >
-              <span className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600">
-                <IcoQr />
-              </span>
-              <span className="text-sm font-semibold text-slate-700">QR Code</span>
-            </button>
-          )}
+          <button
+            onClick={async () => {
+              const actifs = contrats.filter(c => c.actif && c.qr_code_token)
+              if (actifs.length === 0) return
+              const { downloadQRAllContratsPDF } = await import('@/lib/qr-pdf')
+              downloadQRAllContratsPDF(r.nom, actifs, window.location.origin)
+            }}
+            disabled={contratsLoading || contrats.filter(c => c.actif && c.qr_code_token).length === 0}
+            className="bg-white rounded-xl p-5 flex flex-col items-center gap-2 shadow-sm hover:shadow-md hover:bg-slate-50 transition-all border border-slate-100 text-center disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <span className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600">
+              <IcoQr />
+            </span>
+            <span className="text-sm font-semibold text-slate-700">QR Codes</span>
+          </button>
         </div>
 
         {/* ── Cartes contrats ── */}
@@ -372,6 +370,23 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
                       </svg>
                       Rentabilité
                     </button>
+                    {c.qr_code_token && (
+                      <button
+                        onClick={async () => {
+                          const { downloadQRContratPDF } = await import('@/lib/qr-pdf')
+                          downloadQRContratPDF(r.nom, { libelle: c.libelle, token: c.qr_code_token! }, window.location.origin)
+                        }}
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                        aria-label="QR Code de ce contrat"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                          <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/>
+                          <line x1="17" y1="17" x2="20" y2="17"/><line x1="20" y1="17" x2="20" y2="20"/>
+                        </svg>
+                        QR
+                      </button>
+                    )}
                     <button
                       onClick={() => setContratSelectionne(c)}
                       className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-slate-500 hover:text-[#0A2E5A] hover:bg-slate-100 transition-colors"

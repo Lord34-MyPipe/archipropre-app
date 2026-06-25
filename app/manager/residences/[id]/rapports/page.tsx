@@ -1,7 +1,6 @@
 import { createClient, createAdminClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import RapportsActions from '@/components/manager/RapportsActions'
 
 export const dynamic = 'force-dynamic'
 
@@ -100,11 +99,9 @@ export default async function RapportsPage({ params, searchParams }: Props) {
             {interventions.map(iv => {
               const agentRaw = (iv as Record<string, unknown>).profiles
               const agent = Array.isArray(agentRaw) ? agentRaw[0] : agentRaw
-              const agentPrenom = agent ? (agent as { prenom: string; nom: string }).prenom : ''
               const agentNom = agent
                 ? `${(agent as { prenom: string; nom: string }).prenom} ${(agent as { prenom: string; nom: string }).nom}`
                 : 'Agent inconnu'
-              const agentId = (iv as unknown as Record<string, string>).agent_id ?? null
               const contratRaw = (iv as Record<string, unknown>).contrats_residences
               const ligneContrat = contratRaw
                 ? (contratRaw as { libelle: string | null }).libelle
@@ -147,14 +144,6 @@ export default async function RapportsPage({ params, searchParams }: Props) {
                       <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ background: '#FAEEDA', color: '#854F0B' }}>
                         En attente
                       </span>
-                    )}
-                    {agentId && (
-                      <RapportsActions
-                        agentId={agentId}
-                        agentNom={agentNom}
-                        date={iv.date_prevue}
-                        prenomAgent={agentPrenom}
-                      />
                     )}
                     <Link
                       href={`/manager/interventions/${iv.id}/rapport`}

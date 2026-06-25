@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   // Récupérer la zone source + vérifier ownership via residence
   const { data: sourceZone } = await admin
     .from('zones_residence')
-    .select('id, residence_id, nom, ordre, couleur')
+    .select('id, residence_id, nom, ordre, couleur, contrat_id')
     .eq('id', zoneId)
     .single()
   if (!sourceZone) return NextResponse.json({ error: 'Zone introuvable' }, { status: 404 })
@@ -29,6 +29,19 @@ export async function POST(req: NextRequest) {
     .eq('manager_id', user.id)
     .single()
   if (!residence) return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
+
+  // Résoudre le contrat_id : source en priorité, sinon contrat parties_communes de la résidence
+  let contratId: string | null = sourceZone.contrat_id ?? null
+  if (!contratId) {
+    const { data: contrat } = await admin
+      .from('contrats_residences')
+      .select('id')
+      .eq('residence_id', sourceZone.residence_id)
+      .eq('type_contrat', 'parties_communes')
+      .limit(1)
+      .maybeSingle()
+    contratId = contrat?.id ?? null
+  }
 
   // Compter les zones existantes pour l'ordre
   const { count } = await admin
@@ -44,6 +57,7 @@ export async function POST(req: NextRequest) {
       nom: `${sourceZone.nom} (copie)`,
       ordre: (count ?? 0) + 1,
       couleur: sourceZone.couleur,
+      contrat_id: contratId,
     })
     .select()
     .single()

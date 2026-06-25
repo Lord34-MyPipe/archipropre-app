@@ -631,50 +631,80 @@ Cas B — annulation après validation ('valide' → 'annule') :
   (alerte en base, future push PWA P2-5)
 - Manager → alerte quand un agent soumet une nouvelle demande
 
-### P2-11 — Multi-contrats par résidence (spec, non implémenté)
+## P2-11 — Multi-contrats par résidence (EN COURS — backend migré, UI en construction)
 
-REFONTE STRUCTURANTE — ne pas lancer sans audit complet des FK existantes.
+### Modèle validé
+Hiérarchie : Résidence → Contrat → Zone → Tâche (4 niveaux).
+Une résidence a des contrats sur 2 axes :
+- SIMULTANÉS (espace) : Bât A + Bât B + Containers en même temps
+- SUCCESSIFS (temps) : contrat perdu en 2024 → nouveau contrat 2026
 
-Modèle cible : la résidence devient un hub, les contrats un sous-niveau.
-Tâches, zones, agent attitré, QR code migrent de la résidence vers le contrat.
+Statut d'un contrat (calculé, jamais stocké) :
+- actif   : actif=true ET date_debut <= aujourd'hui <= date_fin
+- futur   : actif=true ET date_debut > aujourd'hui
+- termine : date_fin < aujourd'hui (garde son historique, n'impacte plus le planning)
+- sommeil : actif=false ET dates en cours
 
-#### Schéma cible
-- contrats_residences : ajouter libelle (text), type_contrat
-  (enum: parties_communes | containers | espaces_verts),
-  agent_prefere_id (migré depuis residences), qr_code_token (migré)
-- zones_residence : ajouter contrat_id
-- interventions : ajouter contrat_id
-- residences : agent_prefere_id et qr_code_token deviennent obsolètes
-  (à conserver en lecture pour compat, ou migrer puis dropper)
+Règles clés :
+- On ne supprime JAMAIS un contrat avec historique (≥1 intervention) → sommeil obligatoire
+- Suppression dure autorisée seulement si 0 intervention
+- type_contrat enum : parties_communes | containers | espaces_verts
+- containers/espaces_verts : coût réel TOUJOURS calculé même si montant=0 (perte cachée)
+- badge "Offert 0€" si montant_mensuel=0 ; badge "perte cachée" si marge négative
+- 1 QR par contrat ; un agent peut être attitré à plusieurs contrats d'une résidence
+- agent_prefere_id et qr_code_token vivent désormais sur le CONTRAT (migré depuis residences)
 
-#### Comportements clés
-- type containers/espaces_verts : coût réel TOUJOURS calculé même si
-  montant_mensuel = 0 (révèle la perte cachée)
-- badge "Offert 0€" auto dès montant_mensuel = 0
-- badge "perte cachée" auto dès marge contrat négative
-- un QR par contrat (le scan du bon QR identifie la prestation)
-- un agent peut être attitré à plusieurs contrats d'une même résidence
+### Schéma (migrations 015 + 016 — APPLIQUÉES en prod)
+Migration 015 (schéma, non-destructif) :
+- type_contrat_enum créé
+- contrats_residences : + libelle TEXT, + type_contrat (default parties_communes),
+  + agent_prefere_id UUID FK profiles, + qr_code_token TEXT
+- zones_residence : + contrat_id UUID FK contrats_residences
+- interventions : + contrat_id UUID FK contrats_residences
 
-#### Suppression
-- contrat avec 0 intervention → suppression dure autorisée
-- contrat avec ≥1 intervention → suppression bloquée, sommeil obligatoire
-  (historique protégé). Même règle pour les zones.
-- bouton supprimer dans le modal Contrat, section "zone dangereuse"
-  (jamais directement sur la carte)
+Migration 016 (données) :
+- 162 résidences = 162 contrats (1 chacune) : 11 contrats réels actifs + 151 placeholders actif=false
+- Les 11 contrats existants : agent + qr copiés depuis residences, type=parties_communes, libelle='Contrat principal'
+- Les 151 sans contrat : contrat vide actif=false créé (date_fin = +3 ans, creneaux='[]')
+- Toutes les zones (22) rattachées à leur contrat via residence_id
+- ALTHEA (id 6537baf8-05ae-493e-9b3a-d404fa190a94) migrée et validée manuellement en premier
+- ATTENTION migration future : les nouveaux contrats créés à la main doivent assigner
+  leurs zones explicitement (la requête 016 liait par residence_id, OK car 1 contrat/résidence)
 
-#### UI fiche résidence
-- en-tête : KPI agrégés (CA total, coût réel, marge totale, perte cachée)
-- une carte par contrat : agent, créneau, tarif, marge, état,
-  boutons (Planning/Tâches/Contrat/Affectation/Dupliquer)
-- bordure gauche colorée : vert rentable / rouge déficitaire
-- bouton "Dupliquer" un contrat (clone tâches+zones pour bâtiments identiques)
-- actions transverses en bas : QR codes, rentabilité détaillée, rapports
+### TRANSITION SÉCURISÉE — principe
+residences.agent_prefere_id et contrats_residences.agent_prefere_id sont synchronisés.
+Double-écriture en place : ne JAMAIS les laisser diverger.
+Le code bascule progressivement vers la lecture du contrat, residences reste un miroir.
 
-#### Migration données
-Les 127 résidences existantes ont 1 contrat chacune.
-Créer un contrat "par défaut" (type parties_communes) pour chaque,
-y rattacher zones/tâches/agent/QR existants. Ne rien casser.
-Tester sur 1 résidence avant migration en masse.
+### Avancement code (étapes 3.x — LIVRÉES)
+- 3.1 ✅ Double-écriture affectation : /api/residences/affecter écrit dans residences
+  ET contrats_residences (contrat parties_communes). Erreur du 2e UPDATE exposée (400),
+  pas silencieuse. Limite connue : pas atomique sans RPC, mais désync visible si échec.
+- 3.2 ✅ Génération planning lit agent_prefere_id depuis le contrat parties_communes actif
+  (fallback residences pendant transition). Validation bloquante déplacée après fetch contrat.
+  Requête contrat filtrée : residence_id + actif=true + type_contrat=parties_communes +
+  plus récent. Testé ALTHEA : 209 interventions futures rattachées à Christian. Commit 2c74e92.
+- 3.3 ✅ Duplication zones (/api/zones/dupliquer) copie contrat_id de la zone source,
+  fallback lookup contrat parties_communes si source NULL.
+
+### UI multi-contrats — découpage B1→B6 (EN COURS)
+Option B validée (refonte complète fiche résidence en hub), découpée en sous-étapes testables :
+- B1 (EN COURS) : API GET /api/residences/[id]/contrats — liste contrats + statut_calcule
+  (actif/futur/termine/sommeil) + nb_interventions + nb_zones + agent joint.
+  Calcul dates en Europe/Paris. Tri actif>futur>sommeil>termine.
+- B2 (à faire) : fiche résidence affiche une carte par contrat (lecture seule)
+- B3 (à faire) : bouton "+ Ajouter un contrat" (libellé + type + dates + montant)
+- B4 (à faire) : ContratModal devient par-contrat (édite UN contrat) + libelle + type
+  + zone dangereuse (suppression dure si 0 interv, sinon sommeil)
+- B5 (à faire) : KPI agrégés en-tête (CA total/coût réel/marge/perte cachée) + badges
+- B6 (à faire) : QR par contrat + bouton Dupliquer un contrat
+
+### Reste backend non encore basculé (après l'UI)
+- Scan QR (app/agent/scan/page.tsx) lit encore residences.qr_code_token —
+  à faire évoluer vers QR par contrat (étape future, quand UI stable)
+- Fiche résidence affiche encore qr_code_token depuis residences
+
+Ne pas oublier de mettre à jour cette section à chaque sous-étape B livrée.
 
 ## À faire Phase 3
 

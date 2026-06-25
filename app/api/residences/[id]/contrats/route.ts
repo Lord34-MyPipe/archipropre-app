@@ -138,7 +138,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // Validation body
   const body = await req.json()
-  const { libelle, type_contrat, date_debut, date_fin, montant_mensuel, nb_interventions_mois } = body
+  const {
+    libelle, type_contrat, date_debut, date_fin,
+    montant_mensuel, nb_interventions_mois,
+    agent_prefere_id, taux_horaire_facturation,
+    creneaux_acceptes, jours_interdits, notes_specifiques,
+  } = body
 
   const libelleTrimmed = typeof libelle === 'string' ? libelle.trim() : ''
   if (!libelleTrimmed)
@@ -157,15 +162,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'date_fin doit être après date_debut.' }, { status: 400 })
 
   const { data: created, error: insertErr } = await admin.from('contrats_residences').insert({
-    residence_id:          residenceId,
-    libelle:               libelleTrimmed,
+    residence_id:             residenceId,
+    libelle:                  libelleTrimmed,
     type_contrat,
     date_debut,
     date_fin,
-    montant_mensuel:       montant_mensuel ?? null,
-    nb_interventions_mois: nb_interventions_mois ?? null,
-    actif:             true,
-    creneaux_acceptes: [],
+    montant_mensuel:          montant_mensuel ?? null,
+    nb_interventions_mois:    nb_interventions_mois ?? null,
+    agent_prefere_id:         agent_prefere_id ?? null,
+    taux_horaire_facturation: taux_horaire_facturation ?? null,
+    creneaux_acceptes:        Array.isArray(creneaux_acceptes) ? creneaux_acceptes : [],
+    jours_interdits:          Array.isArray(jours_interdits) ? jours_interdits : [],
+    notes_specifiques:        notes_specifiques ?? null,
+    actif: true,
     // qr_code_token généré automatiquement par le trigger set_contrat_qr_token (migration 017)
   }).select().single()
 

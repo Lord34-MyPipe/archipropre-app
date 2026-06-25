@@ -7,7 +7,6 @@ import type { Residence } from '@/lib/types'
 import { downloadQRCodePDF } from '@/lib/qr-pdf'
 import AgentAttitreModal from '@/components/manager/AgentAttitreModal'
 import PlanifierInterventionModal from '@/components/manager/PlanifierInterventionModal'
-import ContratModal from '@/components/manager/ContratModal'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -98,15 +97,6 @@ const IcoClipboard = () => (
   </svg>
 )
 
-const IcoFile = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14 3v4a1 1 0 0 0 1 1h4"/>
-    <path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/>
-    <line x1="9" y1="13" x2="15" y2="13"/>
-    <line x1="9" y1="17" x2="12" y2="17"/>
-  </svg>
-)
-
 const IcoListCheck = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M4 6l2 2 3-3"/>
@@ -176,7 +166,6 @@ export default function ResidenceCard({ residence: initial }: Props) {
   const [showRegenModal, setShowRegenModal]      = useState(false)
   const [showAttitreModal, setShowAttitreModal]  = useState(false)
   const [showPlanifierModal, setShowPlanifierModal] = useState(false)
-  const [showContratModal, setShowContratModal]  = useState(false)
   const [regenLoading, setRegenLoading]          = useState(false)
   const [regenError, setRegenError]              = useState('')
   const [qrLoading, setQrLoading]               = useState(false)
@@ -392,13 +381,7 @@ export default function ResidenceCard({ residence: initial }: Props) {
           </div>
 
           {/* Ligne 2 : Configuration */}
-          <div className="grid grid-cols-3 gap-1.5">
-            <button onClick={() => setShowContratModal(true)}
-              className={`${opBtnBase} ${configCls}`}>
-              <IcoFile/>
-              <span className="text-[10px] font-medium">Contrat</span>
-            </button>
-
+          <div className="grid grid-cols-2 gap-1.5">
             <Link href={`/manager/residences/${initial.id}/taches`}
               className={`${opBtnBase} ${configCls}`}>
               <IcoListCheck/>
@@ -442,20 +425,6 @@ export default function ResidenceCard({ residence: initial }: Props) {
       )}
 
       {/* Modales */}
-      {showContratModal && (
-        <ContratModal
-          residence={initial}
-          actif={actif}
-          onClose={() => setShowContratModal(false)}
-          onSaved={() => showCardToast('Contrat mis à jour')}
-          onSommeiled={(newActif, msg) => {
-            setActif(newActif)
-            router.refresh()
-            showCardToast(msg ?? (newActif ? 'Résidence réactivée' : 'Résidence mise en sommeil'))
-          }}
-        />
-      )}
-
       {showAttitreModal && (
         <AgentAttitreModal
           residence={{ ...initial, agent_prefere_id: agentPrefereId, agent_exclu_ids: agentExcluIds }}

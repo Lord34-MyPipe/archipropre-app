@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import ContratModal from '@/components/manager/ContratModal'
 import RentabiliteModal from './RentabiliteModal'
 import AjoutContratModal from './AjoutContratModal'
 import GestionContratModal from './GestionContratModal'
@@ -105,14 +104,6 @@ const IcoTask = () => (
     <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
   </svg>
 )
-const IcoContract = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-    <polyline points="14 2 14 8 20 8"/>
-    <line x1="8" y1="13" x2="16" y2="13"/>
-    <line x1="8" y1="17" x2="16" y2="17"/>
-  </svg>
-)
 const IcoCoins = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="12" y1="1" x2="12" y2="23"/>
@@ -134,7 +125,6 @@ const IcoQr = () => (
 
 export default function ResidenceDetailClient({ residence: r, etat, agentNom, contrat }: Props) {
   const router = useRouter()
-  const [showContrat, setShowContrat]               = useState(false)
   const [showRentabilite, setShowRentabilite]       = useState(false)
   const [showAjoutContrat, setShowAjoutContrat]     = useState(false)
   const [contratSelectionne, setContratSelectionne] = useState<ContratCard | null>(null)
@@ -256,16 +246,6 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
             </span>
             <span className="text-sm font-semibold text-slate-700">Tâches</span>
           </Link>
-
-          <button
-            onClick={() => setShowContrat(true)}
-            className="bg-white rounded-xl p-5 flex flex-col items-center gap-2 shadow-sm hover:shadow-md hover:bg-slate-50 transition-all border border-slate-100 text-center"
-          >
-            <span className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center text-green-700">
-              <IcoContract />
-            </span>
-            <span className="text-sm font-semibold text-slate-700">Contrat</span>
-          </button>
 
           <button
             onClick={() => setShowRentabilite(true)}
@@ -415,16 +395,6 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
       {/* ── Modal rentabilité ── */}
       {showRentabilite && (
         <RentabiliteModal residenceId={r.id} onClose={() => setShowRentabilite(false)} />
-      )}
-
-      {/* ── Modal contrat (ancien, grille nav) ── */}
-      {showContrat && (
-        <ContratModal
-          residence={r}
-          actif={r.actif}
-          onClose={() => setShowContrat(false)}
-          onSaved={() => setShowContrat(false)}
-        />
       )}
 
       {/* ── Modal gestion contrat par carte ── */}

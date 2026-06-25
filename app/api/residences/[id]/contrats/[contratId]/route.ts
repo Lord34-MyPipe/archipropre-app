@@ -171,21 +171,15 @@ export async function DELETE(_req: NextRequest, { params }: { params: Params }) 
     )
   }
 
-  // FK zones_residence.contrat_id est RESTRICT (pas de ON DELETE)
-  // → SET NULL avant de supprimer le contrat
-  const { error: nullErr } = await admin
-    .from('zones_residence')
-    .update({ contrat_id: null })
-    .eq('contrat_id', contratId)
+  // Suppression transactionnelle via RPC (cascade zones + tâches, migration 018)
+  const { error: rpcErr } = await admin.rpc('delete_contrat_cascade', {
+    p_contrat_id: contratId,
+  })
 
-  if (nullErr) return NextResponse.json({ error: nullErr.message }, { status: 400 })
-
-  const { error: delErr } = await admin
-    .from('contrats_residences')
-    .delete()
-    .eq('id', contratId)
-
-  if (delErr) return NextResponse.json({ error: delErr.message }, { status: 400 })
+  if (rpcErr) {
+    // La RPC RAISE une exception (incohérence DB ou guard interne) → 409
+    return NextResponse.json({ error: rpcErr.message }, { status: 409 })
+  }
 
   return NextResponse.json({ deleted: true })
 }

@@ -153,32 +153,47 @@ function ScanPageInner() {
     // 6. Démarrer si planifiée
     if (inter.statut === 'planifiee') {
       setMessage('Démarrage de l\'intervention…')
-
       await supabase.from('interventions').update({
         statut:     'en_cours',
         heure_scan: new Date().toISOString(),
         geoloc_lat,
         geoloc_lng,
       }).eq('id', inter.id)
+    }
 
+    // 7. Zones de CE CONTRAT (toujours, premier scan ET rescan)
+    const { data: zones } = await supabase
+      .from('zones_residence')
+      .select('id, nom')
+      .eq('contrat_id', contrat.id)
+
+    const zoneMap: Record<string, string> = {}
+    const zoneIds: string[] = []
+    const zoneNoms = new Set<string>()
+    for (const z of zones ?? []) {
+      zoneMap[z.id] = z.nom
+      zoneIds.push(z.id)
+      zoneNoms.add(z.nom)
+    }
+
+    // Détecter taches stale : zone_nom présente dans taches_intervention
+    // mais absente des zones de ce contrat (résidu d'un scan pré-B6a ou mauvais contrat)
+    let shouldRebuildTaches = inter.statut === 'planifiee'
+    if (!shouldRebuildTaches) {
+      const { data: existingTaches } = await supabase
+        .from('taches_intervention')
+        .select('zone_nom')
+        .eq('intervention_id', inter.id)
+      shouldRebuildTaches = (existingTaches ?? []).some(
+        t => t.zone_nom != null && !zoneNoms.has(t.zone_nom)
+      )
+    }
+
+    if (shouldRebuildTaches) {
       const jourCourant = new Intl.DateTimeFormat('fr-FR', {
         timeZone: 'Europe/Paris', weekday: 'long',
       }).format(new Date())
 
-      // Zones de CE CONTRAT (scopé)
-      const { data: zones } = await supabase
-        .from('zones_residence')
-        .select('id, nom')
-        .eq('contrat_id', contrat.id)
-
-      const zoneMap: Record<string, string> = {}
-      const zoneIds: string[] = []
-      for (const z of zones ?? []) {
-        zoneMap[z.id] = z.nom
-        zoneIds.push(z.id)
-      }
-
-      // Tâches des zones de ce contrat
       type TacheRaw = { id: string; libelle: string; jours_semaine: string[]; zone_id: string | null }
       let tachesDuJour: TacheRaw[] = []
       if (zoneIds.length > 0) {
@@ -187,15 +202,12 @@ function ScanPageInner() {
           .select('id, libelle, jours_semaine, zone_id')
           .in('zone_id', zoneIds)
           .order('ordre')
-
         tachesDuJour = (taches as TacheRaw[] ?? []).filter(t =>
           !t.jours_semaine?.length || t.jours_semaine.includes(jourCourant)
         )
       }
 
-      // Supprimer les tâches stale (scans pré-B6a ou mauvais contrat) avant de réinsérer
       await supabase.from('taches_intervention').delete().eq('intervention_id', inter.id)
-
       if (tachesDuJour.length > 0) {
         await supabase.from('taches_intervention').insert(
           tachesDuJour.map(t => ({
@@ -206,19 +218,19 @@ function ScanPageInner() {
           }))
         )
       }
-
-      // Alerte hors zone
-      if (hors_zone && residence.manager_id) {
-        await supabase.from('alertes').insert({
-          intervention_id: inter.id,
-          type:            'hors_zone',
-          message:         `Agent hors zone au moment du scan (plus de 200 m de la résidence).`,
-          destinataire_id: residence.manager_id,
-        })
-      }
     }
 
-    // 7. Naviguer vers l'intervention
+    // Alerte hors zone (premier scan uniquement)
+    if (inter.statut === 'planifiee' && hors_zone && residence.manager_id) {
+      await supabase.from('alertes').insert({
+        intervention_id: inter.id,
+        type:            'hors_zone',
+        message:         `Agent hors zone au moment du scan (plus de 200 m de la résidence).`,
+        destinataire_id: residence.manager_id,
+      })
+    }
+
+    // 8. Naviguer vers l'intervention
     streamRef.current?.getTracks().forEach(t => t.stop())
     cancelAnimationFrame(rafRef.current)
     router.push(`/agent/intervention/${inter.id}`)

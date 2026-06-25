@@ -859,7 +859,19 @@ Option B validée (refonte complète fiche résidence en hub), découpée en sou
 - B6b (à faire) : rapports par contrat — page rapports accepte ?contratId= pour filtrer.
 
 - B6c ✅ LIVRÉ (commits f9b03e6 + 0d15336 + 412d10c — poussés en prod) :
-  Rentabilité 2 NIVEAUX validée en prod sur ALTHEA (Bat A 458€ rentable, Container 0€ perte cachée).
+  Rentabilité 2 NIVEAUX validée en prod sur ALTHEA — chiffres exacts :
+  · Vue GLOBALE : CA 458 €/mois, coût estimé 42 €, marge +416 € (90.9 %), heures estimées 1h48, heures vendues 18h19. Plus de "Aucun contrat actif".
+  · Bat A (par contrat) : CA 458 €, coût 25 €, marge +433 € (94.6 %), estimées 1h05, vendues ~18h.
+  · Container (par contrat) : CA 0 €, coût 17 €, marge -17 €, badge "Perte cachée", vendues "— (contrat offert)".
+  · CA et heures DIFFÉRENTS par contrat = bug multi-contrats maybeSingle() DÉFINITIVEMENT MORT.
+
+  Chronologie commits (et leçon non-push) :
+  - f9b03e6 : 1re version — bouton haut retiré + ajouté par carte + route scopée. NON POUSSÉ →
+    prod tournait encore sur l'ancien code, "Aucun contrat actif" persistait. Spec aussi changée.
+  - 0d15336 : changement spec + correction push. Restaure le bouton du haut (vue globale),
+    route agrège tous les contrats, state discriminé. POUSSÉ.
+  - 412d10c : heures vendues. NON POUSSÉ un moment → ligne absente en prod jusqu'au push.
+  → Ces 3 ratés ont causé la décision d'auto-push systématique (voir Key learnings).
 
   Architecture 2 niveaux :
   - Bouton "Rentabilité" grille HAUT = vue GLOBALE = somme de tous les contrats actifs.
@@ -1237,18 +1249,27 @@ Arguments de vente à valoriser dans l'app :
 - Charte : #0A2E5A / #1A5FA8 / #0BBFBF — Font : Inter
 - export const dynamic = 'force-dynamic' sur tous les Server Components
   qui lisent des vues Supabase (sinon cache Next.js)
-- Toujours pusher sur GitHub + tester sur Vercel
+- PUSH AUTOMATIQUE après chaque commit (décidé 25/06) : Claude Code pousse origin/main
+  immédiatement après chaque git commit, sans exception. Confirme hash + "poussé sur origin/main"
+  + "déploiement Vercel déclenché". Voir Key learnings pour la raison.
 - Nombres toujours arrondis côté client (Math.round)
 - Calculs dans les vues SQL, jamais côté client
 
 ## Key learnings (sessions juin 2026)
 
-### COMMIT ≠ PUSH ≠ DEPLOY (appris B2.5, 25 juin 2026)
+### COMMIT ≠ PUSH ≠ DEPLOY (appris B2.5, renforcé B6c — 25 juin 2026)
 `git commit` = local uniquement. `git push origin main` = GitHub.
 Vercel deploy = déclenché par GitHub push, PAS par commit local.
 Un commit absent de origin/main n'est jamais déployé.
 → Toujours vérifier `git log origin/main` après un commit critique.
 → Toujours rapporter le hash de commit ET l'URL Vercel de déploiement.
+
+DÉCISION SUITE B6c : auto-push systématique (25 juin 2026)
+Au moins 4 commits en session B6c sont restés locaux (f9b03e6, 412d10c, et d'autres plus tôt
+dans la session) → prod désynchro, tests sur code obsolète, pertes de temps de diagnostic.
+Règle adoptée : Claude Code pousse origin/main IMMÉDIATEMENT après chaque git commit, sans exception,
+et confirme : hash + "poussé sur origin/main" + "déploiement Vercel déclenché automatiquement".
+Le principe COMMIT≠PUSH≠DEPLOY reste vrai techniquement — la règle le court-circuite en pratique.
 
 ### Nettoyage interventions de test (leçon P2-11)
 Les interventions créées pendant le dev (ex. tests ALTHEA) sont réelles en base.

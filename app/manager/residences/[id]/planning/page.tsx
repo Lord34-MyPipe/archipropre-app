@@ -5,7 +5,10 @@ import type { Creneau } from '@/components/manager/ContratModal'
 
 export const dynamic = 'force-dynamic'
 
-interface Props { params: Promise<{ id: string }> }
+interface Props {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ contratId?: string }>
+}
 
 export interface InterventionRow {
   id: string
@@ -17,8 +20,10 @@ export interface InterventionRow {
   agent_nom: string | null
 }
 
-export default async function PlanningPage({ params }: Props) {
+export default async function PlanningPage({ params, searchParams }: Props) {
   const { id } = await params
+  const { contratId } = await searchParams
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -31,32 +36,53 @@ export default async function PlanningPage({ params }: Props) {
     .eq('id', id).eq('manager_id', user.id).single()
   if (!residence) redirect('/manager/residences')
 
-  // Agent attitré
+  // Contrat : explicite si contratId fourni, sinon guess actif le plus récent
+  let creneaux: Creneau[] = []
+  let contratLibelle: string | undefined
+  let agentSourceId: string | null = residence.agent_prefere_id
+
+  if (contratId) {
+    const { data: contrat } = await admin.from('contrats_residences')
+      .select('id, libelle, creneaux_acceptes, agent_prefere_id')
+      .eq('id', contratId)
+      .eq('residence_id', id)
+      .single()
+    if (contrat) {
+      creneaux = (contrat.creneaux_acceptes ?? []) as Creneau[]
+      contratLibelle = contrat.libelle ?? undefined
+      agentSourceId = contrat.agent_prefere_id ?? residence.agent_prefere_id
+    }
+  } else {
+    const { data: contrat } = await admin.from('contrats_residences')
+      .select('creneaux_acceptes')
+      .eq('residence_id', id)
+      .eq('actif', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    creneaux = (contrat?.creneaux_acceptes ?? []) as Creneau[]
+  }
+
+  // Agent
   let agentNom: string | null = null
-  if (residence.agent_prefere_id) {
+  if (agentSourceId) {
     const { data: agent } = await admin.from('profiles')
-      .select('prenom, nom').eq('id', residence.agent_prefere_id).single()
+      .select('prenom, nom').eq('id', agentSourceId).single()
     if (agent) agentNom = `${agent.prenom} ${agent.nom}`
   }
 
-  // Créneaux du contrat actif
-  const { data: contrat } = await admin.from('contrats_residences')
-    .select('creneaux_acceptes')
-    .eq('residence_id', id)
-    .eq('actif', true)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  const creneaux: Creneau[] = contrat?.creneaux_acceptes ?? []
-
   // Interventions planifiées et en cours
-  const { data: rawInters } = await admin.from('interventions')
+  let interventionsQuery = admin.from('interventions')
     .select('id, date_prevue, heure_debut_prevue, heure_fin_prevue, statut, agent_id')
     .eq('residence_id', id)
     .in('statut', ['planifiee', 'en_cours'])
     .order('date_prevue', { ascending: true })
 
-  // Nom des agents
+  if (contratId) interventionsQuery = interventionsQuery.eq('contrat_id', contratId)
+
+  const { data: rawInters } = await interventionsQuery
+
+  // Noms des agents
   const agentIds = [...new Set((rawInters ?? []).map(i => i.agent_id).filter(Boolean))]
   const agentMap = new Map<string, string>()
   if (agentIds.length > 0) {
@@ -76,7 +102,7 @@ export default async function PlanningPage({ params }: Props) {
   }))
 
   // Stats
-  const now       = new Date().toISOString().split('T')[0]
+  const now        = new Date().toISOString().split('T')[0]
   const monthStart = now.slice(0, 7) + '-01'
   const monthEnd   = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0]
   const prochaine  = interventions.find(i => i.date_prevue >= now)?.date_prevue ?? null
@@ -93,6 +119,8 @@ export default async function PlanningPage({ params }: Props) {
       total={interventions.length}
       prochaine={prochaine}
       ceMois={ceMois}
+      contratId={contratId}
+      contratLibelle={contratLibelle}
     />
   )
 }

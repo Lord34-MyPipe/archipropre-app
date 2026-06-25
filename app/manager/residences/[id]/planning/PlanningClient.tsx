@@ -53,13 +53,15 @@ interface Props {
   total: number
   prochaine: string | null
   ceMois: number
+  contratId?: string
+  contratLibelle?: string
 }
 
 // ── Composant ─────────────────────────────────────────────────────────────────
 
 export default function PlanningClient({
   residenceId, residenceNom, residenceActif = true, agentNom, creneaux,
-  interventions: initialInters, total, prochaine, ceMois,
+  interventions: initialInters, total, prochaine, ceMois, contratId, contratLibelle,
 }: Props) {
   const router = useRouter()
   const [inters, setInters]           = useState<InterventionRow[]>(initialInters)
@@ -95,7 +97,7 @@ export default function PlanningClient({
       const res = await fetch('/api/planning/generer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ residenceId }),
+        body: JSON.stringify({ residenceId, ...(contratId ? { contratId } : {}) }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Erreur inconnue')
@@ -170,14 +172,16 @@ export default function PlanningClient({
       <div className="bg-[#0A2E5A] text-white px-6 py-5 md:px-8">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3 min-w-0">
-            <Link href="/manager/residences"
+            <Link href={contratId ? `/manager/residences/${residenceId}` : '/manager/residences'}
               className="mt-0.5 shrink-0 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/>
               </svg>
             </Link>
             <div className="min-w-0">
-              <p className="text-blue-300 text-xs uppercase tracking-wider">Planning</p>
+              <p className="text-blue-300 text-xs uppercase tracking-wider">
+                {contratLibelle ? `Planning — ${contratLibelle}` : 'Planning'}
+              </p>
               <h1 className="text-xl font-bold truncate">{residenceNom}</h1>
               {agentNom && (
                 <p className="text-blue-200 text-sm mt-0.5 flex items-center gap-1.5">

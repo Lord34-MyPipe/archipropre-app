@@ -21,6 +21,42 @@ EN COURS : UI multi-contrats, découpage B1→B6.
 Cobaye de test : ALTHEA (6537baf8-05ae-493e-9b3a-d404fa190a94), agent Christian Marquant.
 Détail complet : voir section P2-11 plus bas.
 
+## 🔄 PROTOCOLE CONTEXT! (mise à jour de la mémoire projet)
+
+Quand l'utilisateur écrit "CONTEXT!" (ou "context!") dans une conversation,
+Claude doit produire un bloc unique prêt à coller dans Claude Code, qui met à
+jour ce fichier /docs/CONTEXT.md selon ces règles :
+
+1. INCRÉMENTAL : reprendre tout ce qui a été fait, exécuté, décidé ou appris
+   dans la conversation DEPUIS le dernier CONTEXT! — pas tout le projet,
+   seulement les nouveautés.
+
+2. METTRE À JOUR le bloc "⚡ ÉTAT ACTUEL" en haut du fichier (étape en cours,
+   prochaines étapes) ET la ou les sections concernées plus bas.
+
+3. NE JAMAIS SUPPRIMER une décision, un apprentissage ou un choix technique.
+   Si une décision antérieure a changé, NE PAS l'effacer : la marquer comme
+   dépassée et expliquer le changement, format :
+   "Avant : [ancienne approche]. → Changé le [date] : [nouvelle approche].
+   Raison : [pourquoi]."
+   Ainsi on garde la trace du raisonnement, jamais juste le résultat final.
+
+4. PRÉSERVER tout le reste du fichier inchangé (ne toucher qu'aux sections
+   concernées par les nouveautés).
+
+5. Inclure les détails techniques concrets utiles à la reprise : commits,
+   noms de fichiers/routes, IDs de test, requêtes SQL clés, résultats de tests.
+
+6. Terminer le bloc par la consigne explicite à Claude Code de ne rien
+   supprimer d'autre dans le fichier.
+
+Objectif : qu'une nouvelle conversation (Claude chat ou Claude Code) puisse
+reprendre l'avancement exact sans aucune perte d'information ni de raisonnement.
+
+Note : si la section d'historique des décisions dépassées devient trop longue,
+l'archiver dans docs/CONTEXT_HISTORIQUE.md pour garder ce fichier lisible
+(à faire seulement quand le besoin se présente).
+
 # Contexte projet Archipropre
 
 ## Projet

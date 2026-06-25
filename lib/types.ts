@@ -78,6 +78,7 @@ export interface TacheTemplate {
 export interface ContratResidence {
   id: string
   residence_id: string
+  libelle: string | null
   type_client: string | null
   date_debut: string
   date_fin: string

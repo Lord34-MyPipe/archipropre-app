@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
   const managerId = await getManagerId()
   if (!managerId) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
-  const { residenceId, nom, ordre } = await req.json()
+  const { residenceId, nom, ordre, contratId } = await req.json()
   if (!residenceId || !nom) return NextResponse.json({ error: 'Champs manquants' }, { status: 400 })
 
   if (!await ownsResidence(managerId, residenceId))
@@ -29,7 +29,12 @@ export async function POST(req: NextRequest) {
   const admin = await createAdminClient()
   const { data, error } = await admin
     .from('zones_residence')
-    .insert({ residence_id: residenceId, nom: nom.trim(), ordre: ordre ?? 1 })
+    .insert({
+      residence_id: residenceId,
+      nom: nom.trim(),
+      ordre: ordre ?? 1,
+      ...(contratId ? { contrat_id: contratId } : {}),
+    })
     .select().single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })

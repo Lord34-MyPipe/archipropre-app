@@ -89,7 +89,7 @@ export default function RentabiliteModal({
   onClose,
 }: {
   residenceId: string
-  contratId: string
+  contratId: string | null
   onClose: () => void
 }) {
   const [data, setData] = useState<Data | null>(null)
@@ -97,7 +97,10 @@ export default function RentabiliteModal({
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch(`/api/residences/${residenceId}/rentabilite?contratId=${contratId}`)
+    const url = contratId
+      ? `/api/residences/${residenceId}/rentabilite?contratId=${contratId}`
+      : `/api/residences/${residenceId}/rentabilite`
+    fetch(url)
       .then(r => r.json())
       .then(json => { setData(json); setLoading(false) })
       .catch(() => { setError('Erreur de chargement'); setLoading(false) })
@@ -120,9 +123,11 @@ export default function RentabiliteModal({
             </span>
             <div>
               <h2 className="text-base font-bold text-slate-800 leading-tight">Rentabilité</h2>
-              {data?.contrat?.libelle && (
-                <p className="text-xs text-slate-400 leading-tight">{data.contrat.libelle}</p>
-              )}
+              <p className="text-xs text-slate-400 leading-tight">
+                {contratId === null
+                  ? 'Tous les contrats — vue globale'
+                  : (data?.contrat?.libelle ?? '…')}
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors">

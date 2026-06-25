@@ -19,27 +19,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   dateLimit.setDate(dateLimit.getDate() - 30)
   const dateLimitStr = dateLimit.toISOString().split('T')[0]
 
-  // Contrat — explicite si contratId fourni, sinon guess (rétrocompat)
-  let contrat: Record<string, unknown> | null = null
+  // Paramètres société (commun aux deux modes)
+  const { data: parametres } = await admin.from('parametres_societe')
+    .select('taux_horaire_agent, cout_km, frais_generaux_mois')
+    .limit(1)
+    .maybeSingle()
+
   if (contratId) {
-    const { data } = await admin.from('contrats_residences')
+    // ── MODE CONTRAT ──────────────────────────────────────────────────────────
+    const { data: contratRaw } = await admin.from('contrats_residences')
       .select('*')
       .eq('id', contratId)
       .eq('residence_id', id)
       .single()
-    contrat = data ?? null
-  } else {
-    const { data } = await admin.from('contrats_residences')
-      .select('*')
-      .eq('residence_id', id)
-      .eq('actif', true)
-      .maybeSingle()
-    contrat = data ?? null
-  }
 
-  // Tâches — filtrées par zones du contrat si contratId fourni
-  let taches: Record<string, unknown>[] = []
-  if (contratId) {
+    let taches: Record<string, unknown>[] = []
     const { data: zones } = await admin.from('zones_residence')
       .select('id')
       .eq('contrat_id', contratId)
@@ -51,22 +45,57 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         .order('zone_id').order('ordre')
       taches = t ?? []
     }
-  } else {
-    const { data: t } = await admin.from('taches_template')
-      .select('*')
+
+    const { data: intersReel } = await supabase.from('interventions')
+      .select('heure_scan, heure_fin')
       .eq('residence_id', id)
-      .order('zone_id').order('ordre')
-    taches = t ?? []
+      .eq('contrat_id', contratId)
+      .eq('statut', 'terminee')
+      .not('heure_scan', 'is', null)
+      .not('heure_fin', 'is', null)
+      .gte('date_prevue', dateLimitStr)
+
+    const statsReel = buildStatsReel(intersReel ?? [])
+
+    return NextResponse.json({ taches, contrat: contratRaw ?? null, parametres, statsReel })
   }
 
-  // Paramètres société
-  const { data: parametres } = await admin.from('parametres_societe')
-    .select('taux_horaire_agent, cout_km, frais_generaux_mois')
-    .limit(1)
-    .maybeSingle()
+  // ── MODE GLOBAL (agrégé, tous les contrats actifs) ────────────────────────
+  const { data: contratsActifs } = await admin.from('contrats_residences')
+    .select('id, libelle, montant_mensuel, nb_interventions_mois, actif')
+    .eq('residence_id', id)
+    .eq('actif', true)
+    .order('created_at', { ascending: true })
 
-  // Interventions réelles (30 derniers jours) — scopées par contrat
-  let intersQuery = supabase.from('interventions')
+  const contrats = contratsActifs ?? []
+
+  // CA agrégé = somme des montants mensuels
+  const montantTotal = contrats.reduce((s, c) => s + (c.montant_mensuel ?? 0), 0)
+  const contratAgg = {
+    libelle: null,
+    montant_mensuel: montantTotal,
+    nb_interventions_mois: null,
+  }
+
+  // Tâches : toutes les zones de tous les contrats actifs
+  let taches: Record<string, unknown>[] = []
+  if (contrats.length > 0) {
+    const contratIds = contrats.map(c => c.id)
+    const { data: zones } = await admin.from('zones_residence')
+      .select('id')
+      .in('contrat_id', contratIds)
+    const zoneIds = (zones ?? []).map((z: { id: string }) => z.id)
+    if (zoneIds.length > 0) {
+      const { data: t } = await admin.from('taches_template')
+        .select('*')
+        .in('zone_id', zoneIds)
+        .order('zone_id').order('ordre')
+      taches = t ?? []
+    }
+  }
+
+  // Interventions réelles : toutes les interventions terminées de la résidence
+  const { data: intersReel } = await supabase.from('interventions')
     .select('heure_scan, heure_fin')
     .eq('residence_id', id)
     .eq('statut', 'terminee')
@@ -74,20 +103,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     .not('heure_fin', 'is', null)
     .gte('date_prevue', dateLimitStr)
 
-  if (contratId) intersQuery = intersQuery.eq('contrat_id', contratId)
+  const statsReel = buildStatsReel(intersReel ?? [])
 
-  const { data: intersReel } = await intersQuery
+  return NextResponse.json({ taches, contrat: contratAgg, parametres, statsReel })
+}
 
-  let statsReel: { totalMin: number; count: number } | null = null
-  const intersReelData = intersReel ?? []
-  if (intersReelData.length > 0) {
-    let totalMin = 0
-    for (const i of intersReelData) {
-      const diff = (new Date(i.heure_fin as string).getTime() - new Date(i.heure_scan as string).getTime()) / 60000
-      if (diff > 0 && diff < 600) totalMin += diff
-    }
-    if (totalMin > 0) statsReel = { totalMin, count: intersReelData.length }
+function buildStatsReel(
+  rows: { heure_scan: string | null; heure_fin: string | null }[]
+): { totalMin: number; count: number } | null {
+  if (rows.length === 0) return null
+  let totalMin = 0
+  for (const i of rows) {
+    if (!i.heure_scan || !i.heure_fin) continue
+    const diff = (new Date(i.heure_fin).getTime() - new Date(i.heure_scan).getTime()) / 60000
+    if (diff > 0 && diff < 600) totalMin += diff
   }
-
-  return NextResponse.json({ taches, contrat, parametres, statsReel })
+  return totalMin > 0 ? { totalMin, count: rows.length } : null
 }

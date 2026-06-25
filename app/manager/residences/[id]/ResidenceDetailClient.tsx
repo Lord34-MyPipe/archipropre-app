@@ -125,7 +125,8 @@ const IcoQr = () => (
 
 export default function ResidenceDetailClient({ residence: r, etat, agentNom, contrat }: Props) {
   const router = useRouter()
-  const [rentabiliteContratId, setRentabiliteContratId] = useState<string | null>(null)
+  // null = modal fermé ; { contratId: null } = global ; { contratId: id } = par contrat
+  const [rentabiliteState, setRentabiliteState] = useState<{ contratId: string | null } | null>(null)
   const [showAjoutContrat, setShowAjoutContrat]     = useState(false)
   const [contratSelectionne, setContratSelectionne] = useState<ContratCard | null>(null)
   const [contrats, setContrats]                     = useState<ContratCard[]>([])
@@ -237,6 +238,16 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
             <span className="text-sm font-semibold text-slate-700">Rapports</span>
           </Link>
 
+          <button
+            onClick={() => setRentabiliteState({ contratId: null })}
+            className="bg-white rounded-xl p-5 flex flex-col items-center gap-2 shadow-sm hover:shadow-md hover:bg-slate-50 transition-all border border-slate-100 text-center"
+          >
+            <span className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center text-green-700">
+              <IcoCoins />
+            </span>
+            <span className="text-sm font-semibold text-slate-700">Rentabilité</span>
+          </button>
+
           {r.qr_code_token && (
             <button
               onClick={async () => {
@@ -327,7 +338,7 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
                       Tâches
                     </Link>
                     <button
-                      onClick={() => setRentabiliteContratId(c.id)}
+                      onClick={() => setRentabiliteState({ contratId: c.id })}
                       className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-slate-500 hover:text-green-700 hover:bg-green-50 transition-colors"
                       aria-label="Rentabilité de ce contrat"
                     >
@@ -403,11 +414,11 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
       )}
 
       {/* ── Modal rentabilité ── */}
-      {rentabiliteContratId && (
+      {rentabiliteState !== null && (
         <RentabiliteModal
           residenceId={r.id}
-          contratId={rentabiliteContratId}
-          onClose={() => setRentabiliteContratId(null)}
+          contratId={rentabiliteState.contratId}
+          onClose={() => setRentabiliteState(null)}
         />
       )}
 

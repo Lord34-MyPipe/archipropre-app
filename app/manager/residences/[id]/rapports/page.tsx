@@ -5,7 +5,10 @@ import RapportsActions from '@/components/manager/RapportsActions'
 
 export const dynamic = 'force-dynamic'
 
-interface Props { params: Promise<{ id: string }> }
+interface Props {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ contratId?: string }>
+}
 
 function parseMin(t: string | null): number | null {
   if (!t) return null
@@ -20,8 +23,10 @@ function formatDateFR(iso: string): string {
   })
 }
 
-export default async function RapportsPage({ params }: Props) {
+export default async function RapportsPage({ params, searchParams }: Props) {
   const { id } = await params
+  const { contratId } = await searchParams
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -35,11 +40,31 @@ export default async function RapportsPage({ params }: Props) {
   if (!residence) redirect('/manager/residences')
 
   const admin = await createAdminClient()
-  const { data: interventions } = await admin.from('interventions')
+
+  // Libellé du contrat filtré (si contratId fourni)
+  let contratLibelle: string | null = null
+  if (contratId) {
+    const { data: contrat } = await admin.from('contrats_residences')
+      .select('libelle')
+      .eq('id', contratId)
+      .eq('residence_id', id)
+      .maybeSingle()
+    contratLibelle = contrat?.libelle ?? null
+  }
+
+  const query = admin.from('interventions')
     .select('id, agent_id, date_prevue, heure_scan, heure_fin, statut, validee_at, profiles!interventions_agent_id_fkey(prenom, nom)')
     .eq('residence_id', id)
     .in('statut', ['terminee', 'validee'])
     .order('date_prevue', { ascending: false })
+
+  const { data: interventions } = contratId
+    ? await query.eq('contrat_id', contratId)
+    : await query
+
+  const backHref = contratId
+    ? `/manager/residences/${id}`
+    : '/manager/residences'
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -47,14 +72,16 @@ export default async function RapportsPage({ params }: Props) {
 
         {/* En-tête */}
         <div className="mb-6">
-          <Link href="/manager/residences"
+          <Link href={backHref}
             className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 mb-4 transition-colors">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"/>
             </svg>
             Retour
           </Link>
-          <h1 className="text-xl font-bold text-slate-800">Rapports</h1>
+          <h1 className="text-xl font-bold text-slate-800">
+            {contratId ? `Rapports — ${contratLibelle ?? 'Contrat'}` : 'Rapports'}
+          </h1>
           <p className="text-sm text-slate-500 mt-0.5 truncate">{residence.nom}</p>
         </div>
 

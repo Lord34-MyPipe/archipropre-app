@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { randomUUID } from 'crypto'
 import { createClient, createAdminClient } from '@/lib/supabase-server'
 
 const STATUT_ORDER: Record<string, number> = { actif: 0, futur: 1, sommeil: 2, termine: 3 }
@@ -112,4 +113,62 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     })
 
   return NextResponse.json(result)
+}
+
+// ── POST — créer un nouveau contrat ──────────────────────────────────────────
+
+const VALID_TYPES = ['parties_communes', 'containers', 'espaces_verts'] as const
+
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: residenceId } = await params
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
+
+  const admin = await createAdminClient()
+
+  // Ownership check
+  const { data: residence } = await admin.from('residences')
+    .select('id')
+    .eq('id', residenceId)
+    .eq('manager_id', user.id)
+    .single()
+  if (!residence) return NextResponse.json({ error: 'Résidence introuvable ou non autorisée' }, { status: 403 })
+
+  // Validation body
+  const body = await req.json()
+  const { libelle, type_contrat, date_debut, date_fin, montant_mensuel, nb_interventions_mois } = body
+
+  const libelleTrimmed = typeof libelle === 'string' ? libelle.trim() : ''
+  if (!libelleTrimmed)
+    return NextResponse.json({ error: 'Le libellé est obligatoire.' }, { status: 400 })
+
+  if (!VALID_TYPES.includes(type_contrat))
+    return NextResponse.json(
+      { error: `type_contrat invalide. Valeurs acceptées : ${VALID_TYPES.join(', ')}` },
+      { status: 400 }
+    )
+
+  if (!date_debut || !date_fin)
+    return NextResponse.json({ error: 'date_debut et date_fin sont obligatoires.' }, { status: 400 })
+
+  if (date_fin <= date_debut)
+    return NextResponse.json({ error: 'date_fin doit être après date_debut.' }, { status: 400 })
+
+  const { data: created, error: insertErr } = await admin.from('contrats_residences').insert({
+    residence_id:          residenceId,
+    libelle:               libelleTrimmed,
+    type_contrat,
+    date_debut,
+    date_fin,
+    montant_mensuel:       montant_mensuel ?? null,
+    nb_interventions_mois: nb_interventions_mois ?? null,
+    actif:                 true,
+    creneaux_acceptes:     [],
+    qr_code_token:         randomUUID(),
+  }).select().single()
+
+  if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 400 })
+  return NextResponse.json(created, { status: 201 })
 }

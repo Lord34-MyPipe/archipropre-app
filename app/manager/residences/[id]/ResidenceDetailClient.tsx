@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import ContratModal from '@/components/manager/ContratModal'
 import RentabiliteModal from './RentabiliteModal'
+import AjoutContratModal from './AjoutContratModal'
 import type { Residence } from '@/lib/types'
 import type { ResidenceEtat } from '@/components/manager/ResidenceCard'
 
@@ -133,17 +134,22 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
   const router = useRouter()
   const [showContrat, setShowContrat]           = useState(false)
   const [showRentabilite, setShowRentabilite]   = useState(false)
+  const [showAjoutContrat, setShowAjoutContrat] = useState(false)
   const [contrats, setContrats]                 = useState<ContratCard[]>([])
   const [contratsLoading, setContratsLoading]   = useState(true)
   const [contratsError, setContratsError]       = useState<string | null>(null)
 
-  useEffect(() => {
+  function fetchContrats() {
+    setContratsLoading(true)
+    setContratsError(null)
     fetch(`/api/residences/${r.id}/contrats`)
       .then(res => res.ok ? res.json() : Promise.reject(res.statusText))
       .then((data: ContratCard[]) => setContrats(data))
       .catch(() => setContratsError('Impossible de charger les contrats.'))
       .finally(() => setContratsLoading(false))
-  }, [r.id])
+  }
+
+  useEffect(() => { fetchContrats() }, [r.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const etatCfg = ETAT_CONFIG[etat]
   const enSommeil = !r.actif
@@ -289,9 +295,20 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
 
         {/* ── Cartes contrats ── */}
         <div className="mt-4 space-y-3">
-          <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide px-0.5">
-            Contrats
-          </h2>
+          <div className="flex items-center justify-between px-0.5">
+            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">
+              Contrats
+            </h2>
+            <button
+              onClick={() => setShowAjoutContrat(true)}
+              className="flex items-center gap-1 text-xs font-semibold text-[#1A5FA8] hover:text-[#0A4A8A] transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Ajouter un contrat
+            </button>
+          </div>
 
           {contratsLoading && (
             <div className="space-y-2">
@@ -369,6 +386,15 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
           })}
         </div>
       </div>
+
+      {/* ── Modal ajout contrat ── */}
+      {showAjoutContrat && (
+        <AjoutContratModal
+          residenceId={r.id}
+          onClose={() => setShowAjoutContrat(false)}
+          onSuccess={() => { setShowAjoutContrat(false); fetchContrats() }}
+        />
+      )}
 
       {/* ── Modal rentabilité ── */}
       {showRentabilite && (

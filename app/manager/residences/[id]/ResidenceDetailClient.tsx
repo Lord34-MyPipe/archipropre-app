@@ -237,16 +237,6 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
             <span className="text-sm font-semibold text-slate-700">Rapports</span>
           </Link>
 
-          <Link
-            href={`/manager/residences/${r.id}/taches`}
-            className="bg-white rounded-xl p-5 flex flex-col items-center gap-2 shadow-sm hover:shadow-md hover:bg-slate-50 transition-all border border-slate-100 text-center"
-          >
-            <span className="w-10 h-10 rounded-full bg-[#EAF2FF] flex items-center justify-center text-[#1A5FA8]">
-              <IcoTask />
-            </span>
-            <span className="text-sm font-semibold text-slate-700">Tâches</span>
-          </Link>
-
           <button
             onClick={() => setShowRentabilite(true)}
             className="bg-white rounded-xl p-5 flex flex-col items-center gap-2 shadow-sm hover:shadow-md hover:bg-slate-50 transition-all border border-slate-100 text-center"

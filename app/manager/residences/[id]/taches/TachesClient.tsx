@@ -564,6 +564,7 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
       {modal.open && (
         <TacheModal
           residenceId={residence.id}
+          contratId={contratId ?? ''}
           zones={zones}
           taches={taches}
           editingTache={editingTache}

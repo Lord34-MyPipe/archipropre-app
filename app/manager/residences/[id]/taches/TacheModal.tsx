@@ -151,6 +151,7 @@ function buildPayload(f: FormState, residenceId: string) {
 
 interface Props {
   residenceId: string
+  contratId: string
   zones: ZoneResidence[]
   taches: TacheTemplate[]
   editingTache: TacheTemplate | null
@@ -163,7 +164,7 @@ interface Props {
 /* ── Composant ───────────────────────────────── */
 
 export default function TacheModal({
-  residenceId, zones, taches, editingTache, initialZoneId, onClose, onSaved, onZoneCreated,
+  residenceId, contratId, zones, taches, editingTache, initialZoneId, onClose, onSaved, onZoneCreated,
 }: Props) {
   const [form, setForm] = useState<FormState>(() =>
     defaultForm(initialZoneId ?? '', editingTache)
@@ -231,7 +232,7 @@ export default function TacheModal({
       const zRes = await fetch('/api/zones', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ residenceId, nom: form.newZoneName.trim(), ordre: zones.length + 1 }),
+        body: JSON.stringify({ residenceId, nom: form.newZoneName.trim(), ordre: zones.length + 1, contratId }),
       })
       const zData = await zRes.json()
       if (!zRes.ok) { setError(zData.error ?? 'Erreur création zone'); setSaving(false); return }

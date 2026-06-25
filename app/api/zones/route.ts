@@ -22,6 +22,7 @@ export async function POST(req: NextRequest) {
 
   const { residenceId, nom, ordre, contratId } = await req.json()
   if (!residenceId || !nom) return NextResponse.json({ error: 'Champs manquants' }, { status: 400 })
+  if (!contratId) return NextResponse.json({ error: 'contratId obligatoire — toute zone doit appartenir à un contrat' }, { status: 400 })
 
   if (!await ownsResidence(managerId, residenceId))
     return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })

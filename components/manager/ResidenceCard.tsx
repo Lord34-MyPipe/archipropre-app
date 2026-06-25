@@ -381,13 +381,7 @@ export default function ResidenceCard({ residence: initial }: Props) {
           </div>
 
           {/* Ligne 2 : Configuration */}
-          <div className="grid grid-cols-2 gap-1.5">
-            <Link href={`/manager/residences/${initial.id}/taches`}
-              className={`${opBtnBase} ${configCls}`}>
-              <IcoListCheck/>
-              <span className="text-[10px] font-medium">Tâches</span>
-            </Link>
-
+          <div className="grid grid-cols-1 gap-1.5">
             <button onClick={() => setShowAttitreModal(true)}
               className={`${opBtnBase} ${configCls}`}>
               <IcoUserCircle/>

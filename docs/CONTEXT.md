@@ -631,6 +631,51 @@ Cas B — annulation après validation ('valide' → 'annule') :
   (alerte en base, future push PWA P2-5)
 - Manager → alerte quand un agent soumet une nouvelle demande
 
+### P2-11 — Multi-contrats par résidence (spec, non implémenté)
+
+REFONTE STRUCTURANTE — ne pas lancer sans audit complet des FK existantes.
+
+Modèle cible : la résidence devient un hub, les contrats un sous-niveau.
+Tâches, zones, agent attitré, QR code migrent de la résidence vers le contrat.
+
+#### Schéma cible
+- contrats_residences : ajouter libelle (text), type_contrat
+  (enum: parties_communes | containers | espaces_verts),
+  agent_prefere_id (migré depuis residences), qr_code_token (migré)
+- zones_residence : ajouter contrat_id
+- interventions : ajouter contrat_id
+- residences : agent_prefere_id et qr_code_token deviennent obsolètes
+  (à conserver en lecture pour compat, ou migrer puis dropper)
+
+#### Comportements clés
+- type containers/espaces_verts : coût réel TOUJOURS calculé même si
+  montant_mensuel = 0 (révèle la perte cachée)
+- badge "Offert 0€" auto dès montant_mensuel = 0
+- badge "perte cachée" auto dès marge contrat négative
+- un QR par contrat (le scan du bon QR identifie la prestation)
+- un agent peut être attitré à plusieurs contrats d'une même résidence
+
+#### Suppression
+- contrat avec 0 intervention → suppression dure autorisée
+- contrat avec ≥1 intervention → suppression bloquée, sommeil obligatoire
+  (historique protégé). Même règle pour les zones.
+- bouton supprimer dans le modal Contrat, section "zone dangereuse"
+  (jamais directement sur la carte)
+
+#### UI fiche résidence
+- en-tête : KPI agrégés (CA total, coût réel, marge totale, perte cachée)
+- une carte par contrat : agent, créneau, tarif, marge, état,
+  boutons (Planning/Tâches/Contrat/Affectation/Dupliquer)
+- bordure gauche colorée : vert rentable / rouge déficitaire
+- bouton "Dupliquer" un contrat (clone tâches+zones pour bâtiments identiques)
+- actions transverses en bas : QR codes, rentabilité détaillée, rapports
+
+#### Migration données
+Les 127 résidences existantes ont 1 contrat chacune.
+Créer un contrat "par défaut" (type parties_communes) pour chaque,
+y rattacher zones/tâches/agent/QR existants. Ne rien casser.
+Tester sur 1 résidence avant migration en masse.
+
 ## À faire Phase 3
 
 ### P3-1 — Espace client (4e rôle)

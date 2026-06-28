@@ -1,11 +1,19 @@
-# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 25 juin 2026 — fin de session B6b)
+# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 28 juin 2026 — fin de session)
 
-**BLOC B ENTIÈREMENT TERMINÉ.** P2-11 quasi bouclé — reste dette finale + P2-12/P2-13 à cadrer.
+**BLOC B ENTIÈREMENT TERMINÉ. P2-9 livré. Nouvelles features commande produits
++ catalogue + contrôle final agent livrés.**
 
-Backend migré (migrations 015+016+017+018+019+020+021 appliquées en prod) :
-modèle Résidence → Contrat → Zone → Tâche. 162 contrats (1 par résidence).
-agent_prefere_id et qr_code_token vivent maintenant sur le CONTRAT.
-Transition sécurisée : double-écriture residences ↔ contrats_residences.
+Backend migré (migrations 015→023 appliquées en prod).
+Modèle Résidence → Contrat → Zone → Tâche. 162 contrats.
+
+Derniers commits de la session :
+- 6655b21 : Migration 022 + contrôle final agent (chariot + commande produits)
+- 05baddb : Catalogue produits interface directeur /directeur/catalogue
+- 6879ed0 : Fix flow controle-final (redirect /agent/dashboard + route rapport)
+- 4f43c63 : Fix déclencheur controle-final (peutFinaliser ≥1 zone complète)
+- 05eade7 : Fix navigation bloquée await mobile (handleFinaliser synchrone)
+- f6f4172 : Migration 023 passages_siege + bloc réappro dashboard + P2-9 agent
+- 5809da0 : Position bloc commandes + drawer détail + PDF préparation
 
 UI multi-contrats — avancement B1→B6 :
 - B1 ✅ LIVRÉ : API GET /api/residences/[id]/contrats
@@ -21,7 +29,7 @@ UI multi-contrats — avancement B1→B6 :
 - B6c ✅ LIVRÉ : rentabilité 2 niveaux — globale + par contrat (commits f9b03e6+)
 - B6d ✅ LIVRÉ : tâches PAR CONTRAT (commit cbacbaa)
 - B6e ✅ LIVRÉ : planning PAR CONTRAT (migration 020 + commits 2b0852f+)
-- RESTE : dette finale P2-11 (voir liste ci-dessous) + P2-12/P2-13 à cadrer
+- P2-9 ✅ LIVRÉ : passages siège + bloc réappro + IA suggestion (commits f6f4172 + 5809da0)
 
 Cobaye de test : ALTHEA (6537baf8-05ae-493e-9b3a-d404fa190a94).
 État actuel : 2 contrats parties_communes actifs —
@@ -35,6 +43,11 @@ TEST B6e validé : régénérer Bat A laisse Container intact à 53 (DELETE scop
 TEST B6a validé : scan Bat A → Hall seul ; scan Container → Local Container seul.
 TEST B6b validé ALTHEA : 2 rapports du 25 juin avec libellés "Container" / "Bat A".
 Détail complet : voir section P2-11 plus bas.
+
+RESTE :
+- Dette finale P2-11 (voir liste ci-dessous)
+- P2-12 / P2-13 à cadrer
+- Tests terrain à valider (controle-final, commandes, passage bureau)
 
 ## 🔄 PROTOCOLE CONTEXT! (mise à jour de la mémoire projet)
 
@@ -1062,6 +1075,138 @@ Avant suppression des fichiers : vérifier avec grep qu'aucun autre fichier ne l
 
 Ne pas oublier de mettre à jour cette section ET le bloc "⚡ ÉTAT ACTUEL" du haut
 à chaque sous-étape B livrée.
+
+## Feature : Contrôle final agent + Commande produits (session 28 juin 2026)
+
+### Parcours agent — nouvel écran intercalaire
+
+Position : après validation de toutes les zones, avant envoi rapport.
+Déclencheur : `peutFinaliser = zones.length > 0 && zonesCompletes >= 1`
+(au moins une zone complète = tâches traitées + ≥1 photo).
+Note : `toutesZonesComplete` conservé pour le badge header uniquement.
+
+Fichier : `app/agent/intervention/[id]/controle-final/page.tsx`
+
+Flux corrigé (3 bugs résolus) :
+- Bug 1 (6879ed0) : redirect vers `/agent/planning` (inexistant) → corrigé en `/agent/dashboard`
+- Bug 2 (6879ed0) : alerte `rapport_soumis` non créée → nouvelle route `POST /api/interventions/[id]/rapport`
+- Bug 3 (05eade7) : `handleFinaliser` bloqué par `await supabase.update()` sur mobile réseau dégradé
+  → navigation synchrone, mise à jour `statut→terminee` déplacée dans `/api/interventions/[id]/rapport`
+
+Flux final :
+  Zones validées → handleFinaliser() sync → router.push controle-final
+  → [chariot photo optionnel] + [produits optionnel]
+  → "Envoyer le rapport"
+  → POST /commande (si signalements)
+  → POST /rapport (statut terminee + heure_fin + alerte rapport_soumis)
+  → router.push /agent/dashboard
+
+### Migration 022 — tables commande produits
+
+Tables créées (prod) :
+- `produits` (id, nom, categorie, photo_url, actif, ordre)
+  12 produits Archipropre pré-remplis
+  RLS : lecture tous authentifiés, écriture directeur uniquement
+- `commandes_produits` (id, intervention_id, agent_id, residence_id,
+  contrat_id, statut en_attente/commande/livre)
+- `lignes_commande` (id, commande_id, produit_id, type_ligne produit/ampoule,
+  quantite, localisation, photo_avant_path, photo_apres_path)
+- `photos_chariot` (id, intervention_id, agent_id, storage_path)
+
+Buckets Storage créés :
+- `photos-chariot` (privé)
+- `photos-ampoules` (privé)
+- `photos-produits` (PUBLIC — agents voient les photos catalogue sans auth)
+
+### Routes API commande produits
+
+- `GET /api/produits` — catalogue actif trié par ordre (agents)
+- `POST /api/interventions/[id]/chariot` — upload photo chariot
+- `POST /api/interventions/[id]/chariot-ampoule` — upload photo ampoule (retourne storage_path)
+- `POST /api/interventions/[id]/commande` — crée commande + lignes + alerte `commande_produit` manager
+- `POST /api/interventions/[id]/rapport` — statut terminee + heure_fin + alerte rapport_soumis
+- `PATCH /api/commandes/[id]/statut` — manager met à jour en_attente→commande→livre
+- `GET /api/directeur/produits` — liste catalogue (directeur)
+- `POST /api/directeur/produits` — création produit (ordre auto MAX+1)
+- `PATCH /api/directeur/produits/[id]` — édition partielle
+- `DELETE /api/directeur/produits/[id]` — bloqué 409 si référencé dans lignes_commande
+- `POST /api/directeur/produits/[id]/photo` — upload bucket photos-produits, photo_url mis à jour
+- `GET /api/commandes/[id]/photos` — signed URLs photos ampoule (1h)
+
+### Catalogue directeur — /directeur/catalogue (commit 05baddb)
+
+- Tableau avec miniature (placeholder emoji 🧴/🧻/🪣 si photo_url null)
+- Upload photo au hover (spinner pendant upload)
+- Badge catégorie coloré, toggle actif/inactif en un clic
+- Modal création/édition (nom requis, catégorie, ordre optionnel)
+- Onglets filtre côté client : Tous / Produits / Consommables / Matériel
+- DELETE 409 → message + proposition désactiver à la place
+- Toasts succès/erreur bas-droite
+- Entrée nav directeur : "📦 Catalogue produits" entre Rentabilité et Paramètres
+
+### P2-9 — Passage bureau + Réappro dashboard (commits f6f4172 + 5809da0)
+
+Migration 023 — table `passages_siege` :
+  id, agent_id, manager_id, commande_id FK nullable,
+  date, heure_prevue time, motif, statut (planifie/confirme/effectue/annule),
+  est_livraison_manager boolean, heure_effectue timestamptz
+
+Note : `parametres_societe.adresse_siege` ajouté (défaut '123 Rue de la Bandido, 34160 Castries')
+
+Routes API P2-9 :
+- `GET /api/manager/commandes` — commandes en_attente/commande avec lignes+agent+résidence
+- `POST /api/passages-siege` — INSERT + UPDATE commande→commande + alerte passage_bureau agent
+- `POST /api/passages-siege/[id]/effectuer` — statut effectue + commande→livre
+  + clôture journée si plus d'interventions (UPSERT journees_agent)
+  + alerte manager commande_livree
+- `POST /api/ia/suggestion-passage` — claude-sonnet-4-6, contexte planning du jour,
+  retourne { heure_suggeree, position, justification }, fallback 07:30 si IA indisponible
+
+Règles métier P2-9 (figées) :
+- Passage bureau en 1er RDV → heure_debut_journee = heure du passage bureau
+- Passage bureau en dernier → bouton "Commande récupérée" = heure_fin journée
+- Passage bureau en milieu → trajet inter-chantiers normal
+- Dans tous les cas : inclus dans journees_agent.total_minutes_terrain
+- est_livraison_manager=true → carte dans planning manager, PAS dans planning agent
+
+Dashboard manager — bloc "Réapprovisionnement" (commit 5809da0) :
+- Position : entre "Points d'attention" ET "Équipe aujourd'hui" (colonne gauche)
+- Polling toutes les 120s
+- Carte statut en_attente : bouton "Voir la commande →" → CommandeDetailDrawer
+- Carte statut commande : bouton "Planifier un retrait →" + "Je livre moi-même"
+  si agent.mode_deplacement ∈ {tramway, velo}
+- CommandeDetailDrawer (slide-in droite 420px, pattern JourneeAgentPanel) :
+  liste produits avec cases à cocher visuelles, photos ampoule signées,
+  footer : PDF téléchargeable + bouton "Commande prête" (si en_attente)
+- PDF préparation : jsPDF manuel, header ARCHIPROPRE, tableau produits + checkbox □,
+  signalements ampoules, signature manager
+  Nom fichier : preparation-[slug]-[YYYY-MM-DD].pdf
+- PlanifierModal : date + heure + motif pré-rempli + bouton "🤖 Suggérer IA"
+  (POST /api/ia/suggestion-passage) + toggle "Je livre moi-même"
+
+Dashboard agent — carte passage bureau :
+- Apparaît dans planning J→J+7, triée par heure avec les interventions
+- Icône 📦 + "Passage au bureau" + heure + motif + adresse siège + Waze
+- Bouton "Commande récupérée ✓" → POST effectuer → message clôture si dernier event
+
+### Apprentissages session 28 juin 2026
+
+**await réseau bloquant sur mobile :**
+Un `await supabase.update()` dans un handler de navigation peut bloquer
+indéfiniment sur réseau dégradé (sous-sol, parking).
+→ Règle : les fonctions de navigation (router.push) doivent être synchrones.
+  Déplacer les opérations DB dans la route API appelée après navigation.
+
+**peutFinaliser vs toutesZonesComplete :**
+- `toutesZonesComplete` = toutes zones (tâches + photo) → pour badge header
+- `peutFinaliser` = ≥1 zone complète → pour le bouton "Valider le rapport final"
+  Ne jamais utiliser toutesZonesComplete pour bloquer un bouton de navigation.
+
+**PostgREST jointures many-to-one :**
+Toujours Array.isArray() + [0] pour les FK joins (profiles, residences, etc.)
+même quand on s'attend à un seul objet — PostgREST retourne toujours un array.
+
+---
 
 ### P2-12 — Scan hors planning (spec, non implémenté — à cadrer avec Ana)
 Scan QR contrat sans intervention prévue ce jour.

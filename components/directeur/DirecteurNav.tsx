@@ -9,8 +9,9 @@ const items = [
   { href: '/directeur/planning',    label: 'Planning',         emoji: '📅' },
   { href: '/directeur/residences',  label: 'Résidences',       emoji: '🏢' },
   { href: '/directeur/agents',      label: 'Agents',           emoji: '👷' },
-  { href: '/directeur/rentabilite', label: 'Rentabilité',      emoji: '💰' },
-  { href: '/directeur/parametres',  label: 'Paramètres',       emoji: '⚙️' },
+  { href: '/directeur/rentabilite', label: 'Rentabilité',        emoji: '💰' },
+  { href: '/directeur/catalogue',   label: 'Catalogue produits', emoji: '📦' },
+  { href: '/directeur/parametres',  label: 'Paramètres',         emoji: '⚙️' },
 ]
 
 export default function DirecteurNav() {

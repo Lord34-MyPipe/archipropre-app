@@ -199,20 +199,10 @@ export default function InterventionPage() {
   }
 
   // ── Finaliser l'intervention ───────────────────────────────────────────────────
-  async function handleFinaliser() {
+  function handleFinaliser() {
     setFinalizing(true)
     setConfirming(false)
-    const supabase = createClient()
-    const now      = new Date().toISOString()
-    const disponible = intervention?.heure_fin_prevue
-      ? new Date(now) < new Date(`${intervention.date_prevue}T${intervention.heure_fin_prevue}`)
-      : false
-    await supabase.from('interventions').update({
-      statut:              'terminee',
-      heure_fin:           now,
-      disponible_apres_fin: disponible,
-    }).eq('id', params.id)
-    setFinalizing(false)
+    // La mise à jour statut→terminee est faite server-side dans POST /api/interventions/[id]/rapport
     router.push(`/agent/intervention/${params.id}/controle-final`)
   }
 

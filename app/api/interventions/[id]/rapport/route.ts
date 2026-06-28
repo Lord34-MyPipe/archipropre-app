@@ -17,7 +17,7 @@ export async function POST(
   const [{ data: inter }, { data: agentProfil }] = await Promise.all([
     supabase
       .from('interventions')
-      .select('id, residence_id, residences(nom, manager_id)')
+      .select('id, residence_id, date_prevue, heure_fin_prevue, residences(nom, manager_id)')
       .eq('id', interventionId)
       .eq('agent_id', user.id)
       .maybeSingle(),
@@ -34,12 +34,26 @@ export async function POST(
   const residence = Array.isArray(residenceRaw) ? residenceRaw[0] : residenceRaw as { nom: string; manager_id: string } | null
   const managerId = agentProfil?.manager_id ?? residence?.manager_id ?? null
 
+  const admin = await createAdminClient()
+
+  // Marquer l'intervention terminée avec timestamp serveur
+  const now = new Date().toISOString()
+  const heureFin = (inter as Record<string, unknown>).heure_fin_prevue as string | null
+  const datePrevue = (inter as Record<string, unknown>).date_prevue as string | null
+  const disponible = heureFin
+    ? new Date(now) < new Date(`${datePrevue}T${heureFin}`)
+    : false
+  await admin.from('interventions').update({
+    statut:               'terminee',
+    heure_fin:            now,
+    disponible_apres_fin: disponible,
+  }).eq('id', interventionId)
+
   if (managerId) {
     const nomAgent = agentProfil
       ? `${agentProfil.prenom ?? ''} ${agentProfil.nom ?? ''}`.trim()
       : user.email ?? 'un agent'
     const nomResidence = residence?.nom ?? 'une résidence'
-    const admin = await createAdminClient()
     await admin.from('alertes').insert({
       intervention_id: interventionId,
       type:            'rapport_soumis',

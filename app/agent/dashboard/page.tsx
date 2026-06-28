@@ -1,10 +1,13 @@
 export const dynamic = 'force-dynamic'
 
-import { createClient } from '@/lib/supabase-server'
+import { createClient, createAdminClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import type { Intervention, Residence, Profile } from '@/lib/types'
 import { wazeUrl } from '@/lib/navigation'
+import PassageCarte from './PassageCarte'
+
+const ADRESSE_SIEGE_DEFAUT = '123 Rue de la Bandido, 34160 Castries'
 
 type InterventionJoined = Intervention & {
   residences: Residence
@@ -80,6 +83,34 @@ export default async function AgentDashboard({ searchParams }: Props) {
     .eq('date_prevue', selectedDate)
     .order('heure_debut_prevue', { ascending: true }) as { data: InterventionJoined[] | null }
 
+  // Passages siège du jour sélectionné
+  const [{ data: passagesRaw }, adminClient] = await Promise.all([
+    supabase
+      .from('passages_siege')
+      .select('id, heure_prevue, motif, statut')
+      .eq('agent_id', user.id)
+      .eq('date', selectedDate)
+      .in('statut', ['planifie', 'confirme'])
+      .eq('est_livraison_manager', false)
+      .order('heure_prevue', { ascending: true }),
+    createAdminClient(),
+  ])
+  const { data: paramsRaw } = await adminClient
+    .from('parametres_societe').select('adresse_siege').limit(1).maybeSingle()
+  const adresseSiege = (paramsRaw as Record<string, unknown> | null)?.adresse_siege as string | null
+    ?? ADRESSE_SIEGE_DEFAUT
+
+  type PassageSiege = {
+    id: string; heure_prevue: string; motif: string; statut: string; adresse_siege: string
+  }
+  const passages = ((passagesRaw ?? []) as Record<string, unknown>[]).map(p => ({
+    id:            p.id as string,
+    heure_prevue:  p.heure_prevue as string,
+    motif:         p.motif as string,
+    statut:        p.statut as string,
+    adresse_siege: adresseSiege,
+  }))
+
   const { data: alertes } = await supabase
     .from('alertes')
     .select('id')
@@ -89,6 +120,21 @@ export default async function AgentDashboard({ searchParams }: Props) {
   const enCours    = interventions?.filter(i => i.statut === 'en_cours')   ?? []
   const planifiees = interventions?.filter(i => i.statut === 'planifiee')   ?? []
   const terminees  = interventions?.filter(i => i.statut === 'terminee')    ?? []
+
+  type Item = { kind: 'intervention'; data: InterventionJoined } | { kind: 'passage'; data: PassageSiege }
+  const byHeure = (a: Item, b: Item) => {
+    const ha = a.kind === 'intervention' ? (a.data.heure_debut_prevue ?? '23:59') : a.data.heure_prevue
+    const hb = b.kind === 'intervention' ? (b.data.heure_debut_prevue ?? '23:59') : b.data.heure_prevue
+    return ha.localeCompare(hb)
+  }
+  const todayItems: Item[] = [
+    ...(interventions?.filter(i => i.statut !== 'en_cours') ?? []).map(data => ({ kind: 'intervention' as const, data })),
+    ...passages.map(data => ({ kind: 'passage' as const, data })),
+  ].sort(byHeure)
+  const futurItems: Item[] = [
+    ...(interventions ?? []).map(data => ({ kind: 'intervention' as const, data })),
+    ...passages.map(data => ({ kind: 'passage' as const, data })),
+  ].sort(byHeure)
 
   const prenom = profile?.prenom ?? 'Agent'
   const h = parseInt(new Date().toLocaleString('fr-FR', { timeZone: 'Europe/Paris', hour: 'numeric', hour12: false }), 10)
@@ -253,7 +299,7 @@ export default async function AgentDashboard({ searchParams }: Props) {
             {labelJour}
           </h2>
 
-          {!interventions?.length ? (
+          {!interventions?.length && passages.length === 0 ? (
             <div className="bg-white rounded-2xl p-8 text-center border border-slate-100">
               <p className="text-4xl mb-3">{isToday ? '🎉' : '📅'}</p>
               <p className="font-semibold text-slate-700">
@@ -266,10 +312,63 @@ export default async function AgentDashboard({ searchParams }: Props) {
           ) : isToday ? (
             /* ── Mode aujourd'hui : vue complète avec statuts ── */
             <div className="space-y-3">
-              {interventions.filter(i => i.statut !== 'en_cours').map(inter => (
-                <div key={inter.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                  <Link href={`/agent/intervention/${inter.id}`}>
-                    <div className="p-4 flex items-center gap-4 active:bg-slate-50 transition-colors">
+              {todayItems.map(item =>
+                item.kind === 'passage' ? (
+                  <PassageCarte key={item.data.id} passage={item.data} />
+                ) : (
+                  <div key={item.data.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                    <Link href={`/agent/intervention/${item.data.id}`}>
+                      <div className="p-4 flex items-center gap-4 active:bg-slate-50 transition-colors">
+                        <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+                          style={{ background: '#EFF6FF' }}>
+                          <svg className="w-6 h-6 text-[#1A5FA8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round"
+                              d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21"/>
+                          </svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-slate-800 truncate">{item.data.residences?.nom}</p>
+                          {item.data.contrats_residences?.libelle && (
+                            <p className="text-xs font-semibold truncate" style={{ color: '#0BBFBF' }}>{item.data.contrats_residences.libelle}</p>
+                          )}
+                          <p className="text-sm text-slate-500 truncate">{item.data.residences?.adresse}</p>
+                          {item.data.heure_debut_prevue && (
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              {item.data.heure_debut_prevue.slice(0,5)}
+                              {item.data.heure_fin_prevue ? ` → ${item.data.heure_fin_prevue.slice(0,5)}` : ''}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end gap-2 shrink-0">
+                          <StatutBadge statut={item.data.statut} />
+                          <svg className="w-4 h-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
+                          </svg>
+                        </div>
+                      </div>
+                    </Link>
+                    {item.data.residences && (
+                      <div className="px-4 pb-4 pt-0">
+                        <a href={wazeUrl(item.data.residences)} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center justify-center gap-2 w-full h-11 rounded-xl font-semibold text-sm text-white active:opacity-80 transition-opacity"
+                          style={{ background: 'linear-gradient(135deg,#0BBFBF,#0A8F8F)' }}>
+                          🧭 Itinéraire Waze
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                )
+              )}
+            </div>
+          ) : (
+            /* ── Mode futur : aperçu léger, lecture seule ── */
+            <div className="space-y-3">
+              {futurItems.map(item =>
+                item.kind === 'passage' ? (
+                  <PassageCarte key={item.data.id} passage={item.data} />
+                ) : (
+                  <div key={item.data.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                    <div className="p-4 flex items-center gap-4">
                       <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
                         style={{ background: '#EFF6FF' }}>
                         <svg className="w-6 h-6 text-[#1A5FA8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -278,78 +377,31 @@ export default async function AgentDashboard({ searchParams }: Props) {
                         </svg>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-slate-800 truncate">{inter.residences?.nom}</p>
-                        {inter.contrats_residences?.libelle && (
-                          <p className="text-xs font-semibold truncate" style={{ color: '#0BBFBF' }}>{inter.contrats_residences.libelle}</p>
+                        <p className="font-semibold text-slate-800 truncate">{item.data.residences?.nom}</p>
+                        {item.data.contrats_residences?.libelle && (
+                          <p className="text-xs font-semibold truncate" style={{ color: '#0BBFBF' }}>{item.data.contrats_residences.libelle}</p>
                         )}
-                        <p className="text-sm text-slate-500 truncate">{inter.residences?.adresse}</p>
-                        {inter.heure_debut_prevue && (
-                          <p className="text-xs text-slate-400 mt-0.5">
-                            {inter.heure_debut_prevue.slice(0,5)}
-                            {inter.heure_fin_prevue ? ` → ${inter.heure_fin_prevue.slice(0,5)}` : ''}
+                        <p className="text-sm text-slate-500 truncate">{item.data.residences?.adresse}</p>
+                        {item.data.heure_debut_prevue && (
+                          <p className="text-sm font-semibold mt-1" style={{ color: '#0BBFBF' }}>
+                            {item.data.heure_debut_prevue.slice(0,5)}
+                            {item.data.heure_fin_prevue ? ` → ${item.data.heure_fin_prevue.slice(0,5)}` : ''}
                           </p>
                         )}
                       </div>
-                      <div className="flex flex-col items-end gap-2 shrink-0">
-                        <StatutBadge statut={inter.statut} />
-                        <svg className="w-4 h-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
-                        </svg>
+                    </div>
+                    {item.data.residences && (
+                      <div className="px-4 pb-4 pt-0">
+                        <a href={wazeUrl(item.data.residences)} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center justify-center gap-2 w-full h-11 rounded-xl font-semibold text-sm text-white active:opacity-80 transition-opacity"
+                          style={{ background: 'linear-gradient(135deg,#0BBFBF,#0A8F8F)' }}>
+                          🧭 Itinéraire Waze
+                        </a>
                       </div>
-                    </div>
-                  </Link>
-                  {/* Bouton Waze */}
-                  {inter.residences && (
-                    <div className="px-4 pb-4 pt-0">
-                      <a href={wazeUrl(inter.residences)} target="_blank" rel="noopener noreferrer"
-                        className="flex items-center justify-center gap-2 w-full h-11 rounded-xl font-semibold text-sm text-white active:opacity-80 transition-opacity"
-                        style={{ background: 'linear-gradient(135deg,#0BBFBF,#0A8F8F)' }}>
-                        🧭 Itinéraire Waze
-                      </a>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            /* ── Mode futur : aperçu léger, lecture seule ── */
-            <div className="space-y-3">
-              {interventions.map(inter => (
-                <div key={inter.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                  <div className="p-4 flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
-                      style={{ background: '#EFF6FF' }}>
-                      <svg className="w-6 h-6 text-[#1A5FA8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round"
-                          d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21"/>
-                      </svg>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-slate-800 truncate">{inter.residences?.nom}</p>
-                      {inter.contrats_residences?.libelle && (
-                        <p className="text-xs font-semibold truncate" style={{ color: '#0BBFBF' }}>{inter.contrats_residences.libelle}</p>
-                      )}
-                      <p className="text-sm text-slate-500 truncate">{inter.residences?.adresse}</p>
-                      {inter.heure_debut_prevue && (
-                        <p className="text-sm font-semibold mt-1" style={{ color: '#0BBFBF' }}>
-                          {inter.heure_debut_prevue.slice(0,5)}
-                          {inter.heure_fin_prevue ? ` → ${inter.heure_fin_prevue.slice(0,5)}` : ''}
-                        </p>
-                      )}
-                    </div>
+                    )}
                   </div>
-                  {/* Bouton Waze */}
-                  {inter.residences && (
-                    <div className="px-4 pb-4 pt-0">
-                      <a href={wazeUrl(inter.residences)} target="_blank" rel="noopener noreferrer"
-                        className="flex items-center justify-center gap-2 w-full h-11 rounded-xl font-semibold text-sm text-white active:opacity-80 transition-opacity"
-                        style={{ background: 'linear-gradient(135deg,#0BBFBF,#0A8F8F)' }}>
-                        🧭 Itinéraire Waze
-                      </a>
-                    </div>
-                  )}
-                </div>
-              ))}
+                )
+              )}
             </div>
           )}
         </div>

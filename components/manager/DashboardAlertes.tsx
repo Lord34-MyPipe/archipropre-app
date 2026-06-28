@@ -173,14 +173,6 @@ export default function DashboardAlertes({ scanManquants, rapportsEnRetard, aler
               </div>
             ))}
 
-            {/* Placeholder commandes produits */}
-            <div className="flex items-center gap-3 px-4 py-3 opacity-50">
-              <span className="text-lg shrink-0">📦</span>
-              <div>
-                <p className="text-sm font-medium text-slate-500">Commandes produits</p>
-                <p className="text-xs text-slate-400">Fonctionnalité à venir (P2-2)</p>
-              </div>
-            </div>
 
           </div>
         </div>

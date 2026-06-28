@@ -4,6 +4,7 @@ import type { Alerte } from '@/lib/types'
 import DashboardKPIs    from '@/components/manager/DashboardKPIs'
 import DashboardAlertes from '@/components/manager/DashboardAlertes'
 import DashboardEquipe  from '@/components/manager/DashboardEquipe'
+import CommandesBloc    from './CommandesBloc'
 
 export const dynamic = 'force-dynamic'
 
@@ -172,6 +173,7 @@ export default async function ManagerDashboard() {
           />
           <DashboardEquipe agents={statutParAgentFiltre} />
         </div>
+        <CommandesBloc />
       </div>
     </div>
   )

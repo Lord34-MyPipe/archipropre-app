@@ -39,6 +39,7 @@ export async function GET() {
         quantite,
         localisation,
         photo_avant_path,
+        photo_apres_path,
         produits(nom)
       )
     `)

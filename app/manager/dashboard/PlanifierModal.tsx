@@ -18,6 +18,7 @@ interface Commande {
 
 interface Props {
   commande: Commande
+  estLivraisonManagerDefaut?: boolean
   onClose: () => void
   onSaved: () => void
 }
@@ -28,12 +29,12 @@ function nomResidence(c: Commande): string {
   return obj?.nom ?? '—'
 }
 
-export default function PlanifierModal({ commande, onClose, onSaved }: Props) {
+export default function PlanifierModal({ commande, estLivraisonManagerDefaut = false, onClose, onSaved }: Props) {
   const todayStr = new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' })
   const [date, setDate]                         = useState(todayStr)
   const [heure, setHeure]                       = useState('08:00')
   const [motif, setMotif]                       = useState('Récupération commande produits')
-  const [estLivraisonManager, setEstLivraison]  = useState(false)
+  const [estLivraisonManager, setEstLivraison]  = useState(estLivraisonManagerDefaut)
   const [suggesting, setSuggesting]             = useState(false)
   const [saving, setSaving]                     = useState(false)
   const [suggestionMsg, setSuggestionMsg]       = useState<string | null>(null)

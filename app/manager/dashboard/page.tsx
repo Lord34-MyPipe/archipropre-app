@@ -165,15 +165,17 @@ export default async function ManagerDashboard() {
       <div className="px-4 py-6 md:px-8 pb-24 md:pb-6 space-y-4">
         <DashboardKPIs kpis={kpis} />
         <div className="md:grid md:grid-cols-[3fr_2fr] md:gap-6 space-y-4 md:space-y-0">
-          <DashboardAlertes
-            scanManquants={scanManquants}
-            rapportsEnRetard={rapportsEnRetard}
-            alertes={alertes}
-            kpis={kpis}
-          />
+          <div className="space-y-4">
+            <DashboardAlertes
+              scanManquants={scanManquants}
+              rapportsEnRetard={rapportsEnRetard}
+              alertes={alertes}
+              kpis={kpis}
+            />
+            <CommandesBloc managerNom={`${manager?.prenom ?? ''} ${manager?.nom ?? ''}`.trim()} />
+          </div>
           <DashboardEquipe agents={statutParAgentFiltre} />
         </div>
-        <CommandesBloc />
       </div>
     </div>
   )

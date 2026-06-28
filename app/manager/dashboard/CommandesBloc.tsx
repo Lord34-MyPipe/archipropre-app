@@ -2,16 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import PlanifierModal from './PlanifierModal'
-
-interface LigneCommande {
-  id: string
-  type_ligne: string
-  produit_id: string | null
-  quantite: number
-  localisation: string | null
-  photo_avant_path: string | null
-  produits: { nom: string } | null
-}
+import CommandeDetailDrawer from './CommandeDetailDrawer'
+import type { LigneCommande } from './CommandeDetailDrawer'
 
 interface Commande {
   id: string
@@ -22,7 +14,10 @@ interface Commande {
   contrat_id: string | null
   residences: { nom: string } | { nom: string }[] | null
   contrats_residences: { libelle: string } | { libelle: string }[] | null
-  profiles: { prenom: string; nom: string; mode_deplacement: string } | { prenom: string; nom: string; mode_deplacement: string }[] | null
+  profiles:
+    | { prenom: string; nom: string; mode_deplacement: string }
+    | { prenom: string; nom: string; mode_deplacement: string }[]
+    | null
   lignes_commande: LigneCommande[]
 }
 
@@ -31,15 +26,26 @@ function getResidence(c: Commande): { nom: string } | null {
   return Array.isArray(r) ? (r[0] ?? null) : r
 }
 
-function getAgent(c: Commande): { prenom: string; nom: string } | null {
+function getAgent(c: Commande): { prenom: string; nom: string; mode_deplacement: string } | null {
   const p = c.profiles
   return Array.isArray(p) ? (p[0] ?? null) : p
 }
 
-export default function CommandesBloc() {
-  const [commandes, setCommandes]             = useState<Commande[]>([])
-  const [loading, setLoading]                 = useState(true)
-  const [planifier, setPlanifier]             = useState<Commande | null>(null)
+function dateRelative(isoStr: string): string {
+  const now  = new Date()
+  const date = new Date(isoStr)
+  const diffJ = Math.floor((now.getTime() - date.getTime()) / 86_400_000)
+  if (diffJ === 0) return "Aujourd'hui"
+  if (diffJ === 1) return 'Hier'
+  if (diffJ < 7)  return `Il y a ${diffJ} jours`
+  return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'Europe/Paris' })
+}
+
+export default function CommandesBloc({ managerNom }: { managerNom: string }) {
+  const [commandes, setCommandes] = useState<Commande[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [detail, setDetail]       = useState<Commande | null>(null)
+  const [planifier, setPlanifier] = useState<Commande | null>(null)
 
   async function charger() {
     try {
@@ -59,6 +65,10 @@ export default function CommandesBloc() {
     return () => clearInterval(timer)
   }, [])
 
+  function handleStatusChange(id: string, statut: string) {
+    setCommandes(prev => prev.map(c => c.id === id ? { ...c, statut } : c))
+  }
+
   if (loading || commandes.length === 0) return null
 
   return (
@@ -74,8 +84,11 @@ export default function CommandesBloc() {
           {commandes.map(cmd => {
             const residence = getResidence(cmd)
             const agent     = getAgent(cmd)
+            const sanVoiture = agent?.mode_deplacement !== 'voiture'
+            const isEnAttente = cmd.statut === 'en_attente'
+
             return (
-              <div key={cmd.id} className="px-4 py-3">
+              <div key={cmd.id} className="px-4 py-3 space-y-2">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-slate-800 truncate">
@@ -88,36 +101,67 @@ export default function CommandesBloc() {
                     )}
                     <p className="text-xs text-slate-400 mt-0.5">
                       {cmd.lignes_commande.length} article{cmd.lignes_commande.length > 1 ? 's' : ''}
+                      {' · '}
+                      {dateRelative(cmd.created_at)}
                     </p>
                   </div>
-                  <div className="flex flex-col items-end gap-2 shrink-0">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                      cmd.statut === 'commande'
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'bg-amber-50 text-amber-700'
-                    }`}>
-                      {cmd.statut === 'commande' ? 'Planifiée' : 'En attente'}
-                    </span>
-                    {cmd.statut === 'en_attente' && (
-                      <button
-                        onClick={() => setPlanifier(cmd)}
-                        className="text-xs font-semibold px-3 py-1.5 rounded-xl text-white active:opacity-80 transition-opacity"
-                        style={{ background: 'linear-gradient(135deg,#0BBFBF,#1A5FA8)' }}
-                      >
-                        Planifier →
-                      </button>
+                  <div className="shrink-0">
+                    {!isEnAttente && (
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
+                        Commande prête
+                      </span>
                     )}
                   </div>
                 </div>
+
+                {/* Boutons */}
+                {isEnAttente ? (
+                  <button
+                    onClick={() => setDetail(cmd)}
+                    className="w-full h-9 rounded-xl text-white font-semibold text-xs active:opacity-80 transition-opacity"
+                    style={{ background: 'linear-gradient(135deg,#0BBFBF,#1A5FA8)' }}
+                  >
+                    Voir la commande →
+                  </button>
+                ) : (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setPlanifier(cmd)}
+                      className="flex-1 h-9 rounded-xl text-white font-semibold text-xs active:opacity-80 transition-opacity"
+                      style={{ background: 'linear-gradient(135deg,#0BBFBF,#1A5FA8)' }}
+                    >
+                      Planifier un retrait →
+                    </button>
+                    {sanVoiture && (
+                      <button
+                        onClick={() => setPlanifier({ ...cmd, _livraison: true } as unknown as Commande)}
+                        className="flex-1 h-9 rounded-xl text-xs font-semibold border border-slate-200 text-slate-600 active:bg-slate-50 transition-colors"
+                      >
+                        Je livre moi-même
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )
           })}
         </div>
       </div>
 
+      {/* Drawer détail */}
+      <CommandeDetailDrawer
+        open={detail !== null}
+        onClose={() => setDetail(null)}
+        commande={detail}
+        managerNom={managerNom}
+        onStatusChange={handleStatusChange}
+      />
+
+      {/* Modal planifier */}
       {planifier && (
         <PlanifierModal
           commande={planifier}
+          estLivraisonManagerDefaut={(planifier as unknown as Record<string, unknown>)._livraison === true}
           onClose={() => setPlanifier(null)}
           onSaved={() => { setPlanifier(null); charger() }}
         />

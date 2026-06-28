@@ -213,7 +213,7 @@ export default function InterventionPage() {
       disponible_apres_fin: disponible,
     }).eq('id', params.id)
     setFinalizing(false)
-    router.push(`/agent/rapport/${params.id}`)
+    router.push(`/agent/intervention/${params.id}/controle-final`)
   }
 
   // ── Calculs dérivés ───────────────────────────────────────────────────────────

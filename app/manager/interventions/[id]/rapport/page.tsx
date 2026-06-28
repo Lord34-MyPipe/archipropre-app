@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import ValiderRapportButton from '@/components/manager/ValiderRapportButton'
+import CommandeStatutButtons from '@/components/manager/CommandeStatutButtons'
 
 interface ZoneIntervention {
   id: string
@@ -55,6 +56,28 @@ interface ComparatifZone {
   ecartZone: number | null
 }
 
+interface PhotoChariot {
+  id: string
+  storage_path: string
+}
+
+interface LigneCommande {
+  id: string
+  type_ligne: 'produit' | 'ampoule'
+  quantite: number
+  localisation: string | null
+  photo_avant_path: string | null
+  photo_apres_path: string | null
+  produits: { nom: string }[] | { nom: string } | null
+}
+
+interface CommandeProduits {
+  id: string
+  statut: string
+  created_at: string
+  lignes_commande: LigneCommande[]
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmt(ts: string | null, opts: Intl.DateTimeFormatOptions) {
@@ -101,6 +124,8 @@ export default async function ManagerRapportPage({ params }: { params: Promise<{
     { data: photos },
     { data: tachesEstimRaw },
     { data: tachesZoneRaw },
+    { data: photosChariotRaw },
+    { data: commandesRaw },
   ] = await Promise.all([
     supabase
       .from('interventions')
@@ -132,6 +157,16 @@ export default async function ManagerRapportPage({ params }: { params: Promise<{
       .from('taches_intervention')
       .select('tache_template_id, taches_template(duree_minutes, zone_id, zones_residence(nom))')
       .eq('intervention_id', id),
+    supabase
+      .from('photos_chariot')
+      .select('id, storage_path')
+      .eq('intervention_id', id)
+      .order('created_at'),
+    supabase
+      .from('commandes_produits')
+      .select('id, statut, created_at, lignes_commande(id, type_ligne, quantite, localisation, photo_avant_path, photo_apres_path, produits(nom))')
+      .eq('intervention_id', id)
+      .order('created_at'),
   ])
 
   if (!inter) redirect('/manager/planning')
@@ -158,6 +193,41 @@ export default async function ManagerRapportPage({ params }: { params: Promise<{
         .from('photos-interventions')
         .createSignedUrl(p.photo_url, 3600)
       return { ...p, signedUrl: data?.signedUrl ?? null }
+    })
+  )
+
+  // Signed URLs photos chariot
+  const photosChariot = await Promise.all(
+    (photosChariotRaw ?? []).map(async (p: PhotoChariot) => {
+      const { data } = await supabase.storage
+        .from('photos-chariot')
+        .createSignedUrl(p.storage_path, 3600)
+      return { ...p, signedUrl: data?.signedUrl ?? null }
+    })
+  )
+
+  // Signed URLs photos ampoules (avant/après dans lignes_commande)
+  const commandes = (commandesRaw ?? []) as unknown as CommandeProduits[]
+  const commandesAvecUrls = await Promise.all(
+    commandes.map(async cmd => {
+      const lignesAvecUrls = await Promise.all(
+        (cmd.lignes_commande ?? []).map(async (l: LigneCommande) => {
+          const [signedAvant, signedApres] = await Promise.all([
+            l.photo_avant_path
+              ? supabase.storage.from('photos-ampoules').createSignedUrl(l.photo_avant_path, 3600)
+              : Promise.resolve({ data: null }),
+            l.photo_apres_path
+              ? supabase.storage.from('photos-ampoules').createSignedUrl(l.photo_apres_path, 3600)
+              : Promise.resolve({ data: null }),
+          ])
+          return {
+            ...l,
+            signedUrlAvant: signedAvant.data?.signedUrl ?? null,
+            signedUrlApres: signedApres.data?.signedUrl ?? null,
+          }
+        })
+      )
+      return { ...cmd, lignes_commande: lignesAvecUrls }
     })
   )
 
@@ -562,6 +632,96 @@ export default async function ManagerRapportPage({ params }: { params: Promise<{
             </div>
           </div>
         )}
+        {/* Section Chariot */}
+        {photosChariot.length > 0 && (
+          <div className="bg-white rounded-2xl border border-slate-100 p-6">
+            <h2 className="font-semibold text-slate-800 mb-4">🛒 Photo du chariot</h2>
+            <div className="grid grid-cols-4 gap-3">
+              {photosChariot.map(p => (
+                p.signedUrl ? (
+                  <a key={p.id} href={p.signedUrl} target="_blank" rel="noopener noreferrer"
+                    className="block aspect-square rounded-xl overflow-hidden border border-slate-100 hover:opacity-90 transition-opacity">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.signedUrl} alt="Chariot" className="w-full h-full object-cover"/>
+                  </a>
+                ) : (
+                  <div key={p.id} className="aspect-square rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 text-xs">
+                    Indisponible
+                  </div>
+                )
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Section Commandes produits */}
+        {commandesAvecUrls.length > 0 && (
+          <div className="bg-white rounded-2xl border border-slate-100 p-6">
+            <h2 className="font-semibold text-slate-800 mb-4">📦 Commande produits</h2>
+            {commandesAvecUrls.map(cmd => (
+              <div key={cmd.id}>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs text-slate-400">
+                    Soumise le {new Date(cmd.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                    cmd.statut === 'livre'    ? 'bg-green-100 text-green-700' :
+                    cmd.statut === 'commande' ? 'bg-blue-100 text-blue-700'  :
+                                               'bg-amber-100 text-amber-700'
+                  }`}>
+                    {cmd.statut === 'livre' ? 'Livré' : cmd.statut === 'commande' ? 'Commandé' : 'En attente'}
+                  </span>
+                </div>
+
+                <div className="space-y-3 mb-4">
+                  {(cmd.lignes_commande as (LigneCommande & { signedUrlAvant: string | null; signedUrlApres: string | null })[])
+                    .map(l => {
+                      const produitNomRaw = (l as unknown as Record<string, unknown>).produits
+                      const produitNom = produitNomRaw && typeof produitNomRaw === 'object'
+                        ? (Array.isArray(produitNomRaw) ? (produitNomRaw[0] as { nom: string } | undefined)?.nom : (produitNomRaw as { nom: string }).nom) ?? null
+                        : null
+                      return (
+                        <div key={l.id} className="flex items-start gap-3 py-2 border-b border-slate-50 last:border-0">
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-slate-700">
+                              {l.type_ligne === 'ampoule' ? '💡 Ampoule' : produitNom ?? '—'}
+                            </p>
+                            {l.localisation && (
+                              <p className="text-xs text-slate-400 mt-0.5">{l.localisation}</p>
+                            )}
+                            {l.type_ligne === 'produit' && l.quantite > 1 && (
+                              <p className="text-xs text-slate-400">×{l.quantite}</p>
+                            )}
+                          </div>
+                          {/* Photos ampoule */}
+                          {(l.signedUrlAvant || l.signedUrlApres) && (
+                            <div className="flex gap-2">
+                              {l.signedUrlAvant && (
+                                <a href={l.signedUrlAvant} target="_blank" rel="noopener noreferrer">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={l.signedUrlAvant} alt="avant" className="w-16 h-16 object-cover rounded-lg border border-slate-100"/>
+                                </a>
+                              )}
+                              {l.signedUrlApres && (
+                                <a href={l.signedUrlApres} target="_blank" rel="noopener noreferrer">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={l.signedUrlApres} alt="après" className="w-16 h-16 object-cover rounded-lg border border-slate-100"/>
+                                </a>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                </div>
+
+                {/* Boutons statut */}
+                <CommandeStatutButtons commandeId={cmd.id} statutActuel={cmd.statut} />
+              </div>
+            ))}
+          </div>
+        )}
+
       </div>
 
       {/* Footer action */}

@@ -142,6 +142,7 @@ export default function ControleFinaPage() {
     setSubmitting(true)
     setError(null)
 
+    // 1. Envoyer la commande produits si des lignes ont été sélectionnées
     if (lignes.length > 0) {
       const body = {
         lignes: lignes.map(l => ({
@@ -166,8 +167,15 @@ export default function ControleFinaPage() {
       }
     }
 
-    // Rediriger vers planning agent
-    router.push('/agent/planning')
+    // 2. Envoyer le rapport au manager (alerte rapport_soumis)
+    await fetch(`/api/interventions/${params.id}/rapport`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ commentaire: '' }),
+    })
+
+    // 3. Retour au tableau de bord
+    router.push('/agent/dashboard')
   }
 
   const nbSignalements = lignes.length

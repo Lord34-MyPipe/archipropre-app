@@ -235,6 +235,7 @@ export default function InterventionPage() {
 
   const zonesCompletes      = zones.filter(z => zoneComplete(z)).length
   const toutesZonesComplete = zones.length > 0 && zonesCompletes === zones.length
+  const peutFinaliser       = zones.length > 0 && zonesCompletes >= 1
   const totalTaches         = taches.length
   const nbTraitees          = taches.filter(t => estTraitee(t)).length
   const progres             = totalTaches > 0 ? Math.round((nbTraitees / totalTaches) * 100) : 0
@@ -576,7 +577,7 @@ export default function InterventionPage() {
       </div>
 
       {/* Bouton valider rapport */}
-      {toutesZonesComplete && !finalizing && (
+      {peutFinaliser && !finalizing && (
         <div className="fixed bottom-20 left-0 right-0 max-w-lg mx-auto px-5 z-20">
           <button
             onClick={() => setConfirming(true)}

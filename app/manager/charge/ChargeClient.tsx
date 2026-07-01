@@ -93,7 +93,7 @@ export default function ChargeClient({ agents }: Props) {
 
         {/* Cartes stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatCard label="Agents" value={String(stats.n)} color="#0A2E5A" />
+          <StatCard label="Agents actifs" value={String(stats.n)} color="#0A2E5A" />
           <StatCard
             label="Remplissage moyen"
             value={`${stats.moyRemplissage}%`}

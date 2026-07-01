@@ -323,45 +323,30 @@ export default function ResidenceCard({ residence: initial }: Props) {
           {/* Ligne 1 : Opérationnel */}
           <div className="grid grid-cols-3 gap-1.5">
             {/* Planning */}
-            {planningActif ? (
+            {planningActif && (
               <Link href={`/manager/residences/${initial.id}/planning`}
                 className={`${opBtnBase} border-slate-200/70 bg-slate-50 text-[#185FA5] hover:bg-blue-50`}>
                 <IcoCalendar/>
                 <span className="text-[10px] font-medium">Planning</span>
               </Link>
-            ) : (
-              <div className={disabledCls}>
-                <IcoCalendar/>
-                <span className="text-[10px] font-medium">Planning</span>
-              </div>
             )}
 
             {/* Intervention */}
-            {interventionActive ? (
+            {interventionActive && (
               <button onClick={() => setShowPlanifierModal(true)}
                 className={`${opBtnBase} border-slate-200/70 bg-slate-50 text-[#185FA5] hover:bg-blue-50`}>
                 <IcoPlusCircle/>
                 <span className="text-[10px] font-medium">Intervention</span>
               </button>
-            ) : (
-              <div className={disabledCls}>
-                <IcoPlusCircle/>
-                <span className="text-[10px] font-medium">Intervention</span>
-              </div>
             )}
 
             {/* Rapports */}
-            {rapportsActif ? (
+            {rapportsActif && (
               <Link href={`/manager/residences/${initial.id}/rapports`}
                 className={`${opBtnBase} border-slate-200/70 bg-slate-50 text-[#0F6E56] hover:bg-emerald-50`}>
                 <IcoClipboard/>
                 <span className="text-[10px] font-medium">Rapports</span>
               </Link>
-            ) : (
-              <div className={disabledCls}>
-                <IcoClipboard/>
-                <span className="text-[10px] font-medium">Rapports</span>
-              </div>
             )}
           </div>
 

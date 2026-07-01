@@ -275,21 +275,21 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
             <span className="text-sm font-semibold text-slate-700">Rentabilité</span>
           </button>
 
-          <button
-            onClick={async () => {
-              const actifs = contrats.filter(c => c.actif && c.qr_code_token)
-              if (actifs.length === 0) return
-              const { downloadQRAllContratsPDF } = await import('@/lib/qr-pdf')
-              downloadQRAllContratsPDF(r.nom, actifs, window.location.origin)
-            }}
-            disabled={contratsLoading || contrats.filter(c => c.actif && c.qr_code_token).length === 0}
-            className="bg-white rounded-xl p-5 flex flex-col items-center gap-2 shadow-sm hover:shadow-md hover:bg-slate-50 transition-all border border-slate-100 text-center disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <span className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600">
-              <IcoQr />
-            </span>
-            <span className="text-sm font-semibold text-slate-700">QR Codes</span>
-          </button>
+          {!contratsLoading && contrats.filter(c => c.actif && c.qr_code_token).length > 0 && (
+            <button
+              onClick={async () => {
+                const actifs = contrats.filter(c => c.actif && c.qr_code_token)
+                const { downloadQRAllContratsPDF } = await import('@/lib/qr-pdf')
+                downloadQRAllContratsPDF(r.nom, actifs, window.location.origin)
+              }}
+              className="bg-white rounded-xl p-5 flex flex-col items-center gap-2 shadow-sm hover:shadow-md hover:bg-slate-50 transition-all border border-slate-100 text-center"
+            >
+              <span className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-600">
+                <IcoQr />
+              </span>
+              <span className="text-sm font-semibold text-slate-700">QR Codes</span>
+            </button>
+          )}
         </div>
 
         {/* ── Cartes contrats ── */}

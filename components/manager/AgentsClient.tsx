@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import type { Profile } from '@/lib/types'
-import { Car, Users } from 'lucide-react'
+import { Car, Users, MoreHorizontal, MapPin } from 'lucide-react'
 import AgentFormModal from './AgentFormModal'
 import AgentAbsenceDrawer from './AgentAbsenceDrawer'
 import { useRouter } from 'next/navigation'
@@ -151,6 +151,7 @@ export default function AgentsClient({ agents: initial }: Props) {
   const [loading, setLoading]             = useState<string | null>(null)
   const [absenceDrawerAgent, setAbsenceDrawerAgent] = useState<Profile | null>(null)
   const [geoState, setGeoState]           = useState<GeoState>({ status: 'idle' })
+  const [menuOpen, setMenuOpen]           = useState(false)
 
   void setAgents // évite unused-var si jamais le refresh ne touche pas le state local
 
@@ -277,32 +278,7 @@ export default function AgentsClient({ agents: initial }: Props) {
             />
           </div>
 
-          {/* Géocodage */}
-          {agentsAGeocoder.length > 0 && geoState.status !== 'done' && (
-            <button
-              onClick={lancerGeocodage}
-              disabled={geoState.status === 'running'}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
-            >
-              {geoState.status === 'running' ? (
-                <>
-                  <svg className="w-4 h-4 animate-spin text-[#0BBFBF]" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-                  </svg>
-                  {geoState.done}/{geoState.total} adresses…
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"/>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/>
-                  </svg>
-                  Géocoder ({agentsAGeocoder.length})
-                </>
-              )}
-            </button>
-          )}
+          {/* Résultat géocodage */}
           {geoState.status === 'done' && (
             <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm bg-green-50 border border-green-200 text-green-700">
               <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -310,6 +286,44 @@ export default function AgentsClient({ agents: initial }: Props) {
               </svg>
               {geoState.success} géocodée{geoState.success > 1 ? 's' : ''}
               {geoState.errors > 0 && <span className="text-amber-600 ml-1">· {geoState.errors} échec{geoState.errors > 1 ? 's' : ''}</span>}
+            </div>
+          )}
+
+          {/* Menu ⋯ */}
+          {agentsAGeocoder.length > 0 && geoState.status !== 'done' && (
+            <div className="relative">
+              <button
+                onClick={() => setMenuOpen(o => !o)}
+                onBlur={() => setTimeout(() => setMenuOpen(false), 150)}
+                className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-500 transition-colors"
+                aria-label="Plus d'options"
+              >
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+              {menuOpen && (
+                <div className="absolute right-0 top-full mt-1 z-20 bg-white rounded-xl border border-slate-200 shadow-lg py-1 min-w-[220px]">
+                  <button
+                    onClick={() => { setMenuOpen(false); lancerGeocodage() }}
+                    disabled={geoState.status === 'running'}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 text-left"
+                  >
+                    {geoState.status === 'running' ? (
+                      <>
+                        <svg className="w-4 h-4 animate-spin text-[#0BBFBF] shrink-0" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                        </svg>
+                        {geoState.done}/{geoState.total} adresses…
+                      </>
+                    ) : (
+                      <>
+                        <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
+                        Géocoder ({agentsAGeocoder.length})
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

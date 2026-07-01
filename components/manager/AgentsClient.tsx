@@ -91,18 +91,22 @@ function AgentCard({
       <p className="px-4 mt-2 text-[11px] text-slate-400 truncate">{agent.email}</p>
 
       {/* ── Stats ── */}
-      <div className="px-4 mt-3 grid grid-cols-3 gap-2">
-        {[
-          { label: "Auj.", value: agent.stats.total },
-          { label: 'Term.', value: agent.stats.terminees },
-          { label: 'Taux',  value: taux !== null ? `${taux}%` : '—' },
-        ].map(s => (
-          <div key={s.label} className="text-center bg-slate-50 rounded-lg py-1.5">
-            <p className="text-sm font-bold text-[#1A5FA8]">{s.value}</p>
-            <p className="text-[9px] text-slate-400 mt-px">{s.label}</p>
-          </div>
-        ))}
-      </div>
+      {agent.stats.total === 0 ? (
+        <p className="px-4 mt-3 text-[11px] text-slate-400 italic">Aucune intervention aujourd'hui</p>
+      ) : (
+        <div className="px-4 mt-3 grid grid-cols-3 gap-2">
+          {[
+            { label: "Auj.", value: agent.stats.total },
+            { label: 'Term.', value: agent.stats.terminees },
+            { label: 'Taux',  value: taux !== null ? `${taux}%` : '—' },
+          ].map(s => (
+            <div key={s.label} className="text-center bg-slate-50 rounded-lg py-1.5">
+              <p className="text-sm font-bold text-[#1A5FA8]">{s.value}</p>
+              <p className="text-[9px] text-slate-400 mt-px">{s.label}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Actions ── */}
       <div className="px-4 py-4 mt-auto flex gap-2">
@@ -193,6 +197,7 @@ export default function AgentsClient({ agents: initial }: Props) {
 
   async function toggleActif(agent: Profile) {
     if (agent.actif) { setConfirmDeactivate(agent); return }
+    if (!window.confirm(`Réactiver ${agent.prenom} ${agent.nom} ?`)) return
     setLoading(agent.id)
     await fetch('/api/agents', {
       method: 'PATCH',

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
+import { HardHat, ClipboardList, Building2, Zap, CheckCircle2, AlertTriangle } from 'lucide-react'
 
 export default async function DirecteurDashboard() {
   const supabase = await createClient()
@@ -51,13 +52,13 @@ export default async function DirecteurDashboard() {
           <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Société</h2>
           <div className="grid grid-cols-3 gap-4">
             {[
-              { label: 'Agents actifs',    n: totalAgents ?? 0,    icon: '👷', color: 'from-[#0A2E5A] to-[#1A5FA8]' },
-              { label: 'Managers',          n: totalManagers ?? 0,  icon: '📋', color: 'from-[#1A5FA8] to-[#0BBFBF]' },
-              { label: 'Résidences',        n: totalResidences ?? 0,icon: '🏢', color: 'from-[#0BBFBF] to-[#059669]' },
+              { label: 'Agents actifs',    n: totalAgents ?? 0,    icon: <HardHat className="w-8 h-8" />,       color: 'from-[#0A2E5A] to-[#1A5FA8]' },
+              { label: 'Managers',          n: totalManagers ?? 0,  icon: <ClipboardList className="w-8 h-8" />, color: 'from-[#1A5FA8] to-[#0BBFBF]' },
+              { label: 'Résidences',        n: totalResidences ?? 0,icon: <Building2 className="w-8 h-8" />,     color: 'from-[#0BBFBF] to-[#059669]' },
             ].map(k => (
               <div key={k.label}
                 className={`bg-gradient-to-br ${k.color} text-white rounded-2xl p-6`}>
-                <p className="text-3xl mb-2">{k.icon}</p>
+                <p className="mb-2 opacity-80">{k.icon}</p>
                 <p className="text-4xl font-bold">{k.n}</p>
                 <p className="text-white/70 text-sm mt-1">{k.label}</p>
               </div>
@@ -70,13 +71,13 @@ export default async function DirecteurDashboard() {
           <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Aujourd'hui</h2>
           <div className="grid grid-cols-4 gap-4">
             {[
-              { label: 'Interventions',  n: kpisJour.total,     bg: 'bg-white',        icon: '📋' },
-              { label: 'En cours',       n: kpisJour.enCours,   bg: 'bg-amber-50',     icon: '⚡' },
-              { label: 'Terminées',      n: kpisJour.terminees, bg: 'bg-green-50',     icon: '✅' },
-              { label: 'En retard',      n: kpisJour.retards,   bg: 'bg-red-50',       icon: '⚠️' },
+              { label: 'Interventions',  n: kpisJour.total,     bg: 'bg-white',        icon: <ClipboardList className="w-6 h-6 text-slate-400" /> },
+              { label: 'En cours',       n: kpisJour.enCours,   bg: 'bg-amber-50',     icon: <Zap className="w-6 h-6 text-amber-400" /> },
+              { label: 'Terminées',      n: kpisJour.terminees, bg: 'bg-green-50',     icon: <CheckCircle2 className="w-6 h-6 text-green-500" /> },
+              { label: 'En retard',      n: kpisJour.retards,   bg: 'bg-red-50',       icon: <AlertTriangle className="w-6 h-6 text-red-400" /> },
             ].map(k => (
               <div key={k.label} className={`${k.bg} rounded-2xl border border-slate-100 p-5`}>
-                <p className="text-2xl mb-2">{k.icon}</p>
+                <p className="mb-2">{k.icon}</p>
                 <p className="text-3xl font-bold text-slate-800">{k.n}</p>
                 <p className="text-slate-500 text-sm mt-1">{k.label}</p>
               </div>

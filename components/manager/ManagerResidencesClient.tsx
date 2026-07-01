@@ -6,6 +6,7 @@ import ResidenceCard from './ResidenceCard'
 import type { ResidenceMapItem } from '@/components/shared/ResidencesMap'
 import type { EtatResidenceInfo, ResidenceEtat } from './ResidenceCard'
 import { createClient } from '@/lib/supabase'
+import { Building2, Search } from 'lucide-react'
 
 const ResidencesMap = dynamic(
   () => import('@/components/shared/ResidencesMap'),
@@ -175,7 +176,7 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"/>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/>
                 </svg>
-                📍 Géocoder les adresses ({residencesAGeocoder.length})
+                Géocoder les adresses ({residencesAGeocoder.length})
               </>
             )}
           </button>
@@ -234,7 +235,7 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
                     onMouseDown={e => e.preventDefault()}
                     onClick={() => { setSearch(r.nom); setShowSug(false) }}
                     className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left">
-                    <span className="text-slate-300 text-sm">🏢</span>
+                    <Building2 className="w-4 h-4 text-slate-300" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-slate-800 truncate">{r.nom}</p>
                       <p className="text-xs text-slate-400 truncate">{r.adresse}</p>
@@ -303,7 +304,10 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
       {view === 'list' ? (
         filtered.length === 0 ? (
           <div className="bg-white rounded-2xl p-10 text-center text-slate-400 border border-slate-100">
-            <p className="text-4xl mb-3">{residences.length === 0 ? '🏢' : '🔍'}</p>
+            {residences.length === 0
+              ? <Building2 className="w-12 h-12 mb-3 text-slate-200 mx-auto" />
+              : <Search className="w-12 h-12 mb-3 text-slate-200 mx-auto" />
+            }
             <p className="font-medium text-slate-500">
               {residences.length === 0
                 ? 'Aucune résidence assignée à votre secteur.'

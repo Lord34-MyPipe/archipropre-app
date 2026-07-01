@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { MapPin } from 'lucide-react'
 
 interface Creneau {
   jours: string[]
@@ -30,8 +31,8 @@ const JOURS_LABELS: Record<string, string> = {
   jeudi: 'Jeu', vendredi: 'Ven', samedi: 'Sam', dimanche: 'Dim',
 }
 const VALID_TYPES = [
-  { value: 'parties_communes', label: '🏢 Parties communes' },
-  { value: 'containers',       label: '🗑️ Containers' },
+  { value: 'parties_communes', label: 'Parties communes' },
+  { value: 'containers',       label: 'Containers' },
   { value: 'espaces_verts',    label: '🌿 Espaces verts' },
 ]
 
@@ -229,7 +230,7 @@ export default function AjoutContratModal({ residenceId, onClose, onSuccess }: P
             <div className="bg-slate-50 rounded-xl px-4 py-3 text-sm text-slate-600 flex gap-4 flex-wrap">
               <span>⏱ <span className="font-semibold text-slate-800">{heuresMois}h</span>/mois</span>
               {heuresPassage !== null && (
-                <span>📍 <span className="font-semibold text-slate-800">{heuresPassage}h</span>/passage</span>
+                <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /><span className="font-semibold text-slate-800">{heuresPassage}h</span>/passage</span>
               )}
             </div>
           )}

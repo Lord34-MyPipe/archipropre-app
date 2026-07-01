@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import { Package, Lightbulb } from 'lucide-react'
 import ValiderRapportButton from '@/components/manager/ValiderRapportButton'
 import CommandeStatutButtons from '@/components/manager/CommandeStatutButtons'
 
@@ -657,7 +658,7 @@ export default async function ManagerRapportPage({ params }: { params: Promise<{
         {/* Section Commandes produits */}
         {commandesAvecUrls.length > 0 && (
           <div className="bg-white rounded-2xl border border-slate-100 p-6">
-            <h2 className="font-semibold text-slate-800 mb-4">📦 Commande produits</h2>
+            <h2 className="font-semibold text-slate-800 mb-4 flex items-center gap-2"><Package className="w-4 h-4 text-slate-500" /> Commande produits</h2>
             {commandesAvecUrls.map(cmd => (
               <div key={cmd.id}>
                 <div className="flex items-center justify-between mb-3">
@@ -684,7 +685,7 @@ export default async function ManagerRapportPage({ params }: { params: Promise<{
                         <div key={l.id} className="flex items-start gap-3 py-2 border-b border-slate-50 last:border-0">
                           <div className="flex-1">
                             <p className="text-sm font-medium text-slate-700">
-                              {l.type_ligne === 'ampoule' ? '💡 Ampoule' : produitNom ?? '—'}
+                              {l.type_ligne === 'ampoule' ? <span className="flex items-center gap-1"><Lightbulb className="w-3.5 h-3.5 text-amber-500" />Ampoule</span> : produitNom ?? '—'}
                             </p>
                             {l.localisation && (
                               <p className="text-xs text-slate-400 mt-0.5">{l.localisation}</p>

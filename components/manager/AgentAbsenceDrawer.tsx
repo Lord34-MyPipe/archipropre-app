@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase'
 import type { Profile, Absence, Conge, AbsenceType } from '@/lib/types'
+import { Bot, AlertTriangle } from 'lucide-react'
 
 /* ──────────────────────────────────────────────
    Types locaux
@@ -320,7 +321,7 @@ export default function AgentAbsenceDrawer({ agent, onClose }: Props) {
           {iaAlert && (
             <div className="mx-4 mt-4 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
               <div className="flex items-start gap-3">
-                <span className="text-2xl">🤖</span>
+                <Bot className="w-6 h-6 text-amber-600 shrink-0" />
                 <div className="flex-1">
                   <p className="font-semibold text-amber-800 text-sm">Arrêt maladie déclaré</p>
                   <p className="text-amber-700 text-xs mt-1">
@@ -515,7 +516,7 @@ export default function AgentAbsenceDrawer({ agent, onClose }: Props) {
                   <div className="space-y-2">
                     {affectees.map(i => (
                       <div key={i.id} className="flex items-center gap-3 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
-                        <span className="text-base">⚠️</span>
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-slate-800 truncate">
                             {i.residences?.nom ?? 'Résidence inconnue'}
@@ -570,7 +571,7 @@ export default function AgentAbsenceDrawer({ agent, onClose }: Props) {
                 }
               </select>
               {fType === 'maladie' && !isEditing && (
-                <p className="mt-1 text-xs text-amber-600">⚠️ Déclenchera le module de réorganisation planning</p>
+                <p className="mt-1 text-xs text-amber-600 flex items-center gap-1"><AlertTriangle className="w-3 h-3 shrink-0" /> Déclenchera le module de réorganisation planning</p>
               )}
             </div>
 

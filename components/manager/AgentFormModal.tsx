@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, KeyboardEvent } from 'react'
 import type { Profile } from '@/lib/types'
+import { Users, AlertTriangle } from 'lucide-react'
 
 const JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'] as const
 const JOURS_LABELS: Record<string, string> = {
@@ -15,9 +16,9 @@ function genPassword(): string {
 }
 
 const MODE_DEPLACEMENT_OPTIONS = [
-  { value: 'tramway', label: '🚊 Tramway uniquement' },
-  { value: 'voiture', label: '🚗 Voiture' },
-  { value: 'velo',    label: '🛵 Vélo / Scooter' },
+  { value: 'tramway', label: 'Tramway uniquement' },
+  { value: 'voiture', label: 'Voiture' },
+  { value: 'velo',    label: 'Vélo / Scooter' },
 ] as const
 
 interface FormState {
@@ -409,7 +410,7 @@ export default function AgentFormModal({ agent, agents = [], onClose, onSaved }:
           {isEdit && (
             <div className="border-t border-slate-100 pt-5">
               <h3 className="text-sm font-semibold text-slate-700 mb-4 flex items-center gap-2">
-                <span className="w-6 h-6 rounded-lg bg-[#0BBFBF]/10 flex items-center justify-center text-[#0BBFBF] text-xs">👥</span>
+                <span className="w-6 h-6 rounded-lg bg-[#0BBFBF]/10 flex items-center justify-center text-[#0BBFBF]"><Users className="w-3.5 h-3.5" /></span>
                 Binôme
               </h3>
 
@@ -443,7 +444,7 @@ export default function AgentFormModal({ agent, agents = [], onClose, onSaved }:
                       </div>
                     ) : (
                       <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs">
-                        <span className="shrink-0">⚠️</span>
+                        <AlertTriangle className="w-4 h-4 shrink-0" />
                         <span>
                           Incohérence : {agent?.prenom} travaille {hA}h/sem mais {binome.prenom} travaille {hB}h/sem.
                           En binôme indissociable, ils doivent avoir le même contrat horaire. Ajustez l&apos;un des deux contrats.

@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react'
 import type { Produit } from './page'
+import { Package } from 'lucide-react'
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -194,7 +195,7 @@ export default function CatalogueClient({ initialProduits }: { initialProduits: 
         <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
           {affichés.length === 0 ? (
             <div className="py-16 text-center text-slate-400">
-              <p className="text-4xl mb-3">📦</p>
+              <Package className="w-12 h-12 mb-3 text-slate-200 mx-auto" />
               <p className="text-sm">Aucun produit dans cette catégorie</p>
             </div>
           ) : (

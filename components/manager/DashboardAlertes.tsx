@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Bot } from 'lucide-react'
 import AlerteReorganisationButton from './AlerteReorganisationButton'
 import type { Alerte } from '@/lib/types'
 
@@ -109,7 +110,7 @@ export default function DashboardAlertes({ scanManquants, rapportsEnRetard, aler
             {/* Alertes ANA réorganisation */}
             {alertesANA.map(al => (
               <div key={al.id} className="flex items-start gap-3 px-4 py-3">
-                <span className="text-lg mt-0.5 shrink-0">🤖</span>
+                <Bot className="w-5 h-5 mt-0.5 shrink-0 text-amber-600" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-amber-800">Réorganisation requise</p>
                   <p className="text-xs text-amber-700 mt-0.5 line-clamp-2">{al.message}</p>

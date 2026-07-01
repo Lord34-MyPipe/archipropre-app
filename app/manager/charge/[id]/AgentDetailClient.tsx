@@ -1,10 +1,12 @@
 'use client'
 
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import type { AgentDetailData, AgentIntervention, CongeItem, AbsenceItem, JourneeRealisee } from './page'
 import JourneeAgentPanel from '@/components/manager/JourneeAgentPanel'
 import RapportRHModal from '@/components/manager/RapportRHModal'
+import { Car, TramFront, AlertTriangle } from 'lucide-react'
 
 // ── Constantes (identiques à ChargeClient) ────────────────────────────────────
 
@@ -13,10 +15,10 @@ const MODE_LABELS: Record<string, string> = {
   tramway: 'Tramway',
   velo:    'Vélo/Scooter',
 }
-const MODE_ICONS: Record<string, string> = {
-  voiture: '🚗',
-  tramway: '🚊',
-  velo:    '🛵',
+const MODE_ICONS: Record<string, ReactNode> = {
+  voiture: <Car className="w-3 h-3 inline" />,
+  tramway: <TramFront className="w-3 h-3 inline" />,
+  velo:    null,
 }
 
 const ECHELLE   = 125
@@ -511,7 +513,7 @@ export default function AgentDetailClient({
               ))}
               {absences.map(a => (
                 <div key={a.id} className="flex items-center gap-3 p-3.5 rounded-xl bg-amber-50 border border-amber-100">
-                  <span className="text-xl shrink-0">⚠️</span>
+                  <AlertTriangle className="w-5 h-5 shrink-0 text-amber-500" />
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-slate-700">
                       Absence · {formatDateFr(a.date_debut, { day: 'numeric', month: 'long' })}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { AlertTriangle } from 'lucide-react'
 import { calcDureBreakdown, type TacheFrequence } from '@/lib/rentabilite'
 
 interface Contrat {
@@ -154,7 +155,7 @@ export default function RentabiliteModal({
                 {perteCachee && hasEstime && (
                   <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4">
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700 shrink-0">
-                      ⚠ Perte cachée
+                      <AlertTriangle className="w-3 h-3 inline mr-1" />Perte cachée
                     </span>
                     <span className="text-xs text-red-700">Ce contrat est offert à 0 € — le coût est entièrement à perte.</span>
                   </div>

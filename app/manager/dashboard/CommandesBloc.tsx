@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { Package } from 'lucide-react'
 import PlanifierModal from './PlanifierModal'
 import CommandeDetailDrawer from './CommandeDetailDrawer'
 import type { LigneCommande } from './CommandeDetailDrawer'
@@ -75,7 +76,7 @@ export default function CommandesBloc({ managerNom }: { managerNom: string }) {
     <>
       <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
         <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
-          <span className="text-lg">📦</span>
+          <Package className="w-4 h-4 text-slate-500" />
           <p className="text-sm font-semibold text-slate-800">
             Commandes produits ({commandes.length})
           </p>

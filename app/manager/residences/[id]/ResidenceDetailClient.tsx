@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import type { ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Building2, Trash2, Leaf, MapPin, AlertTriangle, User } from 'lucide-react'
 import RentabiliteModal from './RentabiliteModal'
 import AjoutContratModal from './AjoutContratModal'
 import GestionContratModal from './GestionContratModal'
@@ -52,10 +54,10 @@ const STATUT_CFG: Record<ContratCard['statut_calcule'], { label: string; cls: st
   termine:  { label: 'Terminé',     cls: 'bg-slate-200 text-slate-600' },
 }
 
-const TYPE_CONTRAT_CFG: Record<string, { label: string; icon: string }> = {
-  parties_communes: { label: 'Parties communes', icon: '🏢' },
-  containers:       { label: 'Containers',       icon: '🗑️' },
-  espaces_verts:    { label: 'Espaces verts',    icon: '🌿' },
+const TYPE_CONTRAT_CFG: Record<string, { label: string; icon: ReactNode }> = {
+  parties_communes: { label: 'Parties communes', icon: <Building2 className="w-3.5 h-3.5 inline" /> },
+  containers:       { label: 'Containers',       icon: <Trash2 className="w-3.5 h-3.5 inline" /> },
+  espaces_verts:    { label: 'Espaces verts',    icon: <Leaf className="w-3.5 h-3.5 inline" /> },
 }
 
 // ── Config badge état ─────────────────────────────────────────────────────────
@@ -165,11 +167,11 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
         </button>
 
         <div className="flex items-start gap-3">
-          <span className="text-2xl mt-0.5">🏢</span>
+          <Building2 className="w-6 h-6 mt-0.5 text-white/80 shrink-0" />
           <div className="flex-1 min-w-0">
             <h1 className="text-xl font-bold leading-snug">{r.nom}</h1>
             {r.adresse && (
-              <p className="text-blue-300 text-sm mt-0.5 truncate">📍 {r.adresse}</p>
+              <p className="text-blue-300 text-sm mt-0.5 truncate flex items-center gap-1"><MapPin className="w-3 h-3 shrink-0" />{r.adresse}</p>
             )}
           </div>
         </div>
@@ -191,7 +193,7 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
           )}
           {r.notes_import === 'adresse_manquante' && (
             <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">
-              ⚠ Adresse manquante
+              <AlertTriangle className="w-3 h-3 inline mr-1" />Adresse manquante
             </span>
           )}
           {r.notes_import === 'doublon_potentiel' && (
@@ -230,7 +232,7 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
                 </span>
                 {kpi.perteCachee && (
                   <span className="px-2 py-0.5 text-xs font-semibold bg-red-500/30 text-red-200 rounded-full border border-red-400/40">
-                    ⚠ Perte cachée
+                    <AlertTriangle className="w-3 h-3 inline mr-1" />Perte cachée
                   </span>
                 )}
               </>
@@ -417,7 +419,7 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
                     <span>{typeCfg.icon} {typeCfg.label}</span>
                   )}
                   <span className={agentNomComplet ? 'text-slate-600' : 'text-slate-400 italic'}>
-                    👤 {agentNomComplet ?? 'Aucun agent attitré'}
+                    <User className="w-3 h-3 inline mr-1" />{agentNomComplet ?? 'Aucun agent attitré'}
                   </span>
                 </div>
 

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '@/lib/supabase'
 import type { Residence } from '@/lib/types'
+import { AlertTriangle } from 'lucide-react'
 export interface GeneratedIntervention {
   date: string
   heureDebut: string | null
@@ -197,7 +198,7 @@ export default function PlanningPreviewModal({
       {/* Conflits */}
       {conflicts.length > 0 && (
         <div className="shrink-0 mx-4 mt-3 p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-2.5">
-          <span className="text-amber-600 text-lg shrink-0">⚠️</span>
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
           <div>
             <p className="text-amber-800 text-sm font-semibold">
               {conflicts.length} conflit{conflicts.length > 1 ? 's' : ''} détecté{conflicts.length > 1 ? 's' : ''}
@@ -292,7 +293,7 @@ export default function PlanningPreviewModal({
                     <div className="w-2 h-2 rounded-full bg-slate-200"/>
                   )}
                   {isConflict && (
-                    <span className="absolute top-0.5 right-0.5 text-[8px]">⚠️</span>
+                    <AlertTriangle className="w-2 h-2 absolute top-0.5 right-0.5 text-amber-500" />
                   )}
                 </button>
               )
@@ -327,7 +328,7 @@ export default function PlanningPreviewModal({
 
                 {absenceDates.has(selectedDate) && (
                   <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-xs text-amber-800">
-                    ⚠️ Agent absent ce jour — pensez à réassigner.
+                    <AlertTriangle className="w-3 h-3 inline mr-1" />Agent absent ce jour — pensez à réassigner.
                   </div>
                 )}
 
@@ -385,7 +386,7 @@ export default function PlanningPreviewModal({
         {conflictCount !== null && (
           <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-3">
             <p className="text-amber-800 text-sm font-semibold">
-              ⚠️ Un planning existe déjà pour cette résidence sur cette période
+              <AlertTriangle className="w-4 h-4 inline mr-1.5" />Un planning existe déjà pour cette résidence sur cette période
             </p>
             <p className="text-amber-700 text-sm">
               {conflictCount} intervention{conflictCount > 1 ? 's' : ''} déjà planifiée{conflictCount > 1 ? 's' : ''}.

@@ -3,13 +3,15 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
+import { LayoutDashboard, Calendar, Building2, Users, BarChart2, LogOut } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 
-const items = [
-  { href: '/manager/dashboard', label: 'Tableau de bord', icon: '⊞' },
-  { href: '/manager/planning',  label: 'Planning',        icon: '📅' },
-  { href: '/manager/residences',label: 'Résidences',      icon: '🏢' },
-  { href: '/manager/agents',    label: 'Agents',          icon: '👥' },
-  { href: '/manager/charge',    label: 'Charge',          icon: '📊' },
+const items: { href: string; label: string; Icon: LucideIcon }[] = [
+  { href: '/manager/dashboard', label: 'Tableau de bord', Icon: LayoutDashboard },
+  { href: '/manager/planning',  label: 'Planning',        Icon: Calendar },
+  { href: '/manager/residences',label: 'Résidences',      Icon: Building2 },
+  { href: '/manager/agents',    label: 'Agents',          Icon: Users },
+  { href: '/manager/charge',    label: 'Charge',          Icon: BarChart2 },
 ]
 
 export default function ManagerNav() {
@@ -32,17 +34,17 @@ export default function ManagerNav() {
           <h1 className="text-lg font-bold">Manager</h1>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1">
-          {items.map(item => {
-            const active = path.startsWith(item.href)
+          {items.map(({ href, label, Icon }) => {
+            const active = path.startsWith(href)
             return (
-              <Link key={item.href} href={item.href}
+              <Link key={href} href={href}
                 className={`flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all ${
                   active
                     ? 'bg-[#1A5FA8] text-white'
                     : 'text-blue-200 hover:bg-white/10 hover:text-white'
                 }`}>
-                <span className="text-lg">{item.icon}</span>
-                {item.label}
+                <Icon className="w-5 h-5 shrink-0" />
+                {label}
               </Link>
             )
           })}
@@ -50,7 +52,7 @@ export default function ManagerNav() {
         <div className="px-3 pb-6">
           <button onClick={handleLogout}
             className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium text-blue-200 hover:bg-white/10 hover:text-white transition-all">
-            <span className="text-lg">🚪</span>
+            <LogOut className="w-5 h-5 shrink-0" />
             Déconnexion
           </button>
         </div>
@@ -59,15 +61,15 @@ export default function ManagerNav() {
       {/* Nav mobile bas de page */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-[#0A2E5A] text-white border-t border-white/10 z-40">
         <div className="flex items-stretch">
-          {items.map(item => {
-            const active = path.startsWith(item.href)
+          {items.map(({ href, label, Icon }) => {
+            const active = path.startsWith(href)
             return (
-              <Link key={item.href} href={item.href}
+              <Link key={href} href={href}
                 className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-3 text-[10px] font-medium transition-colors ${
                   active ? 'text-[#0BBFBF]' : 'text-blue-300'
                 }`}>
-                <span className="text-xl">{item.icon}</span>
-                {item.label.split(' ')[0]}
+                <Icon className="w-5 h-5" />
+                {label.split(' ')[0]}
               </Link>
             )
           })}

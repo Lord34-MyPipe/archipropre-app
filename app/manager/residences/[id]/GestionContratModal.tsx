@@ -61,8 +61,8 @@ const JOURS_LABELS: Record<string, string> = {
   jeudi: 'Jeu', vendredi: 'Ven', samedi: 'Sam', dimanche: 'Dim',
 }
 const VALID_TYPES = [
-  { value: 'parties_communes', label: '🏢 Parties communes' },
-  { value: 'containers',       label: '🗑️ Containers' },
+  { value: 'parties_communes', label: 'Parties communes' },
+  { value: 'containers',       label: 'Containers' },
   { value: 'espaces_verts',    label: '🌿 Espaces verts' },
 ]
 

@@ -4,6 +4,7 @@ import { useState, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { Residence } from '@/lib/types'
+import { Building2, MapPin, AlertTriangle, Car } from 'lucide-react'
 import { downloadQRCodePDF } from '@/lib/qr-pdf'
 import AgentAttitreModal from '@/components/manager/AgentAttitreModal'
 import PlanifierInterventionModal from '@/components/manager/PlanifierInterventionModal'
@@ -223,7 +224,7 @@ export default function ResidenceCard({ residence: initial }: Props) {
         <div className="flex items-start gap-3 mb-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-lg leading-none">🏢</span>
+              <Building2 className="w-5 h-5 text-slate-400 shrink-0" />
               <Link
                 href={`/manager/residences/${initial.id}`}
                 className="font-semibold text-slate-800 leading-snug hover:text-[#1A5FA8] transition-colors"
@@ -238,7 +239,7 @@ export default function ResidenceCard({ residence: initial }: Props) {
             </div>
             {initial.notes_import === 'adresse_manquante' && (
               <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 text-[11px] font-medium rounded-full bg-orange-100 text-orange-700">
-                ⚠ Adresse manquante
+                <AlertTriangle className="w-3 h-3" /> Adresse manquante
               </span>
             )}
             {initial.notes_import === 'doublon_potentiel' && (
@@ -246,7 +247,7 @@ export default function ResidenceCard({ residence: initial }: Props) {
                 🔶 À vérifier doublon
               </span>
             )}
-            <p className="text-sm text-slate-400 mt-1 truncate">📍 {initial.adresse}</p>
+            <p className="text-sm text-slate-400 mt-1 truncate flex items-center gap-1"><MapPin className="w-3 h-3 shrink-0" />{initial.adresse}</p>
             <div className="flex items-center gap-1.5 mt-2 flex-wrap">
               {initial.type_client && (
                 <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${TYPE_BG[initial.type_client] ?? 'bg-slate-100 text-slate-600'}`}>
@@ -254,10 +255,10 @@ export default function ResidenceCard({ residence: initial }: Props) {
                 </span>
               )}
               {initial.client_exigeant && (
-                <span className="px-2 py-0.5 bg-red-100 text-red-600 text-xs rounded-full font-medium">⚠️ Exigeant</span>
+                <span className="px-2 py-0.5 bg-red-100 text-red-600 text-xs rounded-full font-medium flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Exigeant</span>
               )}
               {initial.vehicule_requis && (
-                <span className="px-2 py-0.5 bg-blue-50 text-blue-500 text-xs rounded-full font-medium">🚗 Véhicule</span>
+                <span className="px-2 py-0.5 bg-blue-50 text-blue-500 text-xs rounded-full font-medium flex items-center gap-1"><Car className="w-3 h-3" /> Véhicule</span>
               )}
             </div>
           </div>

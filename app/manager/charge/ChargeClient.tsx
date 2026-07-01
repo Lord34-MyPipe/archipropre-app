@@ -1,18 +1,20 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import type { ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import type { ChargeAgent } from './page'
+import { Car, TramFront } from 'lucide-react'
 
 const MODE_LABELS: Record<string, string> = {
   voiture: 'Voiture',
   tramway: 'Tramway',
   velo:    'Vélo/Scooter',
 }
-const MODE_ICONS: Record<string, string> = {
-  voiture: '🚗',
-  tramway: '🚊',
-  velo:    '🛵',
+const MODE_ICONS: Record<string, ReactNode> = {
+  voiture: <Car className="w-3 h-3" />,
+  tramway: <TramFront className="w-3 h-3" />,
+  velo:    null,
 }
 
 function initiales(nom: string) {
@@ -131,7 +133,7 @@ export default function ChargeClient({ agents }: Props) {
                 className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${
                   modeFilter === m ? 'bg-[#0A2E5A] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}>
-                {m === 'tous' ? 'Tous' : m === 'voiture' ? '🚗 Voiture' : '🚊 Tramway'}
+                {m === 'tous' ? 'Tous' : m === 'voiture' ? <span className="flex items-center gap-1"><Car className="w-3.5 h-3.5" />Voiture</span> : <span className="flex items-center gap-1"><TramFront className="w-3.5 h-3.5" />Tramway</span>}
               </button>
             ))}
           </div>
@@ -195,7 +197,7 @@ export default function ChargeClient({ agents }: Props) {
                   <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                     <span className="font-semibold text-slate-800 text-sm truncate">{agent.nom_complet}</span>
                     {agent.mode_deplacement && (
-                      <span className="text-xs text-slate-500">{MODE_ICONS[agent.mode_deplacement] ?? ''}</span>
+                      <span className="text-slate-500">{MODE_ICONS[agent.mode_deplacement] ?? null}</span>
                     )}
                     {agent.secteur_libelle && (
                       <span className="text-xs text-slate-400 truncate hidden md:block">· {agent.secteur_libelle}</span>

@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import type { ReactNode } from 'react'
 import { createClient } from '@/lib/supabase'
 import type { Residence, Profile } from '@/lib/types'
+import { Star, CheckCircle2, AlertTriangle, MapPin, Clock, XCircle, Ban, Info, Car } from 'lucide-react'
 
 interface TachePreview {
   id: string
@@ -14,7 +16,7 @@ interface TachePreview {
 interface AgentWithScore {
   agent: Profile
   score: number
-  reasons: { icon: string; text: string }[]
+  reasons: { icon: ReactNode; text: string }[]
   excluded: boolean
   absent: boolean
 }
@@ -28,44 +30,44 @@ function computeScore(
   const excluded = (residence.agent_exclu_ids ?? []).includes(agent.id)
   if (excluded) {
     return { agent, score: 0, excluded: true, absent: false,
-      reasons: [{ icon: '🚫', text: 'Agent exclu de cette résidence' }] }
+      reasons: [{ icon: <Ban className="w-3 h-3" />, text: 'Agent exclu de cette résidence' }] }
   }
   if (isAbsent) {
     return { agent, score: 0, excluded: false, absent: true,
-      reasons: [{ icon: '🔴', text: 'Absent ou en congé ce jour' }] }
+      reasons: [{ icon: <XCircle className="w-3 h-3 text-red-500" />, text: 'Absent ou en congé ce jour' }] }
   }
 
-  const reasons: { icon: string; text: string }[] = []
+  const reasons: { icon: ReactNode; text: string }[] = []
   let score = 50
 
   if (agent.id === residence.agent_prefere_id) {
     score += 30
-    reasons.push({ icon: '⭐', text: 'Agent attitré de cette résidence (+30 pts)' })
+    reasons.push({ icon: <Star className="w-3 h-3 text-amber-400" />, text: 'Agent attitré de cette résidence (+30 pts)' })
   }
 
   if (residence.vehicule_requis) {
     if (agent.vehicule) {
       score += 20
-      reasons.push({ icon: '✅', text: 'Véhicule disponible (+20 pts)' })
+      reasons.push({ icon: <CheckCircle2 className="w-3 h-3 text-green-500" />, text: 'Véhicule disponible (+20 pts)' })
     } else {
       score -= 20
-      reasons.push({ icon: '⚠️', text: 'Véhicule requis — agent non véhiculé (-20 pts)' })
+      reasons.push({ icon: <AlertTriangle className="w-3 h-3 text-amber-500" />, text: 'Véhicule requis — agent non véhiculé (-20 pts)' })
     }
   }
 
   if ((agent.zones_geo ?? []).length > 0) {
     score += 10
-    reasons.push({ icon: '📍', text: `Zones couvertes : ${agent.zones_geo.join(', ')} (+10 pts)` })
+    reasons.push({ icon: <MapPin className="w-3 h-3 text-blue-400" />, text: `Zones couvertes : ${agent.zones_geo.join(', ')} (+10 pts)` })
   }
 
   if (todayCount > 0) {
     const penalty = Math.min(todayCount * 10, 30)
     score -= penalty
-    reasons.push({ icon: '⏱️', text: `${todayCount} intervention(s) déjà planifiée(s) ce jour (-${penalty} pts)` })
+    reasons.push({ icon: <Clock className="w-3 h-3 text-slate-400" />, text: `${todayCount} intervention(s) déjà planifiée(s) ce jour (-${penalty} pts)` })
   }
 
   if (reasons.length === 0) {
-    reasons.push({ icon: 'ℹ️', text: 'Disponible' })
+    reasons.push({ icon: <Info className="w-3 h-3 text-blue-400" />, text: 'Disponible' })
   }
 
   return { agent, score: Math.max(0, Math.min(100, score)), reasons, excluded: false, absent: false }

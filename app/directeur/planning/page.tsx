@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import { Calendar, Umbrella, AlertTriangle, Clock } from 'lucide-react'
 
 const STATUT_BG: Record<string, string> = {
   planifiee:    'bg-blue-100 text-blue-700 border border-blue-200',
@@ -138,7 +139,7 @@ export default async function DirecteurPlanning({ searchParams }: Props) {
       <div className="p-4 md:p-8 pb-8 space-y-4">
         {totalSemaine === 0 && (
           <div className="bg-white rounded-2xl border border-slate-100 p-10 text-center">
-            <p className="text-4xl mb-3">📅</p>
+            <Calendar className="w-12 h-12 mb-3 text-slate-200 mx-auto" />
             <p className="text-slate-600 font-medium">Aucune intervention cette semaine</p>
           </div>
         )}
@@ -200,7 +201,7 @@ export default async function DirecteurPlanning({ searchParams }: Props) {
                             <div className="space-y-1">
                               {isOnLeave && (
                                 <div className={`px-1.5 py-1 rounded-lg text-[10px] font-semibold leading-tight flex items-center gap-1 ${hasConflict ? 'bg-red-100 text-red-700 border border-red-300' : 'bg-orange-100 text-orange-700 border border-orange-200'}`}>
-                                  {hasConflict ? '⚠️' : '🏖️'}
+                                  {hasConflict ? <AlertTriangle className="w-2.5 h-2.5" /> : <Umbrella className="w-2.5 h-2.5" />}
                                   <span className="truncate">{hasConflict ? 'Conflit' : congeMotifs[`${agent.id}|${dateStr}`] ?? 'Congé'}</span>
                                 </div>
                               )}
@@ -217,7 +218,7 @@ export default async function DirecteurPlanning({ searchParams }: Props) {
                                   <div key={p.id} className={`px-1.5 py-1.5 rounded-lg text-[10px] font-medium leading-tight ${isOnLeave ? 'bg-red-50 text-red-800 border border-red-300' : isCH ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-[#0BBFBF]/10 text-[#0A5F5F] border border-[#0BBFBF]/30'}`}>
                                     <div className="truncate font-semibold">{(p as { residences?: { nom?: string } }).residences?.nom ?? '—'}</div>
                                     {p.heure_debut && <div className="text-[9px] opacity-80 mt-0.5">{String(p.heure_debut).slice(0,5)}{p.heure_fin ? ` → ${String(p.heure_fin).slice(0,5)}` : ''}</div>}
-                                    <div className="text-[9px] opacity-60 mt-0.5">{isOnLeave ? '⚠️ Conflit' : isCH ? '🕐 Horaire' : '📅 Planifié'}</div>
+                                    <div className="text-[9px] opacity-60 mt-0.5 flex items-center gap-0.5">{isOnLeave ? <><AlertTriangle className="w-2 h-2" />Conflit</> : isCH ? <><Clock className="w-2 h-2" />Horaire</> : <><Calendar className="w-2 h-2" />Planifié</>}</div>
                                   </div>
                                 )
                               })}

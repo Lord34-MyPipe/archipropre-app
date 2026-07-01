@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { Bot, MapPin, AlertTriangle } from 'lucide-react'
 
 interface RedistribuerItem {
   intervention_id: string
@@ -141,7 +142,7 @@ export default function ReorganisationPanel({
         <div className="flex-shrink-0 px-5 py-4" style={{ background: '#0A2E5A' }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-xl">🤖</span>
+              <Bot className="w-5 h-5 text-white" />
               <div>
                 <p className="text-white font-bold text-sm leading-tight">ANA — Réorganisation</p>
                 <p className="text-blue-200 text-xs">{context.agent_absent} · {context.periode}</p>
@@ -273,7 +274,7 @@ function InterventionCard({
       {/* Résidence + créneau */}
       <div>
         <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
-          <span>📍</span>
+          <MapPin className="w-3.5 h-3.5" />
           {item.residence_nom ?? '—'}
         </p>
         {item.date_prevue && (
@@ -318,7 +319,7 @@ function InterventionCard({
         <div className="rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1.5 space-y-0.5">
           {item.avertissements.map((w, i) => (
             <p key={i} className="text-xs text-amber-700 flex items-start gap-1">
-              <span className="shrink-0">⚠</span>
+              <AlertTriangle className="w-3 h-3 shrink-0" />
               <span>{w}</span>
             </p>
           ))}

@@ -1,5 +1,6 @@
 import { createClient, createAdminClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
+import { AlertTriangle, BarChart2, CheckCircle2 } from 'lucide-react'
 
 interface SocieteParams {
   taux_horaire_agent: number
@@ -212,7 +213,7 @@ export default async function DirecteurRentabilite() {
 
       {!paramsRaw && (
         <div className="mx-6 mt-4 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-amber-800 text-sm">
-          ⚠️ Taux horaire non configuré —{' '}
+          <AlertTriangle className="w-4 h-4 inline mr-1" />Taux horaire non configuré —{' '}
           <a href="/directeur/parametres" className="underline">configurer les paramètres</a>
         </div>
       )}
@@ -242,7 +243,7 @@ export default async function DirecteurRentabilite() {
                   )}
                   {pctReel !== null && (
                     <span className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${margeBadge(pctReel).bg}`}>
-                      📊 réel {pctReel.toFixed(1)} %
+                      <BarChart2 className="w-3 h-3" /> réel {pctReel.toFixed(1)} %
                     </span>
                   )}
                   {!contrat && (
@@ -324,7 +325,7 @@ export default async function DirecteurRentabilite() {
                           <td colSpan={4} className="px-4 py-2.5">
                             <span className={`text-[11px] font-semibold ${Math.abs(ecartPct) > 10 ? (ecartPct > 0 ? 'text-red-600' : 'text-green-600') : 'text-slate-500'}`}>
                               Écart estimé/réel : {ecartPct > 0 ? '+' : ''}{ecartPct.toFixed(1)} %
-                              {ecartPct > 10 ? ' — ⚠️ Sous-chiffré ou agent lent' : ecartPct < -10 ? ' — ✅ Agent efficace' : ''}
+                              {ecartPct > 10 ? <span className="inline-flex items-center gap-0.5"> — <AlertTriangle className="w-3 h-3 inline" /> Sous-chiffré ou agent lent</span> : ecartPct < -10 ? <span className="inline-flex items-center gap-0.5"> — <CheckCircle2 className="w-3 h-3 inline text-green-600" /> Agent efficace</span> : ''}
                             </span>
                           </td>
                         </tr>

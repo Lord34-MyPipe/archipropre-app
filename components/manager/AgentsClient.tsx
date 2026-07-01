@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import type { Profile } from '@/lib/types'
+import { Car, Users } from 'lucide-react'
 import AgentFormModal from './AgentFormModal'
 import AgentAbsenceDrawer from './AgentAbsenceDrawer'
 import { useRouter } from 'next/navigation'
@@ -67,7 +68,7 @@ function AgentCard({
             }`}>
               {agent.actif ? 'Actif' : 'Inactif'}
             </span>
-            {agent.vehicule && <span className="text-[11px]">🚗</span>}
+            {agent.vehicule && <Car className="w-3 h-3 text-slate-400" />}
             <span className="text-[10px] text-slate-400 ml-auto">{agent.contrat_heures_hebdo}h/sem</span>
           </div>
         </div>
@@ -321,7 +322,7 @@ export default function AgentsClient({ agents: initial }: Props) {
         {/* ── Grille ── */}
         {renderItems.length === 0 && (
           <div className="bg-white rounded-2xl p-10 text-center text-slate-400 border border-slate-100">
-            <p className="text-4xl mb-3">👥</p>
+            <Users className="w-12 h-12 mb-3 text-slate-300 mx-auto" />
             <p>{search ? 'Aucun agent trouvé.' : 'Aucun agent dans votre équipe.'}</p>
             {!search && (
               <button onClick={openCreate} className="mt-4 px-4 py-2 bg-[#1A5FA8] text-white rounded-xl text-sm font-medium">

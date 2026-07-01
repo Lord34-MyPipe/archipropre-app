@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase'
 import type { Residence, Profile } from '@/lib/types'
+import { Sparkles, Car, AlertTriangle } from 'lucide-react'
 
 interface AbsenceInfo {
   agentId: string
@@ -217,7 +218,7 @@ export default function AgentAttitreModal({ residence, onClose, onSaved }: Props
               </>
             ) : (
               <>
-                <span>✨</span>
+                <Sparkles className="w-4 h-4" />
                 Obtenir une suggestion IA
               </>
             )}
@@ -225,7 +226,7 @@ export default function AgentAttitreModal({ residence, onClose, onSaved }: Props
 
           {suggestion && (
             <div className="mt-3 p-3 bg-teal-50 border border-teal-200 rounded-xl">
-              <p className="text-xs font-semibold text-teal-700">✨ Recommandation IA</p>
+              <p className="text-xs font-semibold text-teal-700 flex items-center gap-1"><Sparkles className="w-3.5 h-3.5" /> Recommandation IA</p>
               <p className="text-xs text-teal-600 mt-1 leading-relaxed">{suggestion.raison}</p>
               <button
                 onClick={() => {
@@ -291,14 +292,14 @@ export default function AgentAttitreModal({ residence, onClose, onSaved }: Props
                             {isSuggested && !isAttitré && (
                               <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full font-semibold">✦ Suggéré IA</span>
                             )}
-                            {a.vehicule && <span className="text-xs text-slate-400" title="Véhiculé">🚗</span>}
+                            {a.vehicule && <Car className="w-3.5 h-3.5 text-slate-400" aria-label="Véhiculé" />}
                           </div>
                           {(a.zones_geo ?? []).length > 0 && (
                             <p className="text-xs text-slate-400 mt-0.5 truncate">{a.zones_geo.join(', ')}</p>
                           )}
                           {entry.absences.map((ab, i) => (
                             <p key={i} className="text-xs text-amber-600 mt-0.5">
-                              ⚠️ Absent du {fmtDate(ab.dateDebut)} au {fmtDate(ab.dateFin)}
+                              <AlertTriangle className="w-3 h-3 inline mr-1" />Absent du {fmtDate(ab.dateDebut)} au {fmtDate(ab.dateFin)}
                             </p>
                           ))}
                         </div>

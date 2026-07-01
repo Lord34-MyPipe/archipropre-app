@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { jsPDF } from 'jspdf'
+import { Lightbulb } from 'lucide-react'
 
 export interface LigneCommande {
   id: string
@@ -303,7 +304,7 @@ export default function CommandeDetailDrawer({ open, onClose, commande, managerN
                 {lignesAmpoules.map(ligne => (
                   <div key={ligne.id} className="rounded-xl border border-amber-100 bg-amber-50 p-3 space-y-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-base">💡</span>
+                      <Lightbulb className="w-4 h-4 text-amber-600 shrink-0" />
                       <p className="text-sm font-medium text-amber-900">
                         {ligne.localisation ?? 'Localisation non précisée'}
                       </p>

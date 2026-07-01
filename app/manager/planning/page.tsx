@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
+import { Umbrella, AlertTriangle, Users } from 'lucide-react'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type Vue = 'jour' | 'semaine' | 'mois'
@@ -224,7 +225,7 @@ export default async function ManagerPlanning({ searchParams }: Props) {
         {/* Légende */}
         <div className="flex gap-3 mt-3 flex-wrap text-xs text-blue-200">
           {[['bg-blue-400','Planifiée'],['bg-amber-400','En cours'],['bg-green-400','Terminée'],
-            ['','Validé','#C0DD97'],['bg-orange-300','🏖️ Congé'],['bg-red-400','⚠️ Conflit']].map(([c,l,bg]) => (
+            ['','Validé','#C0DD97'],['bg-orange-300','Congé'],['bg-red-400','Conflit']].map(([c,l,bg]) => (
             <div key={l} className="flex items-center gap-1.5">
               <div className={`w-3 h-3 rounded-sm ${c}`} style={bg ? { background: bg } : undefined}/>
               <span>{l}</span>
@@ -403,7 +404,7 @@ function VueSemaine({ dates, inters, agents, congeKeys, congeMotifs, todayStr }:
                       <div className="min-w-0">
                         <span className="text-sm font-medium text-slate-700 truncate block">{agent.prenom}</span>
                         {isPrimary && (
-                          <span className="text-[9px] text-[#0BBFBF] font-semibold leading-none">👥 Binôme</span>
+                          <span className="text-[9px] text-[#0BBFBF] font-semibold leading-none flex items-center gap-0.5"><Users className="w-2.5 h-2.5" />Binôme</span>
                         )}
                       </div>
                     </div>
@@ -422,7 +423,7 @@ function VueSemaine({ dates, inters, agents, congeKeys, congeMotifs, todayStr }:
                             <div className={`px-1.5 py-1 rounded-lg text-[10px] font-semibold leading-tight flex items-center gap-1 border ${
                               hasConflict ? 'bg-red-100 text-red-700 border-red-300' : 'bg-orange-100 text-orange-700 border-orange-200'
                             }`}>
-                              {hasConflict ? '⚠️' : '🏖️'}
+                              {hasConflict ? <AlertTriangle className="w-2.5 h-2.5" /> : <Umbrella className="w-2.5 h-2.5" />}
                               <span className="truncate">{hasConflict ? 'Conflit' : leaveLabel}</span>
                             </div>
                           )}
@@ -435,7 +436,7 @@ function VueSemaine({ dates, inters, agents, congeKeys, congeMotifs, todayStr }:
                             const cardContent = (
                               <>
                                 {isBinome && (
-                                  <span className="absolute top-0.5 right-0.5 text-[8px] leading-none opacity-70">👥</span>
+                                  <Users className="w-2 h-2 absolute top-0.5 right-0.5 opacity-70" />
                                 )}
                                 <div className="truncate font-semibold pr-3">{i.residence_nom}</div>
                                 {i.contrat_libelle && (
@@ -524,8 +525,8 @@ function VueSemaine({ dates, inters, agents, congeKeys, congeMotifs, todayStr }:
                           ? 'bg-red-100 text-red-700 border-red-200'
                           : 'bg-orange-100 text-orange-700 border-orange-200'
                       }`}>
-                        🏖️ {a.prenom} {a.nom}
-                        {dayInters.some(i => i.agent_id === a.id) && <span className="font-bold"> ⚠️</span>}
+                        <Umbrella className="w-3 h-3 inline mr-1" />{a.prenom} {a.nom}
+                        {dayInters.some(i => i.agent_id === a.id) && <AlertTriangle className="w-3 h-3 inline ml-1 text-red-600" />}
                       </span>
                     ))}
                   </div>
@@ -594,14 +595,14 @@ function VueJour({ dateStr, inters, agents, congeKeys, congeMotifs }: {
       {/* Congés du jour */}
       {agentsEnConge.length > 0 && (
         <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 flex flex-wrap gap-2 items-center">
-          <span className="text-sm text-orange-800 font-semibold">🏖️ Absents :</span>
+          <span className="text-sm text-orange-800 font-semibold flex items-center gap-1"><Umbrella className="w-4 h-4" />Absents :</span>
           {agentsEnConge.map(a => (
             <span key={a.id} className={`px-3 py-1 rounded-full text-xs font-semibold border ${
               sorted.some(i => i.agent_id === a.id)
                 ? 'bg-red-100 text-red-700 border-red-300'
                 : 'bg-orange-100 text-orange-700 border-orange-200'
             }`}>
-              {sorted.some(i => i.agent_id === a.id) ? '⚠️ ' : ''}
+              {sorted.some(i => i.agent_id === a.id) && <AlertTriangle className="w-3 h-3 inline mr-1" />}
               {a.prenom} {a.nom}
               {congeMotifs[`${a.id}|${dateStr}`] ? ` — ${congeMotifs[`${a.id}|${dateStr}`]}` : ''}
             </span>
@@ -654,7 +655,7 @@ function VueJour({ dateStr, inters, agents, congeKeys, congeMotifs }: {
                             </div>
                             <p className="text-sm font-semibold truncate">{i.residence_nom}</p>
                             {isConflict && (
-                              <span className="text-red-600 text-xs font-bold shrink-0">⚠️ Congé</span>
+                              <span className="text-red-600 text-xs font-bold shrink-0 flex items-center gap-0.5"><AlertTriangle className="w-3 h-3" />Congé</span>
                             )}
                           </div>
                           <p className="text-xs opacity-70 pl-8">{i.agent_prenom} {i.agent_nom_str}</p>

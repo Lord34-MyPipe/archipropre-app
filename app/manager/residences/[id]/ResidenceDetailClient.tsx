@@ -197,8 +197,8 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
             </span>
           )}
           {r.notes_import === 'doublon_potentiel' && (
-            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-700">
-              🔶 À vérifier doublon
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-700">
+              <AlertTriangle className="w-3 h-3" /> À vérifier doublon
             </span>
           )}
         </div>

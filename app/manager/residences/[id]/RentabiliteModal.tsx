@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Euro } from 'lucide-react'
 import { calcDureBreakdown, type TacheFrequence } from '@/lib/rentabilite'
 
 interface Contrat {
@@ -178,7 +178,7 @@ export default function RentabiliteModal({
                       `${inc ? '~' : ''}${formatDuree(duree.annuel)}`,
                     ]} />
                     {heuresVenduesMois !== null && (
-                      <Row label="💰 Vendues" values={[
+                      <Row label="Vendues" values={[
                         formatDuree((heuresVenduesMois / 4.333) * 60),
                         formatDuree(heuresVenduesMois * 60),
                         formatDuree(heuresVenduesMois * 12 * 60),
@@ -186,7 +186,7 @@ export default function RentabiliteModal({
                     )}
                     {heuresVenduesMois === null && ca === 0 && (
                       <div className="grid grid-cols-4 items-center py-2.5">
-                        <span className="text-xs font-semibold text-slate-500">💰 Vendues</span>
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500"><Euro className="w-3.5 h-3.5" /> Vendues</span>
                         <span className="text-sm font-semibold text-slate-400 text-right col-span-3">— (contrat offert)</span>
                       </div>
                     )}

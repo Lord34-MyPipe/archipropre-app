@@ -29,12 +29,6 @@ const CAT_LABEL: Record<Categorie, string> = {
   materiel:     'Matériel',
 }
 
-const CAT_EMOJI: Record<Categorie, string> = {
-  produit:     '🧴',
-  consommable: '🧻',
-  materiel:    '🪣',
-}
-
 const CAT_BADGE: Record<Categorie, string> = {
   produit:     'bg-teal-50 text-teal-700 border-teal-100',
   consommable: 'bg-blue-50 text-blue-700 border-blue-100',
@@ -224,8 +218,8 @@ export default function CatalogueClient({ initialProduits }: { initialProduits: 
                             className="w-12 h-12 rounded-lg object-cover border border-slate-100"
                           />
                         ) : (
-                          <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center text-xl">
-                            {CAT_EMOJI[p.categorie]}
+                          <div className="w-12 h-12 rounded-lg bg-slate-100 flex items-center justify-center">
+                            <Package className="w-5 h-5 text-slate-400" />
                           </div>
                         )}
                         {uploadingId === p.id && (
@@ -266,7 +260,7 @@ export default function CatalogueClient({ initialProduits }: { initialProduits: 
                     {/* Catégorie */}
                     <td className="py-3 px-4">
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold border ${CAT_BADGE[p.categorie]}`}>
-                        {CAT_EMOJI[p.categorie]} {CAT_LABEL[p.categorie]}
+                        {CAT_LABEL[p.categorie]}
                       </span>
                     </td>
 
@@ -449,9 +443,9 @@ function ProduitModal({
               onChange={e => setCat(e.target.value as Categorie)}
               className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-[#1A5FA8] bg-white"
             >
-              <option value="produit">🧴 Produit</option>
-              <option value="consommable">🧻 Consommable</option>
-              <option value="materiel">🪣 Matériel</option>
+              <option value="produit">Produit</option>
+              <option value="consommable">Consommable</option>
+              <option value="materiel">Matériel</option>
             </select>
           </div>
 

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase'
+import { AlertTriangle } from 'lucide-react'
 
 interface Props {
   residenceId: string
@@ -63,7 +64,8 @@ export default function RegenerateQRButton({ residenceId, residenceNom, onRegene
             <strong className="text-slate-800">{residenceNom}</strong>
           </p>
           <p className="text-sm text-slate-600 leading-relaxed mb-5">
-            ⚠️ Régénérer le QR code invalidera l'ancien immédiatement. Vous devrez{' '}
+            <AlertTriangle size={14} className="inline mr-1 text-amber-600" />
+            Régénérer le QR code invalidera l'ancien immédiatement. Vous devrez{' '}
             <strong>imprimer et remplacer le QR code physique</strong> affiché à l'entrée
             de cette résidence avant la prochaine intervention.
           </p>

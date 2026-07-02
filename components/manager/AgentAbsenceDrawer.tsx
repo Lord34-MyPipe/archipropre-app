@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase'
 import type { Profile, Absence, Conge, AbsenceType } from '@/lib/types'
-import { Bot, AlertTriangle } from 'lucide-react'
+import { Bot, AlertTriangle, Save, ClipboardList, CheckCircle2 } from 'lucide-react'
 
 /* ──────────────────────────────────────────────
    Types locaux
@@ -614,27 +614,27 @@ export default function AgentAbsenceDrawer({ agent, onClose }: Props) {
             <div className="flex flex-col gap-2">
               {isEditing ? (
                 <button onClick={handleUpdate} disabled={fSaving}
-                  className="w-full py-3 rounded-xl text-white font-semibold text-sm transition-all disabled:opacity-60"
+                  className="w-full py-3 rounded-xl text-white font-semibold text-sm transition-all disabled:opacity-60 flex items-center justify-center gap-2"
                   style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}>
-                  {fSaving ? 'Enregistrement…' : '💾 Enregistrer les modifications'}
+                  {fSaving ? 'Enregistrement…' : <><Save className="w-4 h-4" /> Enregistrer les modifications</>}
                 </button>
               ) : fType === 'conge' ? (
                 <>
                   <button onClick={() => handleCreate(false)} disabled={fSaving}
-                    className="w-full py-3 rounded-xl border-2 border-[#1A5FA8] text-[#1A5FA8] font-semibold text-sm hover:bg-blue-50 transition-colors disabled:opacity-60">
-                    {fSaving ? 'Enregistrement…' : '📋 Soumettre pour validation'}
+                    className="w-full py-3 rounded-xl border-2 border-[#1A5FA8] text-[#1A5FA8] font-semibold text-sm hover:bg-blue-50 transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
+                    {fSaving ? 'Enregistrement…' : <><ClipboardList className="w-4 h-4" /> Soumettre pour validation</>}
                   </button>
                   <button onClick={() => handleCreate(true)} disabled={fSaving}
-                    className="w-full py-3 rounded-xl text-white font-semibold text-sm transition-all disabled:opacity-60"
+                    className="w-full py-3 rounded-xl text-white font-semibold text-sm transition-all disabled:opacity-60 flex items-center justify-center gap-2"
                     style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}>
-                    {fSaving ? 'Enregistrement…' : '✅ Valider immédiatement'}
+                    {fSaving ? 'Enregistrement…' : <><CheckCircle2 className="w-4 h-4" /> Valider immédiatement</>}
                   </button>
                 </>
               ) : (
                 <button onClick={() => handleCreate(true)} disabled={fSaving}
-                  className="w-full py-3 rounded-xl text-white font-semibold text-sm transition-all disabled:opacity-60"
+                  className="w-full py-3 rounded-xl text-white font-semibold text-sm transition-all disabled:opacity-60 flex items-center justify-center gap-2"
                   style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}>
-                  {fSaving ? 'Enregistrement…' : '✅ Valider immédiatement'}
+                  {fSaving ? 'Enregistrement…' : <><CheckCircle2 className="w-4 h-4" /> Valider immédiatement</>}
                 </button>
               )}
               <button onClick={closeForm}

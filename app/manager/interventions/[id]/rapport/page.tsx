@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Package, Lightbulb } from 'lucide-react'
+import { Package, Lightbulb, ShoppingCart } from 'lucide-react'
 import ValiderRapportButton from '@/components/manager/ValiderRapportButton'
 import CommandeStatutButtons from '@/components/manager/CommandeStatutButtons'
 
@@ -636,7 +636,7 @@ export default async function ManagerRapportPage({ params }: { params: Promise<{
         {/* Section Chariot */}
         {photosChariot.length > 0 && (
           <div className="bg-white rounded-2xl border border-slate-100 p-6">
-            <h2 className="font-semibold text-slate-800 mb-4">🛒 Photo du chariot</h2>
+            <h2 className="font-semibold text-slate-800 mb-4 flex items-center gap-2"><ShoppingCart className="w-4 h-4" /> Photo du chariot</h2>
             <div className="grid grid-cols-4 gap-3">
               {photosChariot.map(p => (
                 p.signedUrl ? (

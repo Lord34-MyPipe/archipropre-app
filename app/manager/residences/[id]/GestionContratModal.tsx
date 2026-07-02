@@ -63,7 +63,7 @@ const JOURS_LABELS: Record<string, string> = {
 const VALID_TYPES = [
   { value: 'parties_communes', label: 'Parties communes' },
   { value: 'containers',       label: 'Containers' },
-  { value: 'espaces_verts',    label: '🌿 Espaces verts' },
+  { value: 'espaces_verts',    label: 'Espaces verts' },
 ]
 
 function formatCreneau(c: Creneau): string {

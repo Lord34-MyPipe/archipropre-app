@@ -5,6 +5,7 @@ import Link from 'next/link'
 import type { Residence, ZoneResidence, TacheTemplate, ContratResidence } from '@/lib/types'
 import TacheModal from './TacheModal'
 import type { ParametresSociete, StatsReel } from './page'
+import { ClipboardList, CalendarX } from 'lucide-react'
 
 /* ── Constantes ──────────────────────────────── */
 
@@ -382,7 +383,7 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
           <>
             {zones.length === 0 && taches.length === 0 && (
               <div className="bg-white rounded-2xl p-10 text-center text-slate-400 border border-slate-100">
-                <p className="text-4xl mb-3">📋</p>
+                <ClipboardList className="w-10 h-10 mb-3 mx-auto text-slate-300" />
                 <p className="font-medium text-slate-500">Aucune zone ni tâche pour le moment.</p>
                 <div className="flex gap-3 justify-center mt-4">
                   <button onClick={handleAddZone} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-medium">+ Zone</button>
@@ -550,7 +551,7 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
               </table>
               {taches.length === 0 && (
                 <div className="p-10 text-center text-slate-400">
-                  <p className="text-3xl mb-2">📅</p>
+                  <CalendarX className="w-8 h-8 mb-2 mx-auto text-slate-300" />
                   <p>Aucune tâche à afficher.</p>
                 </div>
               )}

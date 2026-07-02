@@ -244,7 +244,7 @@ export default function ResidenceCard({ residence: initial }: Props) {
             )}
             {initial.notes_import === 'doublon_potentiel' && (
               <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 text-[11px] font-medium rounded-full bg-yellow-100 text-yellow-700">
-                🔶 À vérifier doublon
+                <AlertTriangle className="w-3 h-3 text-amber-600" /> À vérifier doublon
               </span>
             )}
             <p className="text-sm text-slate-400 mt-1 truncate flex items-center gap-1"><MapPin className="w-3 h-3 shrink-0" />{initial.adresse}</p>

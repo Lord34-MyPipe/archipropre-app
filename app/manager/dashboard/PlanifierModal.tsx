@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { Sparkles } from 'lucide-react'
 
 interface LigneCommande {
   id: string
@@ -113,7 +114,7 @@ export default function PlanifierModal({ commande, estLivraisonManagerDefaut = f
               className="text-xs font-medium px-2 py-1 rounded-lg disabled:opacity-50 transition-opacity"
               style={{ color: '#0BBFBF' }}
             >
-              {suggesting ? '…' : '🤖 Suggérer IA'}
+              {suggesting ? '…' : <><Sparkles className="w-3.5 h-3.5 inline mr-1" /> Suggérer IA</>}
             </button>
           </div>
           <input

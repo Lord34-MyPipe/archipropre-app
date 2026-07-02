@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
-import { Umbrella, AlertTriangle, Users } from 'lucide-react'
+import { Umbrella, AlertTriangle, Users, CalendarX } from 'lucide-react'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type Vue = 'jour' | 'semaine' | 'mois'
@@ -332,7 +332,7 @@ function VueSemaine({ dates, inters, agents, congeKeys, congeMotifs, todayStr }:
   if (!hasData) {
     return (
       <div className="bg-white rounded-2xl border border-slate-100 p-10 text-center">
-        <p className="text-4xl mb-3">📅</p>
+        <CalendarX className="w-10 h-10 mb-3 mx-auto text-slate-300" />
         <p className="text-slate-600 font-medium">Aucune intervention cette semaine</p>
         <p className="text-slate-400 text-sm mt-1">Allez dans une résidence pour générer le planning</p>
         <Link href="/manager/residences"
@@ -583,7 +583,7 @@ function VueJour({ dateStr, inters, agents, congeKeys, congeMotifs }: {
   if (sorted.length === 0 && agentsEnConge.length === 0) {
     return (
       <div className="bg-white rounded-2xl border border-slate-100 p-10 text-center">
-        <p className="text-4xl mb-3">📅</p>
+        <CalendarX className="w-10 h-10 mb-3 mx-auto text-slate-300" />
         <p className="text-slate-600 font-medium">Aucune intervention ce jour</p>
         <p className="text-slate-400 text-sm mt-1">Naviguez vers une autre date ou générez un planning</p>
       </div>

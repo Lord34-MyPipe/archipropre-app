@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import type { AgentDetailData, AgentIntervention, CongeItem, AbsenceItem, JourneeRealisee } from './page'
 import JourneeAgentPanel from '@/components/manager/JourneeAgentPanel'
 import RapportRHModal from '@/components/manager/RapportRHModal'
-import { Car, TramFront, AlertTriangle } from 'lucide-react'
+import { Car, TramFront, AlertTriangle, Palmtree } from 'lucide-react'
 
 // ── Constantes (identiques à ChargeClient) ────────────────────────────────────
 
@@ -498,7 +498,7 @@ export default function AgentDetailClient({
             <div className="space-y-2">
               {conges.map(c => (
                 <div key={c.id} className="flex items-center gap-3 p-3.5 rounded-xl bg-blue-50 border border-blue-100">
-                  <span className="text-xl shrink-0">🏖️</span>
+                  <Palmtree className="w-5 h-5 shrink-0 text-blue-300" />
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-slate-700">
                       {formatDateFr(c.date_debut, { day: 'numeric', month: 'long' })}

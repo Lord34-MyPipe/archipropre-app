@@ -2,11 +2,13 @@
 
 import { useState, useRef, useEffect, useMemo } from 'react'
 import dynamic from 'next/dynamic'
-import ResidenceCard from './ResidenceCard'
+import { useRouter } from 'next/navigation'
+import AgentAttitreModal from '@/components/manager/AgentAttitreModal'
+import { downloadQRCodePDF } from '@/lib/qr-pdf'
 import type { ResidenceMapItem } from '@/components/shared/ResidencesMap'
 import type { EtatResidenceInfo, ResidenceEtat } from './ResidenceCard'
 import { createClient } from '@/lib/supabase'
-import { Building2, Search, MoreHorizontal, MapPin } from 'lucide-react'
+import { Building2, Search, MoreHorizontal, MapPin, AlertTriangle, ChevronUp, ChevronDown, ChevronsUpDown, UserCircle, QrCode, Home } from 'lucide-react'
 
 const ResidencesMap = dynamic(
   () => import('@/components/shared/ResidencesMap'),
@@ -28,13 +30,26 @@ const TYPE_OPTIONS = [
   { value: 'magasin', label: 'Magasin' },
   { value: 'particulier', label: 'Particulier' },
 ]
-const STATUT_OPTIONS = [
-  { value: 'all', label: 'Tous statuts' },
-  { value: 'actif', label: 'Actives' },
-  { value: 'sommeil', label: 'En sommeil' },
-]
+const TYPE_LABEL: Record<string, string> = {
+  syndic:              'Syndic',
+  profession_liberale: 'Prof. libérale',
+  societe:             'Société',
+  magasin:             'Magasin',
+  particulier:         'Particulier',
+}
 
-type ResidenceWithMeta = ResidenceMapItem & { _etat?: EtatResidenceInfo | null }
+// Badges d'état — couleurs conservées depuis ResidenceCard
+const ETAT_BADGE: Record<ResidenceEtat, { label: string; cls: string }> = {
+  a_configurer:   { label: 'À configurer',   cls: 'bg-slate-100 text-slate-500' },
+  prete:          { label: 'Prête',          cls: 'bg-orange-100 text-orange-600' },
+  planning_actif: { label: 'Planning actif', cls: 'bg-green-100 text-green-700' },
+}
+const SOMMEIL_BADGE = { label: 'En sommeil', cls: 'bg-[#F1EFE8] text-[#5F5E5A]' }
+
+type ResidenceWithMeta = ResidenceMapItem & { _etat?: EtatResidenceInfo | null; _nbContrats?: number }
+
+type SortKey = 'nom' | 'etat' | 'agent'
+type SortDir = 'asc' | 'desc'
 
 type GeoState =
   | { status: 'idle' }
@@ -47,15 +62,35 @@ interface Props {
   total: number
 }
 
+// Rang d'état pour le tri (sommeil en dernier)
+function etatRank(r: ResidenceWithMeta): number {
+  if (!r.actif) return 3
+  const e = r._etat?.etat ?? 'a_configurer'
+  return e === 'a_configurer' ? 0 : e === 'prete' ? 1 : 2
+}
+
+// « Prénom Nom » → « Prénom N. »
+function agentShort(full: string | null | undefined): string | null {
+  if (!full) return null
+  const parts = full.trim().split(/\s+/)
+  if (parts.length === 1) return parts[0]
+  return `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.`
+}
+
 export default function ManagerResidencesClient({ residences, agents }: Props) {
+  const router = useRouter()
   const [view, setView]           = useState<'list' | 'map'>('list')
   const [search, setSearch]       = useState('')
   const [showSug, setShowSug]     = useState(false)
   const [filterType, setFilterType]     = useState('')
-  const [filterStatut, setFilterStatut] = useState<'all' | 'actif' | 'sommeil'>('all')
   const [filterEtat, setFilterEtat]     = useState<'all' | ResidenceEtat>('all')
   const [geoState, setGeoState]         = useState<GeoState>({ status: 'idle' })
   const [menuOpen, setMenuOpen]         = useState(false)
+  const [sortKey, setSortKey]           = useState<SortKey>('nom')
+  const [sortDir, setSortDir]           = useState<SortDir>('asc')
+  const [rowMenuId, setRowMenuId]       = useState<string | null>(null)
+  const [attitreFor, setAttitreFor]     = useState<ResidenceWithMeta | null>(null)
+  const [qrLoadingId, setQrLoadingId]   = useState<string | null>(null)
   const searchRef = useRef<HTMLDivElement>(null)
 
   const residencesAGeocoder = useMemo(
@@ -113,18 +148,66 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
     return residences.filter(r => {
       if (q && !r.nom.toLowerCase().includes(q) && !(r.adresse ?? '').toLowerCase().includes(q)) return false
       if (filterType && r.type_client !== filterType) return false
-      if (filterStatut === 'actif' && !r.actif) return false
-      if (filterStatut === 'sommeil' && r.actif) return false
       if (filterEtat !== 'all' && r._etat?.etat !== filterEtat) return false
       return true
     })
-  }, [residences, search, filterType, filterStatut, filterEtat])
+  }, [residences, search, filterType, filterEtat])
+
+  const sorted = useMemo(() => {
+    const arr = [...filtered]
+    const dir = sortDir === 'asc' ? 1 : -1
+    arr.sort((a, b) => {
+      if (sortKey === 'agent') {
+        const an = a._etat?.nom_agent_attitre ?? ''
+        const bn = b._etat?.nom_agent_attitre ?? ''
+        if (!an && !bn) return 0
+        if (!an) return 1          // sans agent toujours en dernier
+        if (!bn) return -1
+        return an.localeCompare(bn, 'fr') * dir
+      }
+      if (sortKey === 'etat') {
+        const d = etatRank(a) - etatRank(b)
+        return (d !== 0 ? d : a.nom.localeCompare(b.nom, 'fr')) * dir
+      }
+      return a.nom.localeCompare(b.nom, 'fr') * dir
+    })
+    return arr
+  }, [filtered, sortKey, sortDir])
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortKey(key); setSortDir('asc') }
+  }
+
+  async function handleQRPDF(r: ResidenceWithMeta) {
+    setQrLoadingId(r.id)
+    try {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin
+      await downloadQRCodePDF({ nom: r.nom, adresse: r.adresse, token: r.qr_code_token }, appUrl)
+    } catch { alert('Erreur lors de la génération du PDF.') }
+    setQrLoadingId(null)
+  }
 
   const suggestions = useMemo(() => {
     if (search.length < 2) return []
     const q = search.toLowerCase()
     return residences.filter(r => r.nom.toLowerCase().includes(q)).slice(0, 6)
   }, [residences, search])
+
+  function SortHeader({ label, keyName, className }: { label: string; keyName: SortKey; className?: string }) {
+    const active = sortKey === keyName
+    return (
+      <button
+        onClick={() => toggleSort(keyName)}
+        className={`flex items-center gap-1 font-semibold text-slate-500 hover:text-slate-700 transition-colors ${className ?? ''}`}
+      >
+        {label}
+        {active
+          ? (sortDir === 'asc' ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />)
+          : <ChevronsUpDown className="w-3.5 h-3.5 text-slate-300" />}
+      </button>
+    )
+  }
 
   return (
     <div className="p-4 md:p-8 pb-28 md:pb-8 space-y-4">
@@ -285,16 +368,9 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
               {TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
 
-            <select
-              value={filterStatut}
-              onChange={e => setFilterStatut(e.target.value as typeof filterStatut)}
-              className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#0BBFBF] cursor-pointer">
-              {STATUT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-
-            {(filterType || filterStatut !== 'all' || filterEtat !== 'all' || search) && (
+            {(filterType || filterEtat !== 'all' || search) && (
               <button
-                onClick={() => { setFilterType(''); setFilterStatut('all'); setFilterEtat('all'); setSearch('') }}
+                onClick={() => { setFilterType(''); setFilterEtat('all'); setSearch('') }}
                 className="px-3 py-2 bg-slate-100 text-slate-500 rounded-xl text-sm hover:bg-slate-200 transition-colors flex items-center gap-1.5">
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>
@@ -306,7 +382,7 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
             <span className="ml-auto text-sm text-slate-500 font-medium">
               {filtered.length === residences.length
                 ? `${residences.length} résidence${residences.length > 1 ? 's' : ''}`
-                : `${filtered.length} / ${residences.length}`}
+                : `${filtered.length} résidence${filtered.length > 1 ? 's' : ''}`}
             </span>
           </div>
         </div>
@@ -333,10 +409,129 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {filtered.map(r => (
-              <ResidenceCard key={r.id} residence={r} />
-            ))}
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-visible">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
+                <tr className="text-left text-xs">
+                  <th className="px-4 py-2.5"><SortHeader label="Résidence" keyName="nom" /></th>
+                  <th className="px-3 py-2.5"><SortHeader label="État" keyName="etat" /></th>
+                  <th className="px-3 py-2.5 font-semibold text-slate-500">Type</th>
+                  <th className="px-3 py-2.5 font-semibold text-slate-500 text-center">Contrats</th>
+                  <th className="px-3 py-2.5"><SortHeader label="Agent" keyName="agent" /></th>
+                  <th className="px-3 py-2.5 font-semibold text-slate-500 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {sorted.map(r => {
+                  const etat: ResidenceEtat = r._etat?.etat ?? 'a_configurer'
+                  const badge = !r.actif ? SOMMEIL_BADGE : ETAT_BADGE[etat]
+                  const agent = agentShort(r._etat?.nom_agent_attitre)
+                  const nbContrats = r._nbContrats ?? 0
+                  const aConfigurer = r.actif && etat === 'a_configurer'
+                  const noteImport =
+                    r.notes_import === 'adresse_manquante' ? 'Adresse manquante'
+                    : r.notes_import === 'doublon_potentiel' ? 'Doublon potentiel à vérifier'
+                    : null
+
+                  return (
+                    <tr
+                      key={r.id}
+                      onClick={() => router.push(`/manager/residences/${r.id}`)}
+                      className={`h-14 cursor-pointer hover:bg-slate-50 transition-colors ${!r.actif ? 'opacity-60' : ''}`}
+                    >
+                      {/* 1. Nom + adresse */}
+                      <td className="px-4 py-2 max-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-slate-800 truncate">{r.nom}</span>
+                          {noteImport && (
+                            <span title={noteImport} className="shrink-0">
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-400 truncate">{r.adresse || '—'}</p>
+                      </td>
+
+                      {/* 2. État */}
+                      <td className="px-3 py-2">
+                        <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${badge.cls}`}>
+                          {badge.label}
+                        </span>
+                      </td>
+
+                      {/* 3. Type client */}
+                      <td className="px-3 py-2 text-slate-500 whitespace-nowrap">
+                        {r.type_client ? (TYPE_LABEL[r.type_client] ?? r.type_client) : '—'}
+                      </td>
+
+                      {/* 4. Contrats */}
+                      <td className="px-3 py-2 text-center text-slate-600 font-medium">
+                        {nbContrats > 0 ? nbContrats : <span className="text-slate-300">—</span>}
+                      </td>
+
+                      {/* 5. Agent attitré */}
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {agent
+                          ? <span className="text-slate-700">{agent}</span>
+                          : <span className="text-slate-400 italic">Aucun agent</span>}
+                      </td>
+
+                      {/* 6. Actions */}
+                      <td className="px-3 py-2 text-right" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-2">
+                          {aConfigurer && (
+                            <button
+                              onClick={() => router.push(`/manager/residences/${r.id}`)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-blue-200 bg-blue-50 text-[#185FA5] hover:bg-blue-100 transition-colors whitespace-nowrap"
+                            >
+                              Configurer
+                            </button>
+                          )}
+                          <div className="relative">
+                            <button
+                              onClick={() => setRowMenuId(id => (id === r.id ? null : r.id))}
+                              onBlur={() => setTimeout(() => setRowMenuId(id => (id === r.id ? null : id)), 150)}
+                              className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-500 transition-colors"
+                              aria-label="Plus d'options"
+                            >
+                              <MoreHorizontal className="w-4 h-4" />
+                            </button>
+                            {rowMenuId === r.id && (
+                              <div className="absolute right-0 top-full mt-1 z-30 bg-white rounded-xl border border-slate-200 shadow-lg py-1 min-w-[190px] text-left">
+                                <button
+                                  onMouseDown={e => e.preventDefault()}
+                                  onClick={() => { setRowMenuId(null); setAttitreFor(r) }}
+                                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 text-left"
+                                >
+                                  <UserCircle className="w-4 h-4 text-slate-400 shrink-0" /> Affectation
+                                </button>
+                                {r.qr_code_token && (
+                                  <button
+                                    onMouseDown={e => e.preventDefault()}
+                                    onClick={() => { setRowMenuId(null); handleQRPDF(r) }}
+                                    disabled={qrLoadingId === r.id}
+                                    className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 text-left disabled:opacity-50"
+                                  >
+                                    <QrCode className="w-4 h-4 text-slate-400 shrink-0" /> QR Code
+                                  </button>
+                                )}
+                                <button
+                                  onMouseDown={e => e.preventDefault()}
+                                  onClick={() => { setRowMenuId(null); router.push(`/manager/residences/${r.id}`) }}
+                                  className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 text-left"
+                                >
+                                  <Home className="w-4 h-4 text-slate-400 shrink-0" /> Fiche résidence
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
         )
       ) : (
@@ -349,6 +544,15 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
             height="580px"
           />
         </div>
+      )}
+
+      {/* Modale Affectation — réutilise AgentAttitreModal (logique ResidenceCard) */}
+      {attitreFor && (
+        <AgentAttitreModal
+          residence={attitreFor}
+          onClose={() => setAttitreFor(null)}
+          onSaved={() => { setAttitreFor(null); router.refresh() }}
+        />
       )}
 
       {/* FAB — Ajouter une résidence */}

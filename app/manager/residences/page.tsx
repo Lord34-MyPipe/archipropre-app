@@ -25,13 +25,18 @@ export default async function ManagerResidences() {
   // Fetch états depuis la vue
   const residenceIds = (residences ?? []).map(r => r.id)
   const etatMap = new Map<string, EtatResidenceInfo>()
+  const contratCountMap = new Map<string, number>()
   if (residenceIds.length > 0) {
-    const { data: etatRows } = await admin
-      .from('v_etat_residence')
-      .select('*')
-      .in('residence_id', residenceIds)
+    const [{ data: etatRows }, { data: contratRows }] = await Promise.all([
+      admin.from('v_etat_residence').select('*').in('residence_id', residenceIds),
+      // Nombre de contrats ACTIFS par résidence (pour la colonne « Contrats » du tableau)
+      admin.from('contrats_residences').select('residence_id').eq('actif', true).in('residence_id', residenceIds),
+    ])
     ;(etatRows ?? []).forEach((e: EtatResidenceInfo & { residence_id: string }) => {
       etatMap.set(e.residence_id, e)
+    })
+    ;(contratRows ?? []).forEach((c: { residence_id: string }) => {
+      contratCountMap.set(c.residence_id, (contratCountMap.get(c.residence_id) ?? 0) + 1)
     })
   }
 
@@ -41,7 +46,8 @@ export default async function ManagerResidences() {
     ...r,
     agentNom: r.agent_prefere_id ? (agentMap.get(r.agent_prefere_id) ?? null) : null,
     _etat: etatMap.get(r.id) ?? null,
-  })) as (ResidenceMapItem & { _etat: EtatResidenceInfo | null })[]
+    _nbContrats: contratCountMap.get(r.id) ?? 0,
+  })) as (ResidenceMapItem & { _etat: EtatResidenceInfo | null; _nbContrats: number })[]
 
   return (
     <div className="min-h-screen bg-slate-100">

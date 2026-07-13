@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { Bot, FileText, Clock, AlertTriangle } from 'lucide-react'
 import AlerteReorganisationButton from './AlerteReorganisationButton'
 import type { Alerte } from '@/lib/types'
-import { FEATURES } from '@/lib/features'
+import { FEATURES, SEUIL_RETARD_SCAN_MIN } from '@/lib/features'
 
 interface ScanManquant {
   id: string
@@ -117,7 +117,7 @@ export default function DashboardAlertes({ scanManquants, rapportsEnRetard, aler
                     {i.prenom} {i.nom} · {i.residences?.nom ?? '—'}
                   </p>
                   <p className="text-xs text-red-600">
-                    Retard de {i.retardMin} min · prévu à {i.heure_debut_prevue.slice(0, 5)}
+                    Pas de scan {SEUIL_RETARD_SCAN_MIN} min après l&apos;heure prévue · prévu à {i.heure_debut_prevue.slice(0, 5)} ({i.retardMin} min de retard)
                   </p>
                 </div>
                 <a

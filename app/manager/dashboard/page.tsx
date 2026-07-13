@@ -5,7 +5,8 @@ import DashboardKPIs    from '@/components/manager/DashboardKPIs'
 import DashboardAlertes from '@/components/manager/DashboardAlertes'
 import DashboardEquipe  from '@/components/manager/DashboardEquipe'
 import CommandesBloc    from './CommandesBloc'
-import { FEATURES } from '@/lib/features'
+import DashboardRefresh from './DashboardRefresh'
+import { FEATURES, SEUIL_RETARD_SCAN_MIN } from '@/lib/features'
 
 export const dynamic = 'force-dynamic'
 
@@ -87,7 +88,7 @@ export default async function ManagerDashboard() {
     .filter(i =>
       i.statut === 'planifiee' &&
       i.heure_debut_prevue &&
-      diffMinutes(i.heure_debut_prevue.slice(0, 5), nowTime) >= 30
+      diffMinutes(i.heure_debut_prevue.slice(0, 5), nowTime) >= SEUIL_RETARD_SCAN_MIN
     )
     .map(i => {
       const agent = agentProfiles.get(i.agent_id)
@@ -123,7 +124,7 @@ export default async function ManagerDashboard() {
     const nbTerminees = ints.filter(i => i.statut === 'terminee').length
     const nbEnCours   = ints.filter(i => i.statut === 'en_cours').length
     const enRetard    = ints.some(
-      i => i.statut === 'planifiee' && i.heure_debut_prevue && diffMinutes(i.heure_debut_prevue.slice(0, 5), nowTime) >= 30
+      i => i.statut === 'planifiee' && i.heure_debut_prevue && diffMinutes(i.heure_debut_prevue.slice(0, 5), nowTime) >= SEUIL_RETARD_SCAN_MIN
     )
     const absent = absentsIds.has(agent.id)
 
@@ -163,6 +164,7 @@ export default async function ManagerDashboard() {
         </p>
       </div>
 
+      <DashboardRefresh />
       <div className="px-4 py-6 md:px-8 pb-24 md:pb-6 space-y-4">
         <DashboardKPIs kpis={kpis} />
         <div className="md:grid md:grid-cols-[3fr_2fr] md:gap-6 space-y-4 md:space-y-0">

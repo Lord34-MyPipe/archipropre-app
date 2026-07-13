@@ -95,6 +95,57 @@ export default async function ResidenceDetailPage({ params }: Props) {
   const etat = (etatRow?.etat ?? 'a_configurer') as EtatResidenceInfo['etat']
   const agentNom: string | null = etatRow?.nom_agent_attitre ?? null
 
+  // ── Checklist de configuration par contrat (calcul serveur, requêtes existantes) ──
+  const todayStr = new Intl.DateTimeFormat('fr-CA', {
+    timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date())
+
+  const [{ data: contratsCfg }, { data: zonesCfg }, { data: interFutures }] = await Promise.all([
+    admin.from('contrats_residences')
+      .select('id, actif, montant_mensuel, creneaux_acceptes, agent_prefere_id, date_fin')
+      .eq('residence_id', id),
+    admin.from('zones_residence')
+      .select('id, contrat_id').eq('residence_id', id).not('contrat_id', 'is', null),
+    admin.from('interventions')
+      .select('contrat_id').eq('residence_id', id)
+      .gte('date_prevue', todayStr).neq('statut', 'annulee').not('contrat_id', 'is', null),
+  ])
+
+  // Zones par contrat + tâches par zone (pour l'étape « zones et tâches »)
+  const zoneIds = (zonesCfg ?? []).map(z => z.id)
+  const zonesAvecTache = new Set<string>()
+  if (zoneIds.length > 0) {
+    const { data: tachesCfg } = await admin.from('taches_template').select('zone_id').in('zone_id', zoneIds)
+    for (const t of tachesCfg ?? []) if (t.zone_id) zonesAvecTache.add(t.zone_id as string)
+  }
+  const zonesParContrat = new Map<string, { id: string }[]>()
+  for (const z of zonesCfg ?? []) {
+    if (!z.contrat_id) continue
+    const arr = zonesParContrat.get(z.contrat_id) ?? []
+    arr.push({ id: z.id })
+    zonesParContrat.set(z.contrat_id, arr)
+  }
+  const futuresParContrat = new Map<string, number>()
+  for (const i of interFutures ?? []) {
+    if (i.contrat_id) futuresParContrat.set(i.contrat_id, (futuresParContrat.get(i.contrat_id) ?? 0) + 1)
+  }
+
+  const contratsChecklist = (contratsCfg ?? []).map(c => {
+    const zones = zonesParContrat.get(c.id) ?? []
+    const aTache = zones.some(z => zonesAvecTache.has(z.id))
+    const creneaux = c.creneaux_acceptes as unknown[] | null
+    const step1 = (c.actif ?? false) && c.montant_mensuel != null && Array.isArray(creneaux) && creneaux.length > 0
+    const step2 = zones.length >= 1 && aTache
+    const step3 = c.agent_prefere_id != null
+    const step4 = (futuresParContrat.get(c.id) ?? 0) >= 1
+    return {
+      id: c.id,
+      step1, step2, step3, step4,
+      allDone: step1 && step2 && step3 && step4,
+      estTermine: typeof c.date_fin === 'string' && c.date_fin < todayStr,
+    }
+  })
+
   return (
     <ResidenceDetailClient
       residence={res as unknown as Residence}
@@ -102,6 +153,7 @@ export default async function ResidenceDetailPage({ params }: Props) {
       agentNom={agentNom}
       contrat={contratRow ?? null}
       kpi={kpi}
+      contratsChecklist={contratsChecklist}
     />
   )
 }

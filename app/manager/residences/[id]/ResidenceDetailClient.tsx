@@ -9,8 +9,20 @@ import RentabiliteModal from './RentabiliteModal'
 import AjoutContratModal from './AjoutContratModal'
 import { FEATURES } from '@/lib/features'
 import GestionContratModal from './GestionContratModal'
+import AgentAttitreModal from '@/components/manager/AgentAttitreModal'
+import ConfigChecklist from '@/components/manager/ConfigChecklist'
 import type { Residence } from '@/lib/types'
 import type { ResidenceEtat } from '@/components/manager/ResidenceCard'
+
+interface ContratChecklist {
+  id: string
+  step1: boolean
+  step2: boolean
+  step3: boolean
+  step4: boolean
+  allDone: boolean
+  estTermine: boolean
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -44,6 +56,7 @@ interface Props {
   agentNom: string | null
   contrat: Contrat | null
   kpi: import('@/lib/rentabilite').KpiResidence | null
+  contratsChecklist: ContratChecklist[]
 }
 
 // ── Config cartes contrats ────────────────────────────────────────────────────
@@ -127,12 +140,14 @@ const IcoQr = () => (
 
 // ── Composant ─────────────────────────────────────────────────────────────────
 
-export default function ResidenceDetailClient({ residence: r, etat, agentNom, contrat, kpi }: Props) {
+export default function ResidenceDetailClient({ residence: r, etat, agentNom, contrat, kpi, contratsChecklist }: Props) {
   const router = useRouter()
   // null = modal fermé ; { contratId: null } = global ; { contratId: id } = par contrat
   const [rentabiliteState, setRentabiliteState] = useState<{ contratId: string | null } | null>(null)
   const [showAjoutContrat, setShowAjoutContrat]     = useState(false)
   const [contratSelectionne, setContratSelectionne] = useState<ContratCard | null>(null)
+  const [showAgentModal, setShowAgentModal]         = useState(false)
+  const [genContratId, setGenContratId]             = useState<string | null>(null)
   const [contrats, setContrats]                     = useState<ContratCard[]>([])
   const [contratsLoading, setContratsLoading]       = useState(true)
   const [contratsError, setContratsError]           = useState<string | null>(null)
@@ -148,6 +163,45 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
   }
 
   useEffect(() => { fetchContrats() }, [r.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Après une action de configuration : recharge les cartes + recalcule la checklist serveur
+  function refreshAll() { fetchContrats(); router.refresh() }
+
+  // ── Checklist de configuration ──────────────────────────────────────────────
+  const checklistById = new Map(contratsChecklist.map(c => [c.id, c]))
+  const contratsAConfigurer = contratsChecklist.filter(c => !c.allDone && !c.estTermine)
+  const configMode = contratsAConfigurer.length > 0 || contratsChecklist.length === 0
+
+  // Étape ① : éditer le contrat placeholder existant, sinon en créer un
+  function onStep1(contratId: string | null) {
+    if (contratId) {
+      const card = contrats.find(c => c.id === contratId)
+      if (card) { setContratSelectionne(card); return }
+    }
+    setShowAjoutContrat(true)
+  }
+  // Étape ④ : génération du planning via la route existante
+  async function genererPlanning(contratId: string) {
+    if (genContratId) return
+    setGenContratId(contratId)
+    try {
+      const res = await fetch('/api/planning/generer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ residenceId: r.id, contratId }),
+      })
+      if (!res.ok) {
+        const { error } = await res.json().catch(() => ({ error: 'Erreur' }))
+        alert(error ?? 'Échec de la génération du planning.')
+      } else {
+        refreshAll()
+      }
+    } catch {
+      alert('Échec de la génération du planning.')
+    } finally {
+      setGenContratId(null)
+    }
+  }
 
   const etatCfg = ETAT_CONFIG[etat]
   const enSommeil = !r.actif
@@ -242,8 +296,41 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
         )}
       </div>
 
-      {/* ── Grille navigation ── */}
       <div className="p-4 md:p-8">
+
+        {/* ── Checklist de configuration guidée ── */}
+        {configMode && (
+          <div className="space-y-3 mb-4">
+            {contratsChecklist.length === 0 ? (
+              <ConfigChecklist
+                steps={{ step1: false, step2: false, step3: false, step4: false }}
+                onStep1={() => onStep1(null)}
+                onStep2={() => {}}
+                onStep3={() => setShowAgentModal(true)}
+                onStep4={() => {}}
+              />
+            ) : (
+              contratsAConfigurer.map(chk => {
+                const card = contrats.find(c => c.id === chk.id)
+                return (
+                  <ConfigChecklist
+                    key={chk.id}
+                    libelle={contratsAConfigurer.length > 1 ? (card?.libelle ?? 'Contrat') : undefined}
+                    steps={{ step1: chk.step1, step2: chk.step2, step3: chk.step3, step4: chk.step4 }}
+                    onStep1={() => onStep1(chk.id)}
+                    onStep2={() => router.push(`/manager/residences/${r.id}/taches?contratId=${chk.id}`)}
+                    onStep3={() => setShowAgentModal(true)}
+                    onStep4={() => genererPlanning(chk.id)}
+                    busyStep4={genContratId === chk.id}
+                  />
+                )
+              })
+            )}
+          </div>
+        )}
+
+        {/* ── Grille navigation (masquée pendant la configuration) ── */}
+        {!configMode && (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
 
           <Link
@@ -294,6 +381,7 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
             </button>
           )}
         </div>
+        )}
 
         {/* ── Cartes contrats ── */}
         <div className="mt-4 space-y-3">
@@ -327,7 +415,11 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
             <p className="text-sm text-red-500 px-1">{contratsError}</p>
           )}
 
-          {!contratsLoading && !contratsError && contrats.map(c => {
+          {!contratsLoading && !contratsError && contrats.filter(c => {
+            // En mode config, le contrat non terminé est représenté par sa checklist, pas par une carte
+            const chk = checklistById.get(c.id)
+            return !(chk && !chk.allDone && !chk.estTermine)
+          }).map(c => {
             const statutCfg = STATUT_CFG[c.statut_calcule]
             const typeCfg   = c.type_contrat ? (TYPE_CONTRAT_CFG[c.type_contrat] ?? { label: c.type_contrat, icon: '📄' }) : null
             const agentNomComplet = c.agent_prenom && c.agent_nom
@@ -466,7 +558,16 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
         <AjoutContratModal
           residenceId={r.id}
           onClose={() => setShowAjoutContrat(false)}
-          onSuccess={() => { setShowAjoutContrat(false); fetchContrats() }}
+          onSuccess={() => { setShowAjoutContrat(false); refreshAll() }}
+        />
+      )}
+
+      {/* ── Modal affectation agent (étape ③ de la checklist) ── */}
+      {showAgentModal && (
+        <AgentAttitreModal
+          residence={r}
+          onClose={() => setShowAgentModal(false)}
+          onSaved={() => { setShowAgentModal(false); refreshAll() }}
         />
       )}
 
@@ -485,8 +586,8 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
           residenceId={r.id}
           contrat={contratSelectionne}
           onClose={() => setContratSelectionne(null)}
-          onSaved={() => { setContratSelectionne(null); fetchContrats() }}
-          onDeleted={() => { setContratSelectionne(null); fetchContrats() }}
+          onSaved={() => { setContratSelectionne(null); refreshAll() }}
+          onDeleted={() => { setContratSelectionne(null); refreshAll() }}
         />
       )}
     </div>

@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react'
 
-// Enregistre le SW depuis /api/sw (scope /, version = VERCEL_DEPLOYMENT_ID).
-// Sur controllerchange (nouveau SW actif via skipWaiting) :
+// Enregistre le SW /sw.js (généré au build par scripts/generate-sw.js, CACHE_VERSION
+// unique par déploiement). Sur controllerchange (nouveau SW actif via skipWaiting) :
 //   - auto-reload si aucun champ de saisie n'est actif
 //   - toast "Mettre à jour" sinon pour ne pas perdre une saisie en cours
 export default function ServiceWorkerUpdater() {
@@ -12,7 +12,7 @@ export default function ServiceWorkerUpdater() {
   useEffect(() => {
     if (!('serviceWorker' in navigator) || process.env.NODE_ENV === 'development') return
 
-    navigator.serviceWorker.register('/api/sw', { scope: '/' }).catch(() => {})
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {})
 
     const handleControllerChange = () => {
       const el = document.activeElement

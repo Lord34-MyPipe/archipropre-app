@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# service worker généré au build (scripts/generate-sw.js via predev/prebuild)
+/public/sw.js
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

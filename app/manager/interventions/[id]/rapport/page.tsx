@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Package, Lightbulb, ShoppingCart } from 'lucide-react'
 import ValiderRapportButton from '@/components/manager/ValiderRapportButton'
 import CommandeStatutButtons from '@/components/manager/CommandeStatutButtons'
+import { FEATURES } from '@/lib/features'
 
 interface ZoneIntervention {
   id: string
@@ -256,11 +257,15 @@ export default async function ManagerRapportPage({ params }: { params: Promise<{
     }, 0) || null
 
   // ── Durée CONTRACTUELLE : montant_mensuel ÷ taux_horaire ÷ nb_inter ──────
-  const tauxHoraire = contrat?.taux_horaire_facturation ?? param?.taux_horaire_facturation_defaut ?? null
+  // Données financières sensibles (prix de vente + taux horaire) : on ne calcule
+  // NI n'envoie ces chiffres au client quand la rentabilité est masquée par le flag.
+  const tauxHoraire = FEATURES.rentabilite
+    ? (contrat?.taux_horaire_facturation ?? param?.taux_horaire_facturation_defaut ?? null)
+    : null
   const tauxSource  = contrat?.taux_horaire_facturation != null ? 'contrat' : 'défaut société'
 
   let dureeContractuelleMin: number | null = null
-  if (contrat?.montant_mensuel && tauxHoraire && contrat?.nb_interventions_mois) {
+  if (FEATURES.rentabilite && contrat?.montant_mensuel && tauxHoraire && contrat?.nb_interventions_mois) {
     const heuresParMois = contrat.montant_mensuel / tauxHoraire
     const heuresParIntervention = heuresParMois / contrat.nb_interventions_mois
     dureeContractuelleMin = Math.round(heuresParIntervention * 60)
@@ -384,22 +389,24 @@ export default async function ManagerRapportPage({ params }: { params: Promise<{
         {/* ── Comparaison des 3 durées ── */}
         <div className="bg-white rounded-2xl border border-slate-100 p-6">
           <h2 className="font-semibold text-slate-800 mb-4">Comparaison des durées</h2>
-          <div className="grid grid-cols-3 gap-4 mb-4">
+          <div className={`grid ${FEATURES.rentabilite ? 'grid-cols-3' : 'grid-cols-2'} gap-4 mb-4`}>
 
-            {/* Contractuelle */}
-            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-center">
-              <p className="text-xs font-semibold text-blue-500 uppercase tracking-wider mb-1">Contractuelle</p>
-              <p className="text-2xl font-bold text-blue-700">{fmtDuree(dureeContractuelleMin)}</p>
-              {contrat?.montant_mensuel && tauxHoraire ? (
-                <p className="text-[10px] text-blue-400 mt-1.5 leading-tight">
-                  {contrat.montant_mensuel}€ ÷ {tauxHoraire}€/h ÷ {contrat.nb_interventions_mois}/mois
-                  <br/>
-                  <span className="opacity-70">taux {tauxSource}</span>
-                </p>
-              ) : (
-                <p className="text-[10px] text-blue-300 mt-1.5">données manquantes</p>
-              )}
-            </div>
+            {/* Contractuelle — masquée par le flag rentabilite (prix de vente + taux) */}
+            {FEATURES.rentabilite && (
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-center">
+                <p className="text-xs font-semibold text-blue-500 uppercase tracking-wider mb-1">Contractuelle</p>
+                <p className="text-2xl font-bold text-blue-700">{fmtDuree(dureeContractuelleMin)}</p>
+                {contrat?.montant_mensuel && tauxHoraire ? (
+                  <p className="text-[10px] text-blue-400 mt-1.5 leading-tight">
+                    {contrat.montant_mensuel}€ ÷ {tauxHoraire}€/h ÷ {contrat.nb_interventions_mois}/mois
+                    <br/>
+                    <span className="opacity-70">taux {tauxSource}</span>
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-blue-300 mt-1.5">données manquantes</p>
+                )}
+              </div>
+            )}
 
             {/* Estimée */}
             <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-center">

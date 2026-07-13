@@ -1,12 +1,19 @@
-# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 28 juin 2026 — fin de session)
+# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 14 juillet 2026 — MVP terrain)
 
-**BLOC B ENTIÈREMENT TERMINÉ. P2-9 livré. Nouvelles features commande produits
+**MVP JUILLET 2026 en prod. Tag pre-mvp-juillet2026. Feature flags actifs.**
+Fonctionnalités hors-MVP masquées (non supprimées) — réactivation = flag true + push.
+Alerte retard scan à 15 min. Planning agent étendu semaine courante + suivante.
+Service Worker versionné (skipWaiting + clients.claim, VERCEL_DEPLOYMENT_ID).
+
+Voir section [MVP JUILLET 2026](#mvp-juillet-2026) pour le détail complet.
+
+Avant (28 juin 2026) : **BLOC B ENTIÈREMENT TERMINÉ. P2-9 livré. Nouvelles features commande produits
 + catalogue + contrôle final agent livrés.**
 
 Backend migré (migrations 015→023 appliquées en prod).
 Modèle Résidence → Contrat → Zone → Tâche. 162 contrats.
 
-Derniers commits de la session :
+Derniers commits de la session (28 juin 2026) :
 - 6655b21 : Migration 022 + contrôle final agent (chariot + commande produits)
 - 05baddb : Catalogue produits interface directeur /directeur/catalogue
 - 6879ed0 : Fix flow controle-final (redirect /agent/dashboard + route rapport)
@@ -44,10 +51,11 @@ TEST B6a validé : scan Bat A → Hall seul ; scan Container → Local Container
 TEST B6b validé ALTHEA : 2 rapports du 25 juin avec libellés "Container" / "Bat A".
 Détail complet : voir section P2-11 plus bas.
 
-RESTE :
+RESTE (post-MVP) :
 - Dette finale P2-11 (voir liste ci-dessous)
 - P2-12 / P2-13 à cadrer
 - Tests terrain à valider (controle-final, commandes, passage bureau)
+- Réactivation features masquées selon retours terrain (flag true + push)
 
 ## 🔄 PROTOCOLE CONTEXT! (mise à jour de la mémoire projet)
 
@@ -1233,6 +1241,84 @@ mais UNE SEULE liste tâches/zones/photos PARTAGÉE. Comportement visé :
 impact sur le rapport manager (un seul affiché ou fusion), affichage côté agent
 (chaque agent voit les coches de l'autre en temps réel ?).
 Tech probable : Supabase Realtime sur taches_intervention + intervention_id partagé.
+
+### P2-14 — Contrôle géographique 200m (✅ DÉJÀ IMPLÉMENTÉ en prod)
+
+Avant : spec non implémentée, listée comme item futur.
+→ Constaté le 14 juillet 2026 : déjà en prod depuis une session précédente.
+
+**Implémentation existante :**
+- `app/agent/scan/page.tsx` : géolocalisation demandée à l'ouverture de la page de scan.
+- `lib/geo.ts` (fonction `distanceMetres`) : calcul Haversine lat/lng → distance en mètres.
+- Alerte `hors_zone` insérée dans la table `alertes` au premier scan si la distance
+  entre la position de l'agent et la coordonnée GPS de la résidence dépasse 200m.
+- Échec de géolocalisation silencieux non bloquant : si le navigateur refuse ou timeout,
+  le scan s'effectue quand même sans contrôle géographique (dégradé gracieux).
+
+Aucune migration nécessaire (la colonne `type` de la table `alertes` acceptait déjà
+`hors_zone`). Aucune action requise.
+
+## MVP JUILLET 2026
+
+**Tag de sauvegarde :** `pre-mvp-juillet2026` (visible sur origin)
+
+**Objectif :** Sécuriser le terrain — masquer les features instables, simplifier l'UX
+pour les agents sur le terrain, préparer les PWA installées à recevoir les mises à jour
+automatiquement.
+
+**Règle absolue :** on MASQUE, on ne supprime RIEN.
+Réactivation d'une feature = `FEATURES.nomFlag = true` dans `lib/features.ts` + push.
+
+### Feature flags — `lib/features.ts`
+
+| Flag | Valeur MVP | Ce qui est masqué |
+|---|---|---|
+| `anaCopilote` | `false` | Bouton flottant ANA, CopilotePanel, ReorganisationPanel, alertes ANA dashboard |
+| `suggestionIA` | `false` | Boutons "Obtenir une suggestion IA" (AgentAttitreModal, PlanifierModal) |
+| `rentabilite` | `false` | Boutons + modal Rentabilité (fiche résidence, cartes contrat) + page /directeur/rentabilite |
+| `catalogueProduits` | `false` | Nav directeur + page /directeur/catalogue |
+| `commandesProduits` | `false` | Bloc Réappro dashboard, CommandeDetailDrawer, étapes chariot+produits contrôle-final agent |
+| `passagesSiege` | `false` | Boutons "+ Passage siège", PlanifierModal retrait, carte passage bureau agent |
+| `exportRhPdf` | `true` | Export RH mensuel — conservé actif |
+
+`SEUIL_RETARD_SCAN_MIN = 15` (était 30 en dur dans le code).
+
+### Bornes planning agent
+
+Avant : aujourd'hui → J+7.
+→ MVP : lundi semaine courante → dimanche semaine suivante (14 jours glissants, ancrage lundi).
+Calcul via `Intl.DateTimeFormat('en-CA', { weekday: 'short' }).formatToParts()` + map ISO day.
+Les jours passés s'affichent en lecture seule ; bouton Scan désactivé si !isToday (inchangé).
+Fichier : `app/agent/dashboard/page.tsx` (fonctions `mondayOfWeek` / `sundayOfNextWeek`).
+
+### Service Worker versionné
+
+- **Avant :** next-pwa v5 installé mais NON configuré (aucun SW actif en production).
+- **→ MVP :** SW servi depuis `app/api/sw/route.ts`.
+  - Version = `VERCEL_DEPLOYMENT_ID` (env var automatique Vercel, change à chaque déploiement).
+  - `skipWaiting()` à l'installation → activation immédiate.
+  - `clients.claim()` à l'activation → prise de contrôle de tous les onglets ouverts.
+  - Client : `components/ServiceWorkerUpdater.tsx` enregistre le SW et écoute `controllerchange`.
+    - Auto-reload si aucun champ de saisie actif.
+    - Toast "Nouvelle version disponible — Mettre à jour" sinon.
+  - next-pwa NON activé (incompatible Next.js 16 Turbopack — webpack plugin).
+
+**Pour vérifier la propagation :** DevTools → Application → Service Workers → colonne "Source"
+(doit afficher la nouvelle date après un déploiement Vercel). Ou cliquer "Update" manuellement.
+
+### Auto-refresh dashboard manager
+
+`components/manager/DashboardRefresh.tsx` — `useEffect` + `setInterval(router.refresh, 120_000)`.
+Rafraîchit les données Server Component toutes les 2 minutes sans rechargement complet.
+
+### Commits MVP
+
+- **Tag** : `pre-mvp-juillet2026`
+- **Item B** (feature flags) : `41d31d3` — "mvp: feature flags — fonctionnalités hors MVP masquées"
+- **Item C** (seuil 15 min + auto-refresh) : inclus dans Item B (même commit)
+- **Item D** (planning agent semaine courante+suivante) : inclus dans Item B
+- **Item E** (SW versionné) : `76a8305` — "mvp: versioning service worker + notification mise à jour"
+- **Item F** (ce fichier) : commit suivant — "mvp: CONTEXT.md — état MVP + P2-14 corrigé"
 
 ## À faire Phase 3
 

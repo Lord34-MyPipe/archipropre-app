@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Sparkles } from 'lucide-react'
+import { FEATURES } from '@/lib/features'
 
 interface LigneCommande {
   id: string
@@ -108,14 +109,16 @@ export default function PlanifierModal({ commande, estLivraisonManagerDefaut = f
         <div className="space-y-1">
           <div className="flex items-center justify-between">
             <label className="text-xs font-semibold text-slate-600">Heure</label>
-            <button
-              onClick={suggererIA}
-              disabled={suggesting}
-              className="text-xs font-medium px-2 py-1 rounded-lg disabled:opacity-50 transition-opacity"
-              style={{ color: '#0BBFBF' }}
-            >
-              {suggesting ? '…' : <><Sparkles className="w-3.5 h-3.5 inline mr-1" /> Suggérer IA</>}
-            </button>
+            {FEATURES.suggestionIA && (
+              <button
+                onClick={suggererIA}
+                disabled={suggesting}
+                className="text-xs font-medium px-2 py-1 rounded-lg disabled:opacity-50 transition-opacity"
+                style={{ color: '#0BBFBF' }}
+              >
+                {suggesting ? '…' : <><Sparkles className="w-3.5 h-3.5 inline mr-1" /> Suggérer IA</>}
+              </button>
+            )}
           </div>
           <input
             type="time"

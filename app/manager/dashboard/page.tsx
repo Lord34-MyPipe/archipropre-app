@@ -5,6 +5,7 @@ import DashboardKPIs    from '@/components/manager/DashboardKPIs'
 import DashboardAlertes from '@/components/manager/DashboardAlertes'
 import DashboardEquipe  from '@/components/manager/DashboardEquipe'
 import CommandesBloc    from './CommandesBloc'
+import { FEATURES } from '@/lib/features'
 
 export const dynamic = 'force-dynamic'
 
@@ -172,7 +173,7 @@ export default async function ManagerDashboard() {
               alertes={alertes}
               kpis={kpis}
             />
-            <CommandesBloc managerNom={`${manager?.prenom ?? ''} ${manager?.nom ?? ''}`.trim()} />
+            {FEATURES.commandesProduits && <CommandesBloc managerNom={`${manager?.prenom ?? ''} ${manager?.nom ?? ''}`.trim()} />}
           </div>
           <DashboardEquipe agents={statutParAgentFiltre} />
         </div>

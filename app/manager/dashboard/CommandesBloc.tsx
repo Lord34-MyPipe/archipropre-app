@@ -5,6 +5,7 @@ import { Package } from 'lucide-react'
 import PlanifierModal from './PlanifierModal'
 import CommandeDetailDrawer from './CommandeDetailDrawer'
 import type { LigneCommande } from './CommandeDetailDrawer'
+import { FEATURES } from '@/lib/features'
 
 interface Commande {
   id: string

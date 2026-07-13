@@ -6,6 +6,7 @@ import Link from 'next/link'
 import type { Intervention, Residence, Profile } from '@/lib/types'
 import { wazeUrl } from '@/lib/navigation'
 import PassageCarte from './PassageCarte'
+import { FEATURES } from '@/lib/features'
 
 const ADRESSE_SIEGE_DEFAUT = '123 Rue de la Bandido, 34160 Castries'
 
@@ -103,13 +104,15 @@ export default async function AgentDashboard({ searchParams }: Props) {
   type PassageSiege = {
     id: string; heure_prevue: string; motif: string; statut: string; adresse_siege: string
   }
-  const passages = ((passagesRaw ?? []) as Record<string, unknown>[]).map(p => ({
-    id:            p.id as string,
-    heure_prevue:  p.heure_prevue as string,
-    motif:         p.motif as string,
-    statut:        p.statut as string,
-    adresse_siege: adresseSiege,
-  }))
+  const passages: PassageSiege[] = FEATURES.passagesSiege
+    ? ((passagesRaw ?? []) as Record<string, unknown>[]).map(p => ({
+        id:            p.id as string,
+        heure_prevue:  p.heure_prevue as string,
+        motif:         p.motif as string,
+        statut:        p.statut as string,
+        adresse_siege: adresseSiege,
+      }))
+    : []
 
   const { data: alertes } = await supabase
     .from('alertes')

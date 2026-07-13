@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import { AlertTriangle, BarChart2, CheckCircle2 } from 'lucide-react'
+import { FEATURES } from '@/lib/features'
 
 interface SocieteParams {
   taux_horaire_agent: number
@@ -50,6 +51,8 @@ function heuresMoisFromTaches(
 }
 
 export default async function DirecteurRentabilite() {
+  if (!FEATURES.rentabilite) redirect('/directeur/dashboard')
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')

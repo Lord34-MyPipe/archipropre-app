@@ -5,14 +5,15 @@ import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { LayoutDashboard, Calendar, Building2, Users, TrendingUp, Package, Settings, LogOut } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { FEATURES } from '@/lib/features'
 
 const items: { href: string; label: string; Icon: LucideIcon }[] = [
   { href: '/directeur/dashboard',   label: 'Tableau de bord',  Icon: LayoutDashboard },
   { href: '/directeur/planning',    label: 'Planning',          Icon: Calendar },
   { href: '/directeur/residences',  label: 'Résidences',        Icon: Building2 },
   { href: '/directeur/agents',      label: 'Agents',            Icon: Users },
-  { href: '/directeur/rentabilite', label: 'Rentabilité',       Icon: TrendingUp },
-  { href: '/directeur/catalogue',   label: 'Catalogue produits',Icon: Package },
+  ...(FEATURES.rentabilite       ? [{ href: '/directeur/rentabilite', label: 'Rentabilité',        Icon: TrendingUp }] : []),
+  ...(FEATURES.catalogueProduits ? [{ href: '/directeur/catalogue',   label: 'Catalogue produits', Icon: Package    }] : []),
   { href: '/directeur/parametres',  label: 'Paramètres',        Icon: Settings },
 ]
 

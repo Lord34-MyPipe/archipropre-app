@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { Building2, Trash2, Leaf, MapPin, AlertTriangle, User } from 'lucide-react'
 import RentabiliteModal from './RentabiliteModal'
 import AjoutContratModal from './AjoutContratModal'
+import { FEATURES } from '@/lib/features'
 import GestionContratModal from './GestionContratModal'
 import type { Residence } from '@/lib/types'
 import type { ResidenceEtat } from '@/components/manager/ResidenceCard'
@@ -265,15 +266,17 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
             <span className="text-sm font-semibold text-slate-700">Rapports</span>
           </Link>
 
-          <button
-            onClick={() => setRentabiliteState({ contratId: null })}
-            className="bg-white rounded-xl p-5 flex flex-col items-center gap-2 shadow-sm hover:shadow-md hover:bg-slate-50 transition-all border border-slate-100 text-center"
-          >
-            <span className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center text-green-700">
-              <IcoCoins />
-            </span>
-            <span className="text-sm font-semibold text-slate-700">Rentabilité</span>
-          </button>
+          {FEATURES.rentabilite && (
+            <button
+              onClick={() => setRentabiliteState({ contratId: null })}
+              className="bg-white rounded-xl p-5 flex flex-col items-center gap-2 shadow-sm hover:shadow-md hover:bg-slate-50 transition-all border border-slate-100 text-center"
+            >
+              <span className="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center text-green-700">
+                <IcoCoins />
+              </span>
+              <span className="text-sm font-semibold text-slate-700">Rentabilité</span>
+            </button>
+          )}
 
           {!contratsLoading && contrats.filter(c => c.actif && c.qr_code_token).length > 0 && (
             <button
@@ -372,16 +375,18 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
                       </svg>
                       Rapports
                     </Link>
-                    <button
-                      onClick={() => setRentabiliteState({ contratId: c.id })}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-slate-500 hover:text-green-700 hover:bg-green-50 transition-colors"
-                      aria-label="Rentabilité de ce contrat"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
-                      </svg>
-                      Rentabilité
-                    </button>
+                    {FEATURES.rentabilite && (
+                      <button
+                        onClick={() => setRentabiliteState({ contratId: c.id })}
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-slate-500 hover:text-green-700 hover:bg-green-50 transition-colors"
+                        aria-label="Rentabilité de ce contrat"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
+                        </svg>
+                        Rentabilité
+                      </button>
+                    )}
                     {c.qr_code_token && (
                       <button
                         onClick={async () => {
@@ -466,7 +471,7 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
       )}
 
       {/* ── Modal rentabilité ── */}
-      {rentabiliteState !== null && (
+      {FEATURES.rentabilite && rentabiliteState !== null && (
         <RentabiliteModal
           residenceId={r.id}
           contratId={rentabiliteState.contratId}

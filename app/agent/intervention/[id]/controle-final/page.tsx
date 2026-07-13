@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
+import { FEATURES } from '@/lib/features'
 
 interface Produit {
   id: string
@@ -48,6 +49,7 @@ export default function ControleFinaPage() {
   const drawerApresRef    = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
+    if (!FEATURES.commandesProduits) return
     fetch('/api/produits')
       .then(r => r.json())
       .then(({ produits: p }) => setProduits(p ?? []))
@@ -201,7 +203,7 @@ export default function ControleFinaPage() {
       <div className="max-w-lg mx-auto px-4 space-y-5 pt-5">
 
         {/* Bloc 1 — Photo chariot */}
-        <section className="bg-white rounded-2xl p-4 shadow-sm">
+        {FEATURES.commandesProduits && <section className="bg-white rounded-2xl p-4 shadow-sm">
           <h2 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
             <span className="text-lg">🛒</span> Photo du chariot
           </h2>
@@ -247,10 +249,10 @@ export default function ControleFinaPage() {
             className="hidden"
             onChange={e => { const f = e.target.files?.[0]; if (f) handleChariotPhoto(f) }}
           />
-        </section>
+        </section>}
 
         {/* Bloc 2 — Produits à commander */}
-        <section className="bg-white rounded-2xl p-4 shadow-sm">
+        {FEATURES.commandesProduits && <section className="bg-white rounded-2xl p-4 shadow-sm">
           <h2 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
             <span className="text-lg">📦</span> Produits manquants
           </h2>
@@ -341,7 +343,7 @@ export default function ControleFinaPage() {
               ))}
             </div>
           )}
-        </section>
+        </section>}
       </div>
 
       {/* Drawer ampoule */}

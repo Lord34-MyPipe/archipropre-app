@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Bot, FileText, Clock, AlertTriangle } from 'lucide-react'
 import AlerteReorganisationButton from './AlerteReorganisationButton'
 import type { Alerte } from '@/lib/types'
+import { FEATURES } from '@/lib/features'
 
 interface ScanManquant {
   id: string
@@ -151,7 +152,7 @@ export default function DashboardAlertes({ scanManquants, rapportsEnRetard, aler
           <div className="divide-y divide-amber-50">
 
             {/* Alertes ANA réorganisation */}
-            {alertesANA.map(al => (
+            {FEATURES.anaCopilote && alertesANA.map(al => (
               <div key={al.id} className="flex items-start gap-3 px-4 py-3">
                 <Bot className="w-5 h-5 mt-0.5 shrink-0 text-amber-600" />
                 <div className="flex-1 min-w-0">

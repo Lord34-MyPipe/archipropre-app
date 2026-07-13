@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import CatalogueClient from './CatalogueClient'
+import { FEATURES } from '@/lib/features'
 
 export interface Produit {
   id: string
@@ -14,6 +15,8 @@ export interface Produit {
 }
 
 export default async function CataloguePage() {
+  if (!FEATURES.catalogueProduits) redirect('/directeur/dashboard')
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')

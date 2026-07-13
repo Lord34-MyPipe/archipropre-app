@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase'
 import type { Residence, Profile } from '@/lib/types'
 import { Sparkles, Car, AlertTriangle } from 'lucide-react'
+import { FEATURES } from '@/lib/features'
 
 interface AbsenceInfo {
   agentId: string
@@ -201,7 +202,7 @@ export default function AgentAttitreModal({ residence, onClose, onSaved }: Props
         </div>
 
         {/* Bouton Suggestion IA + bandeau résultat — toujours visible, jamais scrollable */}
-        <div className="px-6 pb-4 shrink-0 border-b border-slate-100">
+        {FEATURES.suggestionIA && <div className="px-6 pb-4 shrink-0 border-b border-slate-100">
           <button
             onClick={handleSuggest}
             disabled={suggesting || loading}
@@ -240,7 +241,7 @@ export default function AgentAttitreModal({ residence, onClose, onSaved }: Props
               </button>
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Body */}
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-4">

@@ -3,7 +3,7 @@
 **MVP JUILLET 2026 en prod. Tag pre-mvp-juillet2026. Feature flags actifs.**
 Fonctionnalités hors-MVP masquées (non supprimées) — réactivation = flag true + push.
 Alerte retard scan à 15 min. Planning agent étendu semaine courante + suivante.
-Service Worker versionné (skipWaiting + clients.claim, VERCEL_DEPLOYMENT_ID).
+Service Worker versionné (public/sw.js généré au build, skipWaiting + clients.claim).
 
 Voir section [MVP JUILLET 2026](#mvp-juillet-2026) pour le détail complet.
 
@@ -1294,17 +1294,27 @@ Fichier : `app/agent/dashboard/page.tsx` (fonctions `mondayOfWeek` / `sundayOfNe
 ### Service Worker versionné
 
 - **Avant :** next-pwa v5 installé mais NON configuré (aucun SW actif en production).
-- **→ MVP :** SW servi depuis `app/api/sw/route.ts`.
-  - Version = `VERCEL_DEPLOYMENT_ID` (env var automatique Vercel, change à chaque déploiement).
+- **Approche abandonnée (commit `76a8305`) :** SW servi depuis une route API `app/api/sw/route.ts`.
+  → Remplacée le 14 juillet 2026 (commit `fe18e66`) par le pattern generate-sw.js
+  (aligné sur l'autre projet Next.js de Julien). Raison : script de build explicite,
+  fichier `public/sw.js` standard à la racine, hooks npm — plus simple à maintenir.
+- **→ MVP (approche retenue) :** `public/sw.js` généré au build par `scripts/generate-sw.js`.
+  - Hooks npm `predev` + `prebuild` (`node scripts/generate-sw.js`) → régénère avant chaque
+    dev/build. Vercel exécute `npm run build` donc `prebuild` se déclenche à chaque déploiement.
+  - `CACHE_VERSION` = `VERCEL_GIT_COMMIT_SHA` (fallback `VERCEL_DEPLOYMENT_ID`, puis `local-<timestamp>`).
+    Change à chaque déploiement → nouveau contenu SW → détection navigateur.
   - `skipWaiting()` à l'installation → activation immédiate.
-  - `clients.claim()` à l'activation → prise de contrôle de tous les onglets ouverts.
-  - Client : `components/ServiceWorkerUpdater.tsx` enregistre le SW et écoute `controllerchange`.
+  - `clients.claim()` + purge des anciens caches `archipropre-*` à l'activation.
+  - `public/sw.js` est gitignoré (artefact de build régénéré par `prebuild`).
+  - Client : `components/ServiceWorkerUpdater.tsx` enregistre `/sw.js` et écoute `controllerchange`.
     - Auto-reload si aucun champ de saisie actif.
     - Toast "Nouvelle version disponible — Mettre à jour" sinon.
-  - next-pwa NON activé (incompatible Next.js 16 Turbopack — webpack plugin).
+  - next-pwa NON activé (incompatible Next.js 16 Turbopack — webpack plugin) ; reste en dépendance
+    non utilisée (on ne supprime rien).
 
 **Pour vérifier la propagation :** DevTools → Application → Service Workers → colonne "Source"
-(doit afficher la nouvelle date après un déploiement Vercel). Ou cliquer "Update" manuellement.
+(doit afficher la nouvelle date après un déploiement Vercel) ; la valeur `CACHE_VERSION` en tête
+de `public/sw.js` doit correspondre au déploiement. Ou cliquer "Update" manuellement.
 
 ### Auto-refresh dashboard manager
 
@@ -1314,11 +1324,12 @@ Rafraîchit les données Server Component toutes les 2 minutes sans rechargement
 ### Commits MVP
 
 - **Tag** : `pre-mvp-juillet2026`
-- **Item B** (feature flags) : `41d31d3` — "mvp: feature flags — fonctionnalités hors MVP masquées"
-- **Item C** (seuil 15 min + auto-refresh) : inclus dans Item B (même commit)
-- **Item D** (planning agent semaine courante+suivante) : inclus dans Item B
-- **Item E** (SW versionné) : `76a8305` — "mvp: versioning service worker + notification mise à jour"
-- **Item F** (ce fichier) : commit suivant — "mvp: CONTEXT.md — état MVP + P2-14 corrigé"
+- **Item B** (feature flags) : `3f8ff99` — "mvp: feature flags — fonctionnalités hors MVP masquées"
+- **Item C** (seuil 15 min + auto-refresh) : `c39e46a` — "mvp: alerte retard scan à 15 min + auto-refresh dashboard 120s"
+- **Item D** (planning agent semaine courante+suivante) : `41d31d3` — "mvp: planning agent étendu semaine courante + suivante"
+- **Item E** (SW versionné) : `fe18e66` — "mvp: versioning service worker (generate-sw.js) — remplace route API"
+  (remplace l'approche route API `76a8305`)
+- **Item F** (ce fichier) : commit suivant — "mvp: CONTEXT.md — état MVP + SW generate-sw.js + P2-14 corrigé"
 
 ## À faire Phase 3
 

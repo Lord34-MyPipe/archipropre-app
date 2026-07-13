@@ -4,6 +4,7 @@ import type { Residence } from '@/lib/types'
 import type { EtatResidenceInfo } from '@/components/manager/ResidenceCard'
 import ResidenceDetailClient from './ResidenceDetailClient'
 import { calcCoutMensuel, type KpiResidence, type TacheFrequence } from '@/lib/rentabilite'
+import { FEATURES } from '@/lib/features'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,6 +37,9 @@ export default async function ResidenceDetailPage({ params }: Props) {
       .eq('residence_id', id)
       .maybeSingle(),
     (async (): Promise<KpiResidence | null> => {
+      // Données financières sensibles : on ne calcule NI n'envoie les chiffres
+      // au client quand la rentabilité est masquée par le feature flag.
+      if (!FEATURES.rentabilite) return null
       try {
         const [{ data: contrats }, { data: params }] = await Promise.all([
           admin.from('contrats_residences').select('id, montant_mensuel').eq('residence_id', id).eq('actif', true),

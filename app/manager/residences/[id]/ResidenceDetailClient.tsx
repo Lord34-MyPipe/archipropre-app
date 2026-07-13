@@ -209,8 +209,8 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
             Agent attitré : <span className="font-semibold text-white">{agentNom}</span>
           </p>
         )}
-        {/* Bande KPI agrégée */}
-        {kpi !== null && (
+        {/* Bande KPI agrégée — données financières masquées par le flag rentabilite */}
+        {FEATURES.rentabilite && kpi !== null && (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3">
             {!kpi.hasContrats ? (
               <span className="text-blue-300 text-sm">Aucun contrat actif</span>

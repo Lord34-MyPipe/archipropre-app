@@ -23,6 +23,26 @@ function addDays(dateStr: string, n: number): string {
   return d.toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' })
 }
 
+function mondayOfWeek(dateStr: string): string {
+  const d = new Date(dateStr + 'T12:00:00Z')
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Paris',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    weekday: 'short',
+  }).formatToParts(d)
+  const weekdayPart = parts.find(p => p.type === 'weekday')?.value ?? 'Mon'
+  const ISO_DAY: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
+  const isoDay = ISO_DAY[weekdayPart] ?? 1
+  // daysToMonday: Mon=0, Tue=-1, Wed=-2, Thu=-3, Fri=-4, Sat=-5, Sun=-6
+  const daysToMonday = isoDay === 0 ? -6 : 1 - isoDay
+  return addDays(dateStr, daysToMonday)
+}
+
+function sundayOfNextWeek(dateStr: string): string {
+  // lundi semaine courante + 13 = dimanche semaine suivante
+  return addDays(mondayOfWeek(dateStr), 13)
+}
+
 function labelJourLong(dateStr: string): string {
   return new Date(dateStr + 'T12:00:00Z')
     .toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Paris' })
@@ -62,13 +82,14 @@ export default async function AgentDashboard({ searchParams }: Props) {
     .from('profiles').select('*').eq('id', user.id).single() as { data: Profile | null }
 
   // Date du jour en Europe/Paris
-  const todayStr  = new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' })
-  const maxDateStr = addDays(todayStr, 7)
+  const todayStr   = new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' })
+  const minDateStr = mondayOfWeek(todayStr)      // lundi de la semaine courante
+  const maxDateStr = sundayOfNextWeek(todayStr)  // dimanche de la semaine suivante
 
-  // Date sélectionnée — bornée [aujourd'hui, J+7]
+  // Date sélectionnée — bornée [lundi semaine courante, dimanche semaine suivante]
   const sp = await searchParams
   let selectedDate = sp.date ?? todayStr
-  if (selectedDate < todayStr)  selectedDate = todayStr
+  if (selectedDate < minDateStr) selectedDate = minDateStr
   if (selectedDate > maxDateStr) selectedDate = maxDateStr
 
   const isToday  = selectedDate === todayStr
@@ -207,8 +228,8 @@ export default async function AgentDashboard({ searchParams }: Props) {
 
         {/* ── Navigation date ── */}
         <div className="flex items-center gap-2">
-          {/* Flèche précédente — désactivée sur aujourd'hui */}
-          {isToday ? (
+          {/* Flèche précédente — désactivée sur le lundi de la semaine courante */}
+          {selectedDate === minDateStr ? (
             <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-300 shrink-0">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/>

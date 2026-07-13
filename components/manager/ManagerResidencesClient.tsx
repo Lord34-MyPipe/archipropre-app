@@ -8,7 +8,7 @@ import { downloadQRCodePDF } from '@/lib/qr-pdf'
 import type { ResidenceMapItem } from '@/components/shared/ResidencesMap'
 import type { EtatResidenceInfo, ResidenceEtat } from './ResidenceCard'
 import { createClient } from '@/lib/supabase'
-import { Building2, Search, MoreHorizontal, MapPin, AlertTriangle, ChevronUp, ChevronDown, ChevronsUpDown, UserCircle, QrCode, Home } from 'lucide-react'
+import { Building2, Search, MoreHorizontal, MapPin, AlertTriangle, ChevronUp, ChevronDown, ChevronsUpDown, ChevronLeft, ChevronRight, UserCircle, QrCode, Home } from 'lucide-react'
 
 const ResidencesMap = dynamic(
   () => import('@/components/shared/ResidencesMap'),
@@ -45,6 +45,8 @@ const ETAT_BADGE: Record<ResidenceEtat, { label: string; cls: string }> = {
   planning_actif: { label: 'Planning actif', cls: 'bg-green-100 text-green-700' },
 }
 const SOMMEIL_BADGE = { label: 'En sommeil', cls: 'bg-[#F1EFE8] text-[#5F5E5A]' }
+
+const PAGE_SIZE = 50
 
 type ResidenceWithMeta = ResidenceMapItem & { _etat?: EtatResidenceInfo | null; _nbContrats?: number }
 
@@ -91,6 +93,7 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
   const [rowMenuId, setRowMenuId]       = useState<string | null>(null)
   const [attitreFor, setAttitreFor]     = useState<ResidenceWithMeta | null>(null)
   const [qrLoadingId, setQrLoadingId]   = useState<string | null>(null)
+  const [page, setPage]                 = useState(1)
   const searchRef = useRef<HTMLDivElement>(null)
 
   const residencesAGeocoder = useMemo(
@@ -178,6 +181,17 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
     if (sortKey === key) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
     else { setSortKey(key); setSortDir('asc') }
   }
+
+  // Pagination — le filtrage/tri s'applique AVANT (on pagine `sorted`)
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
+  const currentPage = Math.min(page, totalPages)
+  const paged = useMemo(
+    () => sorted.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [sorted, currentPage]
+  )
+
+  // Revenir en page 1 quand le résultat filtré/trié change
+  useEffect(() => { setPage(1) }, [search, filterType, filterEtat, sortKey, sortDir])
 
   async function handleQRPDF(r: ResidenceWithMeta) {
     setQrLoadingId(r.id)
@@ -422,7 +436,7 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {sorted.map(r => {
+                {paged.map(r => {
                   const etat: ResidenceEtat = r._etat?.etat ?? 'a_configurer'
                   const badge = !r.actif ? SOMMEIL_BADGE : ETAT_BADGE[etat]
                   const agent = agentShort(r._etat?.nom_agent_attitre)
@@ -532,6 +546,31 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
                 })}
               </tbody>
             </table>
+
+            {/* Pagination — masquée si tout tient sur une page */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-4 px-4 py-3 border-t border-slate-100">
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage <= 1}
+                  className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  aria-label="Page précédente"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="text-sm text-slate-500 font-medium tabular-nums">
+                  Page {currentPage}/{totalPages}
+                </span>
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage >= totalPages}
+                  className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  aria-label="Page suivante"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
           </div>
         )
       ) : (

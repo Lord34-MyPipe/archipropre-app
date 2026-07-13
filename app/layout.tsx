@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
+import ServiceWorkerUpdater from '@/components/ServiceWorkerUpdater'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -31,6 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className={`${inter.className} bg-slate-50 text-slate-900 antialiased`}>
         {children}
+        <ServiceWorkerUpdater />
       </body>
     </html>
   )

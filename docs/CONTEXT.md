@@ -1,18 +1,32 @@
-# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 15 juillet 2026 — MVP livré & sécurisé)
+# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 15 juillet 2026 — MVP terminé, testé, sécurisé)
 
-**MVP JUILLET 2026 livré et sécurisé.** App fonctionnelle sur le périmètre agent
-(scan → zones/photos → rapport), planning agent 2 semaines, création manuelle de
-planning manager, alertes (scan hors-zone >200 m + retard scan 15 min + hors
-planning), temps de travail réel (1er scan → dernier rapport).
-Base nettoyée : **157 résidences réelles, 0 intervention.**
-**Prochaine étape :** configuration paramètres société → agents → résidences avec
-Ana (voir « Ordre de configuration »), puis tests terrain (Christian).
+**MVP JUILLET 2026 : développement TERMINÉ, testé, sécurisé.** Toutes les
+fonctions du périmètre MVP sont fonctionnelles et **vérifiées en live** (audit
+pré-vol navigation des 3 rôles, 15/07). Périmètre agent (scan → zones/photos →
+rapport), planning agent 2 semaines, création manuelle d'intervention manager
+(rebranchée), alertes (scan hors-zone >200 m + retard scan 15 min + hors planning),
+temps de travail réel (1er scan → dernier rapport). Comptes désactivés bloqués à la
+connexion. Base propre : **157 résidences réelles (les vrais clients Archipropre),
+0 intervention réelle.**
+
+**Le chemin critique n'est plus le code, mais la donnée et le terrain. Prochaine étape :**
+1. **Passer Supabase en Pro** (backups quotidiens + fin des pauses auto Free).
+2. **Test agent complet** en conditions réelles avec Christian.
+3. **Config** paramètres société → agents → résidences avec Ana, via le wizard
+   (voir « Ordre de configuration »).
 
 Tag `pre-mvp-juillet2026`. Feature flags actifs (hors-MVP masqué, non supprimé —
 réactivation = flag true + push). Service Worker versionné (public/sw.js généré au
 build). LOT 2 (liste résidences en tableau dense) + LOT 3 (wizard config + page
-contrat à onglets + fil d'Ariane) livrés. Bandeau/formule financière masqués par
-`FEATURES.rentabilite`. Voir section [MVP JUILLET 2026](#mvp-juillet-2026) pour le détail complet.
+contrat à onglets + fil d'Ariane) + 6 correctifs pré-lancement livrés.
+Bandeau/formule financière masqués par `FEATURES.rentabilite`. Voir section
+[MVP JUILLET 2026](#mvp-juillet-2026) et « Session corrections pré-lancement » pour le détail.
+
+⚠️ **Dette découverte :** `interventions_planifiees` n'est PAS morte (validation
+planning directeur écrit encore dedans) — NE PAS la supprimer (voir dette dédiée).
+
+Avant (15 juillet 2026, matin) : **MVP livré & sécurisé.** Base nettoyée
+(157 résidences, 0 intervention). LOT 2 + LOT 3 livrés.
 
 Avant (14 juillet 2026) : **MVP JUILLET 2026 en prod. Feature flags actifs.**
 Alerte retard scan à 15 min. Planning agent étendu semaine courante + suivante.
@@ -1464,8 +1478,76 @@ bannières résidence-level inchangées.
   `PlanifierInterventionModal` n'est monté que par `ResidenceCard` (orphelin) + `CopilotePanel`
   (ANA off) → aucun bouton accessible, alors que le modal + `/api/interventions/creer-ponctuelle`
   existent. À rebrancher si la création manuelle est dans le périmètre.
+  → ✅ **CORRIGÉ** (Item 1, `d03ec2d` — voir « Session corrections pré-lancement »).
 - **Agent désactivé peut se connecter** (constaté pré-vol 15/07) : la garde d'auth agent ne
   vérifie pas `actif`. À cadrer.
+  → ✅ **CORRIGÉ** (Item 2, `12500c4` — comptes désactivés bloqués, 3 rôles).
+
+## Session corrections pré-lancement (15/07/2026)
+
+**Pré-vol fonctionnel complet réalisé** : audit navigation live des 3 rôles
+(agent / manager / directeur). **6 corrections livrées** (build + push par item).
+
+- **Item 1 (`d03ec2d`) — Création manuelle d'intervention REBRANCHÉE.** Bouton
+  « Nouvelle intervention » sur la fiche résidence (`ResidenceDetailClient`),
+  visible si `peutPlanifier = contrats.some(c => c.actif && c.agent_prefere_id)`,
+  indépendant du mode config. Ouvre le `PlanifierInterventionModal` existant
+  (réutilisé, non réécrit) : date/heure/récurrence → agent **actif** scoré →
+  confirmation → `POST /api/interventions`. Le point d'entrée avait disparu au
+  LOT 2 (`ResidenceCard` rendu orphelin par le tableau). Vérifié en live :
+  intervention créée, visible dans le planning résidence ET global.
+  **LIMITE CONNUE :** le modal crée au niveau **résidence** (`contrat_id=null`),
+  donc l'intervention manuelle n'apparaît PAS dans les onglets planning **par
+  contrat** (qui filtrent par `contrat_id`). Acceptable MVP ; à faire évoluer
+  post-lancement si besoin (rattacher la création manuelle à un contrat précis).
+- **Item 2 (`12500c4`) — Comptes désactivés (`actif=false`) BLOQUÉS à la connexion, 3 rôles.**
+  `signOut` + redirect `/login?error=disabled` + message « Compte désactivé.
+  Contactez votre responsable. » **Nuance technique :** le `signOut` fiable se fait
+  côté page login (un Server Component ne peut pas effacer le cookie d'auth de
+  façon fiable) + garde dans les 3 layouts + check au submit. Raison métier :
+  agent qui quitte la société = accès coupé.
+- **Item 3 (`55b90bd`) — FAB « + » création résidence** (placeholder `alert`) retiré
+  (création de résidence hors MVP).
+- **Item 4 (`3b7d9aa`) — Bouton « Contacter »** (alertes scan manquant) : `tel:<numéro
+  agent>` si dispo, masqué sinon (avant : `tel:` vide).
+- **Item 5 (`cc4f5a7`) — Message planning vide clarifié :** « Aucune intervention
+  d'agent actif cette semaine » quand les seules interventions de la période
+  appartiennent à des agents inactifs (détection serveur via `createAdminClient`).
+- **Item 6 (`1f774c7`) — Agents inactifs masqués par défaut** sur `/manager/agents`
+  ET `/directeur/agents` (même composant `AgentsClient`). Filtre « Afficher/Masquer
+  les inactifs (N) ». But : la directrice ne confond pas un compte désactivé
+  (ex. Marie Dupont) avec un agent réel. Affichage seulement.
+
+### Faux problèmes du pré-vol, levés
+
+- **« Incohérence planning 0 vs 148 »** (🟠-1 du pré-vol) : **PAS un bug RLS.** Le
+  « 0 » sur `/manager/planning` était un **cache RSC obsolète**. Le planning global
+  affiche bien les interventions d'agent actif ; il n'exclut que les agents
+  **inactifs** (voulu). Confirmé en créant une intervention d'agent actif →
+  apparaît bien partout.
+- **« Login agent cassé »** : levé — `agent@archipropre.fr` / `Archipropre2026`
+  fonctionne (le mot de passe du brief était erroné).
+- **Taux horaire de facturation visible dans les forms admin contrat : DÉCISION
+  ACTÉE = on le GARDE.** C'est du pricing client (comme le montant mensuel), fixé
+  par le manager, PAS de la rentabilité interne. **Ligne de démarcation confirmée :**
+  rentabilité Archipropre (coût 23 €/h, marge, taux interne) **masquée** ; prix
+  client (montant mensuel, taux de facturation) **visible** côté manager.
+
+### DETTE ARCHITECTURE découverte : `interventions_planifiees`
+
+La table `interventions_planifiees` **N'EST PAS legacy/morte** comme supposé.
+Encore **lue ET écrite** :
+- `app/api/planning/valider/route.ts` : lecture + écriture (SELECT/DELETE ~40-74,
+  **INSERT ~133**) — flux **VALIDATION DE PLANNING** côté directeur.
+- `app/directeur/planning/page.tsx:86` : lecture.
+- `supabase/migrations/001_initial.sql:119` : définition + RLS.
+
+**DEUX tables de planning coexistent** : `interventions` (parcours agent P2-11 :
+scan → zones → rapport) et `interventions_planifiees` (validation directeur).
+**RISQUE :** le directeur peut valider un planning dans une table que le parcours
+agent ne lit pas. **NE PAS truncate/supprimer cette table.** DETTE à clarifier
+post-lancement : migrer `valider/route.ts` + `directeur/planning` vers
+`interventions`, OU documenter le rôle distinct de chaque table.
 
 ## Ordre de configuration (session Ana)
 
@@ -1505,14 +1587,36 @@ Exécuté en **SQL Editor** (pas de CLI Supabase) :
   `Archipropre2026` (≠ Test1234!) ; il est vide (0 résidence/0 intervention) → pour une démo
   agent peuplée, utiliser Christian (inactif, à réactiver) ou affecter+générer sur Marie.
 
+**Complément 15/07 — Marie Dupont (`agent@archipropre.fr`, id `c9ae0702-…`) :** tentative de
+**suppression bloquée par FK** sur `interventions_planifiees` (158 lignes legacy). **Décision :
+garder désactivé** (`actif=false`). Neutralisé fonctionnellement par **Item 2** (bloqué à la
+connexion) + **Item 6** (masqué de la liste agents). Suffisant — pas de suppression forcée.
+
 ### Gouvernance post-lancement (décidée, à appliquer dès mise en prod agents)
 
-- **Passer Supabase en Pro AVANT le lancement** (backups quotidiens + fin des pauses auto du
-  plan Free qui bloqueraient les scans un lundi matin).
+- **Passer Supabase en Pro AVANT le lancement**, sur le projet **Archipropre
+  `qszexdcyzlknokpaccnw`** (PAS Barns Wolf). Raisons : backups quotidiens + fin des
+  **pauses auto Free** — le projet s'est mis en pause le **13/07** (cause du « mot de
+  passe incorrect » observé). Le Free suffit en capacité (~6 % utilisé) mais pause auto
+  + zéro backup = plan de dev, pas de prod.
 - **Workflow branches + preview Vercel** : ne plus push direct sur `main` une fois les agents
   en prod. Dev sur branche → preview → validation → merge `main`.
 - **Migrations** : jamais un jour ouvré, backup manuel avant, toujours « ajouter jamais
   casser » (double-write pour les transitions destructives).
+
+### Autres apprentissages (15/07/2026)
+
+- **FK cachées avant suppression :** un compte « de test » peut être référencé par des tables
+  **legacy insoupçonnées** (ici `interventions_planifiees`). Toujours compter les références
+  dans **TOUTES** les tables liées (`interventions`, `journees_agent`, `contrats`, `residences`,
+  ET les tables legacy) avant un `DELETE` de profil. Volume inattendu → **garder désactivé**
+  plutôt que forcer la suppression.
+- **Cache RSC Next.js :** un « 0 intervention » en prod peut être un **cache RSC obsolète**,
+  pas un bug de données. Vérifier en **SQL direct** avant de conclure à un bug RLS.
+- **Christian Marquant a DEUX comptes distincts** (un rôle par compte) :
+  `manager@archipropre.fr` (accès **manager**) + `marquant@archipropre-services.com`
+  (rôle **agent**, id `1d46fd73-…`, actuellement `actif=false`). Reflète sa double casquette
+  manager + terrain — ne pas confondre les deux comptes.
 
 ## À faire Phase 3
 

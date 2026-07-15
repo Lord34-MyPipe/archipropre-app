@@ -594,18 +594,8 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
         />
       )}
 
-      {/* FAB — Ajouter une résidence */}
-      <div className="fixed bottom-24 right-5 md:bottom-8 md:right-8 z-20">
-        <button
-          onClick={() => alert('Fonctionnalité à venir : formulaire de création de résidence.')}
-          className="w-14 h-14 rounded-full shadow-lg flex items-center justify-center active:scale-95 transition-all"
-          style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}
-          title="Ajouter une résidence">
-          <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
-          </svg>
-        </button>
-      </div>
+      {/* FAB "Ajouter une résidence" retiré : création de résidence hors périmètre MVP
+          (les résidences viennent de l'import). Aucun bouton placeholder / alerte. */}
     </div>
   )
 }

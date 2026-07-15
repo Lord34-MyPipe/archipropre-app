@@ -145,6 +145,7 @@ export default function AgentsClient({ agents: initial }: Props) {
   const router = useRouter()
   const [agents, setAgents]               = useState(initial)
   const [search, setSearch]               = useState('')
+  const [showInactive, setShowInactive]   = useState(false)
   const [modalOpen, setModalOpen]         = useState(false)
   const [editing, setEditing]             = useState<Profile | null>(null)
   const [confirmDeactivate, setConfirmDeactivate] = useState<Profile | null>(null)
@@ -222,15 +223,20 @@ export default function AgentsClient({ agents: initial }: Props) {
     router.refresh()
   }
 
-  // ── Filtrage recherche ────────────────────────────────────────────────────
+  // Agents inactifs masqués par défaut (ne pas confondre un compte désactivé
+  // avec un agent réel) — révélés via le filtre "Afficher les inactifs".
+  const inactiveCount = useMemo(() => agents.filter(a => !a.actif).length, [agents])
+
+  // ── Filtrage recherche + actif/inactif ────────────────────────────────────
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
-    if (!q) return agents
-    return agents.filter(a =>
-      `${a.prenom} ${a.nom}`.toLowerCase().includes(q) ||
-      (a.email ?? '').toLowerCase().includes(q)
-    )
-  }, [agents, search])
+    return agents.filter(a => {
+      if (!showInactive && !a.actif) return false
+      if (!q) return true
+      return `${a.prenom} ${a.nom}`.toLowerCase().includes(q) ||
+        (a.email ?? '').toLowerCase().includes(q)
+    })
+  }, [agents, search, showInactive])
 
   // ── Groupage binômes ──────────────────────────────────────────────────────
   const renderItems = useMemo<RenderItem[]>(() => {
@@ -325,6 +331,20 @@ export default function AgentsClient({ agents: initial }: Props) {
                 </div>
               )}
             </div>
+          )}
+
+          {/* Filtre inactifs — masqués par défaut */}
+          {inactiveCount > 0 && (
+            <button
+              onClick={() => setShowInactive(v => !v)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                showInactive
+                  ? 'bg-slate-700 text-white border-slate-700 hover:bg-slate-800'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              {showInactive ? 'Masquer' : 'Afficher'} les inactifs ({inactiveCount})
+            </button>
           )}
 
           {/* Ajouter */}

@@ -1,11 +1,22 @@
-# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 14 juillet 2026 — MVP terrain)
+# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 15 juillet 2026 — MVP livré & sécurisé)
 
-**MVP JUILLET 2026 en prod. Tag pre-mvp-juillet2026. Feature flags actifs.**
-Fonctionnalités hors-MVP masquées (non supprimées) — réactivation = flag true + push.
+**MVP JUILLET 2026 livré et sécurisé.** App fonctionnelle sur le périmètre agent
+(scan → zones/photos → rapport), planning agent 2 semaines, création manuelle de
+planning manager, alertes (scan hors-zone >200 m + retard scan 15 min + hors
+planning), temps de travail réel (1er scan → dernier rapport).
+Base nettoyée : **157 résidences réelles, 0 intervention.**
+**Prochaine étape :** configuration paramètres société → agents → résidences avec
+Ana (voir « Ordre de configuration »), puis tests terrain (Christian).
+
+Tag `pre-mvp-juillet2026`. Feature flags actifs (hors-MVP masqué, non supprimé —
+réactivation = flag true + push). Service Worker versionné (public/sw.js généré au
+build). LOT 2 (liste résidences en tableau dense) + LOT 3 (wizard config + page
+contrat à onglets + fil d'Ariane) livrés. Bandeau/formule financière masqués par
+`FEATURES.rentabilite`. Voir section [MVP JUILLET 2026](#mvp-juillet-2026) pour le détail complet.
+
+Avant (14 juillet 2026) : **MVP JUILLET 2026 en prod. Feature flags actifs.**
 Alerte retard scan à 15 min. Planning agent étendu semaine courante + suivante.
-Service Worker versionné (public/sw.js généré au build, skipWaiting + clients.claim).
-
-Voir section [MVP JUILLET 2026](#mvp-juillet-2026) pour le détail complet.
+Service Worker versionné.
 
 Avant (28 juin 2026) : **BLOC B ENTIÈREMENT TERMINÉ. P2-9 livré. Nouvelles features commande produits
 + catalogue + contrôle final agent livrés.**
@@ -1061,7 +1072,10 @@ Structure routes REST P2-11 (validée) :
   effectiveAgentId = contrat.agent_prefere_id ?? res.agent_prefere_id
   (fallback résidence peut être faux pour un contrat avec son propre agent).
 - Re-typer "Container" ALTHEA : type_contrat = 'containers' au lieu de 'parties_communes'.
+  → ✅ FAIT (nettoyage base 14/07/2026, SQL Editor).
 - Interventions de test ALTHEA (106 = 53×Bat A + 53×Container) → à nettoyer avant prod.
+  → ✅ FAIT (nettoyage base 14/07/2026 : 366 interventions ALTHEA supprimées avec leurs
+  FK — taches_intervention, photos_zone, zones_intervention, alertes. Voir « Key learnings »).
 - Modal rentabilité mode global : texte "pas encore de données réelles pour ce contrat" →
   corriger en "pour cette résidence" quand contratId === null (cosmétique).
 - Libellé modal rentabilité global "ce contrat" → "ces contrats" dans d'autres occurrences.
@@ -1069,6 +1083,7 @@ Structure routes REST P2-11 (validée) :
   = tout utilisateur authentifié peut lire tous les contrats). Resserrer à manager_id ou
   agent attitré.
 - Versioning service worker PWA (cache sert ancien code après déploiement).
+  → ✅ FAIT (Item E MVP, commit `fe18e66` — `scripts/generate-sw.js`, voir section MVP JUILLET 2026).
 - DETTE TRAÇABILITÉ MIGRATIONS : triggers QR (017) + migrations 018-020 existent en prod
   (SQL Editor Supabase) mais leurs fichiers locaux 018/019/020 ne correspondent pas
   exactement (vérifier que les RPC en prod matchent les fichiers). À régulariser proprement.
@@ -1248,12 +1263,18 @@ Avant : spec non implémentée, listée comme item futur.
 → Constaté le 14 juillet 2026 : déjà en prod depuis une session précédente.
 
 **Implémentation existante :**
-- `app/agent/scan/page.tsx` : géolocalisation demandée à l'ouverture de la page de scan.
-- `lib/geo.ts` (fonction `distanceMetres`) : calcul Haversine lat/lng → distance en mètres.
-- Alerte `hors_zone` insérée dans la table `alertes` au premier scan si la distance
-  entre la position de l'agent et la coordonnée GPS de la résidence dépasse 200m.
-- Échec de géolocalisation silencieux non bloquant : si le navigateur refuse ou timeout,
-  le scan s'effectue quand même sans contrôle géographique (dégradé gracieux).
+- `app/agent/scan/page.tsx` (lignes ~60-81 et ~260-267) : géolocalisation demandée à
+  l'ouverture de la page de scan.
+- `lib/geo.ts` (fonction `distanceMetres`) : calcul Haversine `distanceMetres(geoloc, residence.lat/lng)`.
+- Alerte `hors_zone` insérée dans la table `alertes` **uniquement au premier scan** si la
+  distance dépasse 200 m (guard `statut='planifiee'` — pas de doublon sur les scans suivants).
+- Échec/refus de géolocalisation = `catch` silencieux non bloquant : le scan s'effectue
+  quand même sans contrôle géographique (dégradé gracieux).
+
+**Confidentialité (constaté le 14/07) :** ne stocke JAMAIS la position de l'agent —
+le calcul de distance se fait côté client, seuls le booléen hors-zone + la distance
+approximative partent en `metadata`. La note RH transmise à l'avocat/prud'hommes décrit
+ce dispositif exact (contrôle de présence sans traçage de localisation).
 
 Aucune migration nécessaire (la colonne `type` de la table `alertes` acceptait déjà
 `hors_zone`). Aucune action requise.
@@ -1330,6 +1351,168 @@ Rafraîchit les données Server Component toutes les 2 minutes sans rechargement
 - **Item E** (SW versionné) : `fe18e66` — "mvp: versioning service worker (generate-sw.js) — remplace route API"
   (remplace l'approche route API `76a8305`)
 - **Item F** (ce fichier) : commit suivant — "mvp: CONTEXT.md — état MVP + SW generate-sw.js + P2-14 corrigé"
+
+### Correctifs post-MVP — masquage financier
+
+- **Bandeau CA/Coût/Marge/Perte cachée** (fiche résidence) masqué par `FEATURES.rentabilite`.
+  Le calcul KPI est **court-circuité côté serveur** (`page.tsx`) quand le flag est off :
+  les chiffres ne sont même pas envoyés au client (commit `513ad06`).
+- **Formule financière** (`montant ÷ taux ÷ nb`) masquée sur la page rapport manager :
+  la colonne « Contractuelle » est retirée quand le flag est off, colonnes **Estimée /
+  Réelle conservées** (info opérationnelle, non financière) ; durée contractuelle non
+  calculée si flag off (commit `0c45597`).
+- **Ligne de démarcation actée :** ce qui révèle la rentabilité Archipropre (coût interne
+  23 €/h, marge, taux horaire interne) = **masqué** ; le **montant mensuel du contrat**
+  (prix facturé au client) = **reste visible** côté manager.
+- Note d'audit (pré-vol 15/07) : le **taux horaire de facturation** reste visible dans les
+  formulaires d'admin contrat (AjoutContratModal « Base société », onglet Paramètres,
+  GestionContratModal éditable). À trancher si on le considère sensible (borderline —
+  c'est du pricing client, pas la marge interne).
+
+### Item C — seuil retard scan (précision)
+
+Passé de **30 → 15 min**. Toujours **calcul serveur au chargement** (pas d'alerte stockée
+en base), + composant client `DashboardRefresh` (`router.refresh()` toutes les 120 s).
+
+### Item D — planning agent (précision)
+
+Bornes passées de `today→J+7` à **lundi semaine courante → dimanche semaine suivante**.
+Jours passés en **lecture seule** comme les futurs ; **seul le jour J est scannable**.
+Vérifié en live (pré-vol 15/07) : bornes 13→26 juillet, flèches désactivées aux bornes,
+dates hors-plage ramenées à la borne.
+
+### Item E — Service Worker (précision « avant »)
+
+Avant : `/sw.js` renvoyait **404**, aucun versioning, le cache PWA servait l'ancien code
+après déploiement. Pattern `generate-sw.js` emprunté au projet **Barns Wolf**. La route
+`app/api/sw/route.ts` a été créée puis supprimée dans le même range (échafaudage).
+**DETTE traçabilité SW = close.** Vérifié en live (pré-vol 15/07) : `/sw.js` → 200
+`application/javascript`.
+
+## LOT 2 — Liste résidences en tableau dense
+
+Refonte grille de cartes → **tableau dense**. Commits : `77397fe` (tableau) + `9170efd`
+(pagination) + `e62ea2f` (vérif carte).
+
+- **6 colonnes** : Résidence + adresse / État / Type / Contrats (nb actifs, « — » sinon) /
+  Agent attitré / Actions. **Ligne entière cliquable → fiche.** Hauteur 56 px,
+  ~12-14 lignes/écran. **Header sticky**, tri Nom/État/Agent, badge `notes_import`
+  (AlertTriangle amber, title au survol).
+- **Menu ⋯** (Affectation / QR / Fiche) réutilise `AgentAttitreModal` + `downloadQRCodePDF`.
+- Select « Tous statuts » **supprimé** (doublon des chips d'état), « Tous types » **conservé**.
+- **Pagination 50/page** : filtrage/tri appliqués AVANT la pagination, retour page 1 au
+  changement de filtre, barre masquée si ≤ 1 page.
+- **Colonne Contrats = contrats ACTIFS** (choix acté : évite le bruit des 151 placeholders
+  inactifs auto-créés).
+- **BUG corrigé :** la colonne agent lisait `residences.agent_prefere_id` (null) au lieu de
+  la source contrat → réaligné sur `_etat.nom_agent_attitre` (cohérent avec P2-11).
+- **`ResidenceCard.tsx`** : composant **plus utilisé** MAIS pas orphelin — il exporte les
+  types `EtatResidenceInfo` / `ResidenceEtat` importés par 4 fichiers. **NON supprimé**
+  (à noter : `PlanifierInterventionModal` n'est monté que par ce composant orphelin +
+  `CopilotePanel` gated → création manuelle d'intervention sans point d'entrée UI, voir dette).
+
+## LOT 3 — Wizard config résidence + page contrat à onglets
+
+Commits : `028f263` (checklist) + `57a4cdc` (page contrat onglets) + `ae6c6b2` (fil
+d'Ariane) + `4b22daa` (fix1) + `a07af0b` (fix2).
+
+**Checklist de configuration guidée** sur la fiche résidence (état « à configurer ») :
+4 étapes numérotées avec état ✓ (fait) / • (courant) / ○ (en attente) :
+① Créer le contrat → ② Zones + tâches → ③ Affecter un agent → ④ Générer le planning.
+Étapes ②③④ **verrouillées** tant que ① n'est pas faite (tooltip « Créez d'abord le
+contrat »). La checklist **disparaît** quand les 4 sont vertes → affichage normal.
+États **calculés côté serveur** (`page.tsx`), routes existantes réutilisées, multi-contrats
+= une checklist par contrat non terminé.
+
+**Page détail contrat :** `app/manager/residences/[id]/contrats/[contratId]/page.tsx`
+(Server Component, `force-dynamic`, garde-fou ownership `manager_id`). Onglets
+**Planning · Tâches · Rapports · Paramètres** (pas de Rentabilité, flag off).
+- **Décision architecturale (Option 1 validée) :** les onglets = **liens vers les pages
+  existantes filtrées `?contratId=`**, zéro duplication de logique.
+- **En-tête partagé** `components/manager/ContratHeader.tsx` (fil d'Ariane + badges
+  statut/type + onglets + QR), **monté par les 4 pages** quand `?contratId=` présent.
+- Onglet **Paramètres** = résumé en page + `GestionContratModal` en modal (choix sûr, pas
+  de refacto du modal).
+- **Carte contrat** (fiche résidence) devenue **entièrement cliquable → page contrat** ;
+  boutons Planning/Tâches/Rapports/Gérer **retirés** de la carte (dans les onglets
+  maintenant), seul le **QR** reste.
+
+**Fil d'Ariane manager :** `components/manager/Breadcrumb.tsx`. Remplace les `router.back()`
+qui perdaient le contexte. Format **Résidences › [Résidence] › [Contrat] › [Onglet]**,
+dernier segment non cliquable.
+
+**fix1 (`4b22daa`) — étape ④ « planning généré » :**
+Avant : `step4 = ≥1 intervention FUTURE` → une résidence opérationnelle dont le dernier
+planning est passé réaffichait la checklist.
+→ Changé le 14/07 : `step4 = ≥1 intervention non-annulée, toutes dates confondues`
+(`.neq('statut','annulee')`). Dès qu'un planning a été généré une fois, l'étape est verte.
+Raison : « future » faisait « redevenir à configurer » une résidence active.
+
+**fix2 (`a07af0b`) — double bandeau :**
+En contexte contrat (`?contratId=`), les bannières internes `#0A2E5A` de `PlanningClient` /
+`TachesClient` sont **masquées** (ContratHeader coiffe déjà). Infos utiles (agent, créneaux,
+Régénérer) conservées sur une **barre claire** sous ContratHeader. Sans `contratId`,
+bannières résidence-level inchangées.
+
+### DETTE Lot 3 (non traitée, à noter)
+
+- Étape ③ ne synchronise l'agent que sur le contrat **parties_communes** (via
+  `/api/residences/affecter`). Contrat `containers`/`espaces_verts` : l'étape ③ ne passerait
+  pas au vert par ce modal. Non bloquant (placeholder = parties_communes par défaut).
+- Onglet **Paramètres** reste un **modal**, pas un formulaire 100 % en page.
+- **Création manuelle d'intervention sans point d'entrée** (constaté pré-vol 15/07) :
+  `PlanifierInterventionModal` n'est monté que par `ResidenceCard` (orphelin) + `CopilotePanel`
+  (ANA off) → aucun bouton accessible, alors que le modal + `/api/interventions/creer-ponctuelle`
+  existent. À rebrancher si la création manuelle est dans le périmètre.
+- **Agent désactivé peut se connecter** (constaté pré-vol 15/07) : la garde d'auth agent ne
+  vérifie pas `actif`. À cadrer.
+
+## Ordre de configuration (session Ana)
+
+Séquence obligatoire (l'étape ③ du wizard résidence dépend des agents existants) :
+1. **Paramètres société** : taux agent (coût interne) 23 €/h, taux facturation défaut
+   (**à trancher 28-34 €**), adresse siège.
+2. **Agents** : actif, heures contrat, mode de déplacement, adresse perso + géocodage, binômes.
+   Champs tous présents/éditables dans `AgentFormModal` (accessible côté manager ET directeur).
+3. **Résidences** via le wizard (checklist LOT 3).
+
+## Key learnings — juillet 2026
+
+### INCIDENT `is_demo` (14/07/2026) — GRAVÉ
+
+Le flag `is_demo=true` avait été posé **à tort** sur **35 résidences** lors de l'import de
+juin, dont **TOUS les vrais clients** (SCI MACJ, Home Inside, cabinets médicaux Grabels,
+syndics Nexity/Richter/FDI, agences MMA…). Un `DELETE FROM residences WHERE is_demo=true`
+aurait supprimé **le portefeuille client entier**. Détecté juste avant exécution en listant
+les noms avant de supprimer.
+
+→ **RÈGLE ABSOLUE :** `is_demo` n'est PAS fiable, ne **JAMAIS** l'utiliser comme critère de
+suppression. Toujours `SELECT nom/adresse` **AVANT** tout `DELETE` de masse, lire la liste,
+valider une par une. Correctif appliqué : `UPDATE residences SET is_demo=false WHERE
+is_demo=true` (neutralisation du flag).
+
+### Nettoyage base MVP (14/07/2026)
+
+Exécuté en **SQL Editor** (pas de CLI Supabase) :
+- **366 interventions de test ALTHEA supprimées** (+ `taches_intervention`, `photos_zone`,
+  `zones_intervention`, `alertes` liées, **dans cet ordre FK**).
+- Contrat **Container ALTHEA** (`4aabed0b-…`) **retypé `containers`**.
+- **5 résidences de test supprimées** (Barns Wolf, Julien Barange, Lolo, Xavier Rennwald,
+  Restaurant O3 — 1 contrat chacune, 0 intervention → contrat puis résidence).
+- État final : **157 résidences, 0 intervention.**
+- Compte test `agent@archipropre.fr` (**Marie Dupont**) **désactivé** (`actif=false`), pas
+  supprimé (historique FK). Note pré-vol 15/07 : ce compte se connecte avec le mot de passe
+  `Archipropre2026` (≠ Test1234!) ; il est vide (0 résidence/0 intervention) → pour une démo
+  agent peuplée, utiliser Christian (inactif, à réactiver) ou affecter+générer sur Marie.
+
+### Gouvernance post-lancement (décidée, à appliquer dès mise en prod agents)
+
+- **Passer Supabase en Pro AVANT le lancement** (backups quotidiens + fin des pauses auto du
+  plan Free qui bloqueraient les scans un lundi matin).
+- **Workflow branches + preview Vercel** : ne plus push direct sur `main` une fois les agents
+  en prod. Dev sur branche → preview → validation → merge `main`.
+- **Migrations** : jamais un jour ouvré, backup manuel avant, toujours « ajouter jamais
+  casser » (double-write pour les transitions destructives).
 
 ## À faire Phase 3
 

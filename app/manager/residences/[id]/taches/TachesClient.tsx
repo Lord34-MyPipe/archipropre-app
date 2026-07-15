@@ -328,22 +328,31 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
   return (
     <div className="min-h-screen bg-slate-100">
 
-      {/* Header */}
+      {/* Header résidence-level (masqué en contexte contrat : ContratHeader coiffe déjà) */}
+      {!contratId && (
       <div className="bg-[#0A2E5A] text-white px-4 py-5 md:px-8">
-        <Link href={contratId ? `/manager/residences/${residence.id}` : '/manager/residences'}
+        <Link href="/manager/residences"
           className="inline-flex items-center gap-2 text-blue-300 hover:text-white text-sm mb-3 transition-colors">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/>
           </svg>
-          {contratId ? residence.nom : 'Retour aux résidences'}
+          Retour aux résidences
         </Link>
-        <h1 className="text-xl font-bold">
-          {contratLibelle ? `Tâches — ${contratLibelle}` : residence.nom}
-        </h1>
+        <h1 className="text-xl font-bold">{residence.nom}</h1>
         <p className="text-blue-300 text-sm mt-0.5">
           {zones.length} zone{zones.length > 1 ? 's' : ''} · {taches.length} tâche{taches.length > 1 ? 's' : ''} template
         </p>
       </div>
+      )}
+
+      {/* Barre contexte contrat (sans fond bleu redondant sous ContratHeader) */}
+      {contratId && (
+        <div className="px-4 py-2.5 md:px-8 bg-white border-b border-slate-100">
+          <p className="text-xs text-slate-500">
+            {zones.length} zone{zones.length > 1 ? 's' : ''} · {taches.length} tâche{taches.length > 1 ? 's' : ''} template
+          </p>
+        </div>
+      )}
 
       {/* Toolbar */}
       <div className="bg-white border-b border-slate-200 px-4 py-3 md:px-8 flex items-center gap-3 flex-wrap">

@@ -310,52 +310,57 @@ export default function PlanningClient({
   return (
     <div className="min-h-screen bg-slate-50">
 
-      {/* ── En-tête ── */}
+      {/* ── En-tête résidence-level (masqué en contexte contrat : ContratHeader coiffe déjà) ── */}
+      {!contratId && (
       <div className="bg-[#0A2E5A] text-white px-4 py-4 md:px-8">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
-            <Link href={contratId ? `/manager/residences/${residenceId}` : '/manager/residences'}
+            <Link href="/manager/residences"
               className="mt-0.5 shrink-0 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/>
               </svg>
             </Link>
             <div className="min-w-0">
-              <p className="text-blue-300 text-xs uppercase tracking-wider">
-                {contratLibelle ? `Planning — ${contratLibelle}` : 'Planning résidence'}
-              </p>
+              <p className="text-blue-300 text-xs uppercase tracking-wider">Planning résidence</p>
               <h1 className="text-xl font-bold truncate">{residenceNom}</h1>
-              {agentNom && contratId && (
-                <p className="text-blue-200 text-sm mt-0.5 flex items-center gap-1.5">
-                  <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0"/>
-                  </svg>
-                  {agentNom}
-                </p>
-              )}
-              {creneaux.length > 0 && contratId && (
-                <p className="text-blue-300/80 text-xs mt-1">
-                  Créneaux :&nbsp;{creneaux.map((c, i) => (
-                    <span key={i}>{i > 0 && <span className="mx-1 opacity-50">·</span>}{formatCreneau(c)}</span>
-                  ))}
-                </p>
-              )}
             </div>
           </div>
-          {/* Regen uniquement en vue par contrat */}
-          {contratId && (
-            <button
-              onClick={() => { setRegenConfirm(true); setRegenError('') }}
-              disabled={!residenceActif}
-              className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors border border-white/20 disabled:opacity-40 disabled:cursor-not-allowed">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/>
-              </svg>
-              Régénérer
-            </button>
-          )}
         </div>
       </div>
+      )}
+
+      {/* ── Barre contexte contrat (sans fond bleu redondant sous ContratHeader) ── */}
+      {contratId && (
+        <div className="px-4 py-3 md:px-8 bg-white border-b border-slate-100 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            {agentNom && (
+              <p className="text-sm text-slate-600 flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0"/>
+                </svg>
+                {agentNom}
+              </p>
+            )}
+            {creneaux.length > 0 && (
+              <p className="text-xs text-slate-500 mt-0.5">
+                Créneaux :&nbsp;{creneaux.map((c, i) => (
+                  <span key={i}>{i > 0 && <span className="mx-1 opacity-50">·</span>}{formatCreneau(c)}</span>
+                ))}
+              </p>
+            )}
+          </div>
+          <button
+            onClick={() => { setRegenConfirm(true); setRegenError('') }}
+            disabled={!residenceActif}
+            className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#EAF2FF] hover:bg-[#1A5FA8]/15 text-[#1A5FA8] text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/>
+            </svg>
+            Régénérer
+          </button>
+        </div>
+      )}
 
       <div className="px-4 py-4 md:px-8 space-y-4">
 

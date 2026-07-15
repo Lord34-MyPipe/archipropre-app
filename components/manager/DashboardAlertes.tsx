@@ -15,6 +15,7 @@ interface ScanManquant {
   residences: { nom: string } | null
   prenom: string
   nom: string
+  telephone: string | null
   retardMin: number
 }
 
@@ -120,12 +121,14 @@ export default function DashboardAlertes({ scanManquants, rapportsEnRetard, aler
                     Pas de scan {SEUIL_RETARD_SCAN_MIN} min après l&apos;heure prévue · prévu à {i.heure_debut_prevue.slice(0, 5)} ({i.retardMin} min de retard)
                   </p>
                 </div>
-                <a
-                  href={`tel:`}
-                  className="shrink-0 px-3 py-1.5 bg-red-500 text-white text-xs font-semibold rounded-xl hover:bg-red-600 transition-colors"
-                >
-                  Contacter
-                </a>
+                {i.telephone && (
+                  <a
+                    href={`tel:${i.telephone.replace(/\s/g, '')}`}
+                    className="shrink-0 px-3 py-1.5 bg-red-500 text-white text-xs font-semibold rounded-xl hover:bg-red-600 transition-colors"
+                  >
+                    Contacter
+                  </a>
+                )}
               </div>
             ))}
           </div>

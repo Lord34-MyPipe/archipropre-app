@@ -43,7 +43,7 @@ export default async function ManagerDashboard() {
   // Récupérer les IDs agents d'abord (nécessaire pour filtrer)
   const { data: agentsRaw } = await supabase
     .from('profiles')
-    .select('id, prenom, nom, binome_agent_id')
+    .select('id, prenom, nom, telephone, binome_agent_id')
     .eq('manager_id', user.id).eq('actif', true).eq('role', 'agent')
 
   const agents   = agentsRaw ?? []
@@ -96,6 +96,7 @@ export default async function ManagerDashboard() {
         ...i,
         prenom:    agent?.prenom ?? '?',
         nom:       agent?.nom ?? '?',
+        telephone: (agent as { telephone?: string | null } | undefined)?.telephone ?? null,
         retardMin: diffMinutes(i.heure_debut_prevue!.slice(0, 5), nowTime),
         residences: Array.isArray(i.residences) ? i.residences[0] : i.residences,
       }

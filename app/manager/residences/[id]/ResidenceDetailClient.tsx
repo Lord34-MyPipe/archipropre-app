@@ -427,8 +427,12 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
               : null
 
             return (
-              <div key={c.id} className="bg-white rounded-xl border border-slate-100 shadow-sm p-4">
-                {/* Ligne 1 : libellé + badge statut + bouton Gérer */}
+              <Link
+                key={c.id}
+                href={`/manager/residences/${r.id}/contrats/${c.id}`}
+                className="block bg-white rounded-xl border border-slate-100 shadow-sm p-4 hover:shadow-md hover:border-slate-200 transition-all"
+              >
+                {/* Ligne 1 : libellé + badge statut + QR */}
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <span className="text-sm font-semibold text-slate-800">
                     {c.libelle ?? 'Contrat sans libellé'}
@@ -437,53 +441,12 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${statutCfg.cls}`}>
                       {statutCfg.label}
                     </span>
-                    <Link
-                      href={`/manager/residences/${r.id}/planning?contratId=${c.id}`}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-slate-500 hover:text-[#1A5FA8] hover:bg-[#EAF2FF] transition-colors"
-                      aria-label="Planning de ce contrat"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5"/>
-                      </svg>
-                      Planning
-                    </Link>
-                    <Link
-                      href={`/manager/residences/${r.id}/taches?contratId=${c.id}`}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-slate-500 hover:text-[#1A5FA8] hover:bg-[#EAF2FF] transition-colors"
-                      aria-label="Tâches de ce contrat"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2"/>
-                      </svg>
-                      Tâches
-                    </Link>
-                    <Link
-                      href={`/manager/residences/${r.id}/rapports?contratId=${c.id}`}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-slate-500 hover:text-[#1A5FA8] hover:bg-[#EAF2FF] transition-colors"
-                      aria-label="Rapports de ce contrat"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
-                      </svg>
-                      Rapports
-                    </Link>
-                    {FEATURES.rentabilite && (
-                      <button
-                        onClick={() => setRentabiliteState({ contratId: c.id })}
-                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-slate-500 hover:text-green-700 hover:bg-green-50 transition-colors"
-                        aria-label="Rentabilité de ce contrat"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
-                        </svg>
-                        Rentabilité
-                      </button>
-                    )}
                     {c.qr_code_token && (
                       <button
-                        onClick={async () => {
-                          const { downloadQRContratPDF } = await import('@/lib/qr-pdf')
-                          downloadQRContratPDF(r.nom, { libelle: c.libelle, token: c.qr_code_token! }, window.location.origin)
+                        onClick={(e) => {
+                          e.preventDefault(); e.stopPropagation()
+                          import('@/lib/qr-pdf').then(({ downloadQRContratPDF }) =>
+                            downloadQRContratPDF(r.nom, { libelle: c.libelle, token: c.qr_code_token! }, window.location.origin))
                         }}
                         className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
                         aria-label="QR Code de ce contrat"
@@ -496,17 +459,6 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
                         QR
                       </button>
                     )}
-                    <button
-                      onClick={() => setContratSelectionne(c)}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-slate-500 hover:text-[#0A2E5A] hover:bg-slate-100 transition-colors"
-                      aria-label="Gérer ce contrat"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z"/>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                      </svg>
-                      Gérer
-                    </button>
                   </div>
                 </div>
 
@@ -547,7 +499,7 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
                   )
                   : null
                 }
-              </div>
+              </Link>
             )
           })}
         </div>

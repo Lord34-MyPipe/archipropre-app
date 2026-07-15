@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import ContratHeader from '@/components/manager/ContratHeader'
 
 export const dynamic = 'force-dynamic'
 
@@ -67,6 +68,7 @@ export default async function RapportsPage({ params, searchParams }: Props) {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      {contratId && <ContratHeader residenceId={id} contratId={contratId} activeTab="rapports" />}
       <div className="max-w-2xl mx-auto px-4 py-8">
 
         {/* En-tête */}

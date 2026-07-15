@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import type { Residence, ZoneResidence, TacheTemplate, ContratResidence } from '@/lib/types'
 import TachesClient from './TachesClient'
+import ContratHeader from '@/components/manager/ContratHeader'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -133,15 +134,18 @@ export default async function TachesPage({ params, searchParams }: Props) {
   }
 
   return (
-    <TachesClient
-      residence={r1.data as Residence}
-      zones={zones}
-      taches={taches}
-      contrat={contrat}
-      parametres={(r5.data ?? null) as ParametresSociete | null}
-      statsReel={statsReel}
-      contratId={contratId}
-      contratLibelle={contratLibelle}
-    />
+    <>
+      {contratId && <ContratHeader residenceId={id} contratId={contratId} activeTab="taches" />}
+      <TachesClient
+        residence={r1.data as Residence}
+        zones={zones}
+        taches={taches}
+        contrat={contrat}
+        parametres={(r5.data ?? null) as ParametresSociete | null}
+        statsReel={statsReel}
+        contratId={contratId}
+        contratLibelle={contratLibelle}
+      />
+    </>
   )
 }

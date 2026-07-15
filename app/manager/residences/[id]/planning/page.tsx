@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import PlanningClient from './PlanningClient'
+import ContratHeader from '@/components/manager/ContratHeader'
 import type { Creneau } from '@/components/manager/ContratModal'
 
 export const dynamic = 'force-dynamic'
@@ -124,18 +125,21 @@ export default async function PlanningPage({ params, searchParams }: Props) {
   ).length
 
   return (
-    <PlanningClient
-      residenceId={id}
-      residenceNom={residence.nom}
-      residenceActif={residence.actif}
-      agentNom={agentNom}
-      creneaux={creneaux}
-      interventions={interventions}
-      total={interventions.length}
-      prochaine={prochaine}
-      ceMois={ceMois}
-      contratId={contratId}
-      contratLibelle={contratLibelle}
-    />
+    <>
+      {contratId && <ContratHeader residenceId={id} contratId={contratId} activeTab="planning" />}
+      <PlanningClient
+        residenceId={id}
+        residenceNom={residence.nom}
+        residenceActif={residence.actif}
+        agentNom={agentNom}
+        creneaux={creneaux}
+        interventions={interventions}
+        total={interventions.length}
+        prochaine={prochaine}
+        ceMois={ceMois}
+        contratId={contratId}
+        contratLibelle={contratLibelle}
+      />
+    </>
   )
 }

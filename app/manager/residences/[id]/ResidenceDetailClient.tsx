@@ -11,6 +11,7 @@ import { FEATURES } from '@/lib/features'
 import GestionContratModal from './GestionContratModal'
 import AgentAttitreModal from '@/components/manager/AgentAttitreModal'
 import ConfigChecklist from '@/components/manager/ConfigChecklist'
+import Breadcrumb from '@/components/manager/Breadcrumb'
 import type { Residence } from '@/lib/types'
 import type { ResidenceEtat } from '@/components/manager/ResidenceCard'
 
@@ -211,15 +212,12 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
 
       {/* ── En-tête ── */}
       <div className="bg-[#0A2E5A] text-white px-6 py-5 md:px-8">
-        <button
-          onClick={() => router.back()}
-          className="flex items-center gap-1.5 text-blue-300 hover:text-white text-sm mb-3 transition-colors"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M15 18l-6-6 6-6"/>
-          </svg>
-          Retour au planning
-        </button>
+        <div className="mb-3">
+          <Breadcrumb items={[
+            { label: 'Résidences', href: '/manager/residences' },
+            { label: r.nom },
+          ]} />
+        </div>
 
         <div className="flex items-start gap-3">
           <Building2 className="w-6 h-6 mt-0.5 text-white/80 shrink-0" />

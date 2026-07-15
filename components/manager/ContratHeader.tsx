@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import { createAdminClient } from '@/lib/supabase-server'
-import { Building2, Trash2, Leaf, ChevronRight } from 'lucide-react'
+import { Building2, Trash2, Leaf } from 'lucide-react'
 import ContratHeaderQR from './ContratHeaderQR'
+import Breadcrumb from './Breadcrumb'
 
 export type ContratTab = 'planning' | 'taches' | 'rapports' | 'parametres'
 
@@ -60,17 +61,19 @@ export default async function ContratHeader({ residenceId, contratId, activeTab 
     { key: 'rapports',   label: 'Rapports',   href: `${base}/rapports?contratId=${contratId}` },
     { key: 'parametres', label: 'Paramètres', href: `${base}/contrats/${contratId}` },
   ]
+  const tabLabel = tabs.find(t => t.key === activeTab)?.label ?? ''
 
   return (
     <div className="bg-[#0A2E5A] text-white px-6 py-5 md:px-8">
-      {/* Fil d'Ariane */}
-      <nav className="flex items-center gap-1.5 text-sm text-blue-300 mb-3 flex-wrap">
-        <Link href="/manager/residences" className="hover:text-white transition-colors">Résidences</Link>
-        <ChevronRight className="w-3.5 h-3.5 text-blue-400/60" />
-        <Link href={base} className="hover:text-white transition-colors truncate max-w-[40vw]">{nom}</Link>
-        <ChevronRight className="w-3.5 h-3.5 text-blue-400/60" />
-        <span className="text-white font-medium truncate max-w-[30vw]">{libelle}</span>
-      </nav>
+      {/* Fil d'Ariane : Résidences › Résidence › Contrat › Onglet */}
+      <div className="mb-3">
+        <Breadcrumb items={[
+          { label: 'Résidences', href: '/manager/residences' },
+          { label: nom, href: base },
+          { label: libelle, href: `${base}/contrats/${contratId}` },
+          { label: tabLabel },
+        ]} />
+      </div>
 
       {/* Titre + badges + QR */}
       <div className="flex items-start justify-between gap-3">

@@ -10,6 +10,7 @@ import AjoutContratModal from './AjoutContratModal'
 import { FEATURES } from '@/lib/features'
 import GestionContratModal from './GestionContratModal'
 import AgentAttitreModal from '@/components/manager/AgentAttitreModal'
+import PlanifierInterventionModal from '@/components/manager/PlanifierInterventionModal'
 import ConfigChecklist from '@/components/manager/ConfigChecklist'
 import Breadcrumb from '@/components/manager/Breadcrumb'
 import type { Residence } from '@/lib/types'
@@ -148,6 +149,7 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
   const [showAjoutContrat, setShowAjoutContrat]     = useState(false)
   const [contratSelectionne, setContratSelectionne] = useState<ContratCard | null>(null)
   const [showAgentModal, setShowAgentModal]         = useState(false)
+  const [showPlanifier, setShowPlanifier]           = useState(false)
   const [genContratId, setGenContratId]             = useState<string | null>(null)
   const [contrats, setContrats]                     = useState<ContratCard[]>([])
   const [contratsLoading, setContratsLoading]       = useState(true)
@@ -172,6 +174,9 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
   const checklistById = new Map(contratsChecklist.map(c => [c.id, c]))
   const contratsAConfigurer = contratsChecklist.filter(c => !c.allDone && !c.estTermine)
   const configMode = contratsAConfigurer.length > 0 || contratsChecklist.length === 0
+
+  // Création manuelle d'intervention : possible dès qu'un contrat actif a un agent attitré
+  const peutPlanifier = contrats.some(c => c.actif && c.agent_prefere_id)
 
   // Étape ① : éditer le contrat placeholder existant, sinon en créer un
   function onStep1(contratId: string | null) {
@@ -295,6 +300,20 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
       </div>
 
       <div className="p-4 md:p-8">
+
+        {/* ── Nouvelle intervention — visible dès qu'un contrat actif a un agent attitré ── */}
+        {peutPlanifier && (
+          <button
+            onClick={() => setShowPlanifier(true)}
+            className="w-full mb-4 flex items-center justify-center gap-2 py-3.5 rounded-xl text-white text-sm font-semibold shadow-sm hover:shadow-md active:scale-[0.99] transition-all"
+            style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
+            </svg>
+            Nouvelle intervention
+          </button>
+        )}
 
         {/* ── Checklist de configuration guidée ── */}
         {configMode && (
@@ -518,6 +537,15 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
           residence={r}
           onClose={() => setShowAgentModal(false)}
           onSaved={() => { setShowAgentModal(false); refreshAll() }}
+        />
+      )}
+
+      {/* ── Modal création manuelle d'intervention ── */}
+      {showPlanifier && (
+        <PlanifierInterventionModal
+          residence={r}
+          onClose={() => setShowPlanifier(false)}
+          onCreated={() => { setShowPlanifier(false); refreshAll() }}
         />
       )}
 

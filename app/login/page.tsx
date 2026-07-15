@@ -8,14 +8,31 @@ export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState('')
 
-  // Si l'utilisateur est déjà connecté, le rediriger vers son dashboard
+  const COMPTE_DESACTIVE = 'Compte désactivé. Contactez votre responsable.'
+
+  // Message renvoyé par une garde de layout (?error=disabled)
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('error') === 'disabled') {
+      setError(COMPTE_DESACTIVE)
+    }
+  }, [])
+
+  // Si l'utilisateur est déjà connecté : rediriger vers son dashboard,
+  // SAUF s'il est désactivé → déconnexion + message (empêche la boucle de redirection).
   useEffect(() => {
     const supabase = createClient()
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return
       const { data: profile } = await supabase
-        .from('profiles').select('role').eq('id', user.id).single()
+        .from('profiles').select('role, actif').eq('id', user.id).single()
+      if (profile && profile.actif === false) {
+        await supabase.auth.signOut()
+        setError(COMPTE_DESACTIVE)
+        return
+      }
       const dest =
         profile?.role === 'directeur' ? '/directeur/dashboard' :
         profile?.role === 'manager'   ? '/manager/dashboard'   :
@@ -23,8 +40,6 @@ export default function LoginPage() {
       router.replace(dest)
     })
   }, [router])
-  const [loading, setLoading]   = useState(false)
-  const [error, setError]       = useState('')
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -42,9 +57,17 @@ export default function LoginPage() {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('role')
+      .select('role, actif')
       .eq('id', data.user.id)
       .single()
+
+    // Compte désactivé : refuser la connexion
+    if (profile && profile.actif === false) {
+      await supabase.auth.signOut()
+      setError(COMPTE_DESACTIVE)
+      setLoading(false)
+      return
+    }
 
     const dest =
       profile?.role === 'directeur' ? '/directeur/dashboard' :

@@ -7,7 +7,12 @@ export default async function AgentLayout({ children }: { children: React.ReactN
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  const { data: profile } = await supabase.from('profiles').select('role, actif').eq('id', user.id).single()
+  // Compte désactivé : déconnexion + retour login (vaut pour les 3 rôles)
+  if (profile && profile.actif === false) {
+    await supabase.auth.signOut()
+    redirect('/login?error=disabled')
+  }
   if (profile?.role !== 'agent') {
     redirect(profile?.role === 'directeur' ? '/directeur/dashboard' : '/manager/dashboard')
   }

@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase-server'
+import { createClient, createAdminClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import { Umbrella, AlertTriangle, Users, CalendarX } from 'lucide-react'
 
@@ -126,6 +126,23 @@ export default async function ManagerPlanning({ searchParams }: Props) {
   const agents: AgentRow[] = agentsRaw ?? []
   const safeIds = agents.length ? agents.map(a => a.id) : ['00000000-0000-0000-0000-000000000000']
 
+  // Détection : des interventions existent sur la période mais uniquement pour des
+  // agents DÉSACTIVÉS (exclus du planning). Sert à clarifier le message « vide ».
+  // Compte via le client admin pour être fiable (indépendant du RLS de lecture).
+  const admin = await createAdminClient()
+  const { data: inactiveAgentsRaw } = await admin
+    .from('profiles').select('id').eq('manager_id', user.id).eq('actif', false).eq('role', 'agent')
+  const inactiveIds = (inactiveAgentsRaw ?? []).map(a => a.id)
+  let hasInactiveInterventions = false
+  if (inactiveIds.length > 0) {
+    const { count } = await admin.from('interventions')
+      .select('id', { count: 'exact', head: true })
+      .in('agent_id', inactiveIds)
+      .gte('date_prevue', debutStr).lte('date_prevue', finStr)
+      .neq('statut', 'annulee')
+    hasInactiveInterventions = (count ?? 0) > 0
+  }
+
   const [{ data: congesRaw }, { data: absRaw }, { data: intersRaw }] = await Promise.all([
     supabase.from('conges').select('agent_id,date_debut,date_fin,statut,motif')
       .in('agent_id', safeIds).lte('date_debut', finStr).gte('date_fin', debutStr),
@@ -244,6 +261,7 @@ export default async function ManagerPlanning({ searchParams }: Props) {
             congeKeys={congeKeys}
             congeMotifs={congeMotifs}
             todayStr={todayStr}
+            hasInactiveInterventions={hasInactiveInterventions}
           />
         )}
         {vue === 'jour' && (
@@ -253,6 +271,7 @@ export default async function ManagerPlanning({ searchParams }: Props) {
             agents={agents}
             congeKeys={congeKeys}
             congeMotifs={congeMotifs}
+            hasInactiveInterventions={hasInactiveInterventions}
           />
         )}
         {vue === 'mois' && (
@@ -269,13 +288,14 @@ export default async function ManagerPlanning({ searchParams }: Props) {
 }
 
 // ── Vue Semaine ─────────────────────────────────────────────────────────────
-function VueSemaine({ dates, inters, agents, congeKeys, congeMotifs, todayStr }: {
+function VueSemaine({ dates, inters, agents, congeKeys, congeMotifs, todayStr, hasInactiveInterventions }: {
   dates: string[]
   inters: Intervention[]
   agents: AgentRow[]
   congeKeys: Set<string>
   congeMotifs: Record<string, string>
   todayStr: string
+  hasInactiveInterventions: boolean
 }) {
   // ── Groupage binômes ─────────────────────────────────────────────────────
   type RowEntry =
@@ -333,8 +353,14 @@ function VueSemaine({ dates, inters, agents, congeKeys, congeMotifs, todayStr }:
     return (
       <div className="bg-white rounded-2xl border border-slate-100 p-10 text-center">
         <CalendarX className="w-10 h-10 mb-3 mx-auto text-slate-300" />
-        <p className="text-slate-600 font-medium">Aucune intervention cette semaine</p>
-        <p className="text-slate-400 text-sm mt-1">Allez dans une résidence pour générer le planning</p>
+        <p className="text-slate-600 font-medium">
+          {hasInactiveInterventions ? "Aucune intervention d'agent actif cette semaine" : 'Aucune intervention cette semaine'}
+        </p>
+        <p className="text-slate-400 text-sm mt-1">
+          {hasInactiveInterventions
+            ? 'Les interventions de la période sont assignées à des agents désactivés.'
+            : 'Allez dans une résidence pour générer le planning'}
+        </p>
         <Link href="/manager/residences"
           className="inline-block mt-4 px-4 py-2 rounded-xl text-sm font-semibold text-white"
           style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}>
@@ -568,12 +594,13 @@ function VueSemaine({ dates, inters, agents, congeKeys, congeMotifs, todayStr }:
 // ── Vue Jour ────────────────────────────────────────────────────────────────
 const HOURS = Array.from({length: 16}, (_, i) => `${String(i + 7).padStart(2, '0')}:00`)
 
-function VueJour({ dateStr, inters, agents, congeKeys, congeMotifs }: {
+function VueJour({ dateStr, inters, agents, congeKeys, congeMotifs, hasInactiveInterventions }: {
   dateStr: string
   inters: Intervention[]
   agents: AgentRow[]
   congeKeys: Set<string>
   congeMotifs: Record<string, string>
+  hasInactiveInterventions: boolean
 }) {
   const agentsEnConge = agents.filter(a => congeKeys.has(`${a.id}|${dateStr}`))
   const sorted = [...inters].sort((a, b) =>
@@ -584,8 +611,14 @@ function VueJour({ dateStr, inters, agents, congeKeys, congeMotifs }: {
     return (
       <div className="bg-white rounded-2xl border border-slate-100 p-10 text-center">
         <CalendarX className="w-10 h-10 mb-3 mx-auto text-slate-300" />
-        <p className="text-slate-600 font-medium">Aucune intervention ce jour</p>
-        <p className="text-slate-400 text-sm mt-1">Naviguez vers une autre date ou générez un planning</p>
+        <p className="text-slate-600 font-medium">
+          {hasInactiveInterventions ? "Aucune intervention d'agent actif ce jour" : 'Aucune intervention ce jour'}
+        </p>
+        <p className="text-slate-400 text-sm mt-1">
+          {hasInactiveInterventions
+            ? 'Les interventions du jour sont assignées à des agents désactivés.'
+            : 'Naviguez vers une autre date ou générez un planning'}
+        </p>
       </div>
     )
   }

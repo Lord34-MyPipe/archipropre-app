@@ -100,15 +100,18 @@ export default async function ResidenceDetailPage({ params }: Props) {
     timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date())
 
-  const [{ data: contratsCfg }, { data: zonesCfg }, { data: interFutures }] = await Promise.all([
+  const [{ data: contratsCfg }, { data: zonesCfg }, { data: interExistantes }] = await Promise.all([
     admin.from('contrats_residences')
       .select('id, actif, montant_mensuel, creneaux_acceptes, agent_prefere_id, date_fin')
       .eq('residence_id', id),
     admin.from('zones_residence')
       .select('id, contrat_id').eq('residence_id', id).not('contrat_id', 'is', null),
+    // Étape ④ « planning généré » : au moins une intervention non-annulée sur le
+    // contrat, toutes dates confondues (planifiee/en_cours/terminee/validee) → un
+    // planning a déjà été généré. On ne se limite PAS aux interventions futures.
     admin.from('interventions')
       .select('contrat_id').eq('residence_id', id)
-      .gte('date_prevue', todayStr).neq('statut', 'annulee').not('contrat_id', 'is', null),
+      .neq('statut', 'annulee').not('contrat_id', 'is', null),
   ])
 
   // Zones par contrat + tâches par zone (pour l'étape « zones et tâches »)
@@ -125,9 +128,9 @@ export default async function ResidenceDetailPage({ params }: Props) {
     arr.push({ id: z.id })
     zonesParContrat.set(z.contrat_id, arr)
   }
-  const futuresParContrat = new Map<string, number>()
-  for (const i of interFutures ?? []) {
-    if (i.contrat_id) futuresParContrat.set(i.contrat_id, (futuresParContrat.get(i.contrat_id) ?? 0) + 1)
+  const interParContrat = new Map<string, number>()
+  for (const i of interExistantes ?? []) {
+    if (i.contrat_id) interParContrat.set(i.contrat_id, (interParContrat.get(i.contrat_id) ?? 0) + 1)
   }
 
   const contratsChecklist = (contratsCfg ?? []).map(c => {
@@ -137,7 +140,7 @@ export default async function ResidenceDetailPage({ params }: Props) {
     const step1 = (c.actif ?? false) && c.montant_mensuel != null && Array.isArray(creneaux) && creneaux.length > 0
     const step2 = zones.length >= 1 && aTache
     const step3 = c.agent_prefere_id != null
-    const step4 = (futuresParContrat.get(c.id) ?? 0) >= 1
+    const step4 = (interParContrat.get(c.id) ?? 0) >= 1
     return {
       id: c.id,
       step1, step2, step3, step4,

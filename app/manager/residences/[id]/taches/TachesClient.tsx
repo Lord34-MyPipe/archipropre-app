@@ -8,7 +8,7 @@ import ZoneFormModal from './ZoneFormModal'
 import AjoutBatimentModal from './AjoutBatimentModal'
 import JoursBulkModal, { type JoursMode } from './JoursBulkModal'
 import type { ParametresSociete, StatsReel } from './page'
-import { ClipboardList, CalendarX, Building2 } from 'lucide-react'
+import { ClipboardList, CalendarX, Building2, ChevronRight } from 'lucide-react'
 
 /* ── Constantes ──────────────────────────────── */
 
@@ -108,6 +108,8 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
   const [taches, setTaches]       = useState<TacheTemplate[]>(initialTaches)
   const [view, setView]           = useState<'zone' | 'day'>('zone')
   const [expanded, setExpanded]   = useState<Set<string>>(new Set(initialZones.map(z => z.id)))
+  // Repli/dépli des bâtiments (affichage local). Vide = tout replié par défaut.
+  const [expandedBatiments, setExpandedBatiments] = useState<Set<string>>(new Set())
   const [modal, setModal]         = useState<{ open: boolean; zoneId?: string }>({ open: false })
   const [editingTache, setEditing]= useState<TacheTemplate | null>(null)
   const [zoneModal, setZoneModal] = useState<{ mode: 'create' } | { mode: 'edit'; zone: ZoneResidence } | null>(null)
@@ -169,6 +171,14 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
     }
     return groups
   }, [zones])
+
+  // Bâtiments repliables : clés des groupes avec en-tête (mono-bâtiment = label null, non repliable)
+  const batimentKeys      = zoneGroups.filter(g => g.label !== null).map(g => g.key)
+  const hasBatiments      = batimentKeys.length > 0
+  const allBatOuverts     = hasBatiments && batimentKeys.every(k => expandedBatiments.has(k))
+  function toggleBatiment(key: string) {
+    setExpandedBatiments(s => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n })
+  }
 
   function handleAddZone() { setZoneModal({ mode: 'create' }) }
 
@@ -469,32 +479,49 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
               </div>
             )}
 
-            {zoneGroups.map(group => (
+            {/* Tout déplier / replier — visible uniquement en présence de bâtiments */}
+            {hasBatiments && (
+              <div className="flex justify-end -mb-1">
+                <button
+                  onClick={() => setExpandedBatiments(allBatOuverts ? new Set() : new Set(batimentKeys))}
+                  className="text-xs font-semibold text-[#1A5FA8] hover:text-[#0A4A8A] transition-colors"
+                >
+                  {allBatOuverts ? 'Tout replier' : 'Tout déplier'}
+                </button>
+              </div>
+            )}
+
+            {zoneGroups.map(group => {
+              const isMono = group.label === null
+              const open   = isMono || expandedBatiments.has(group.key)
+              const zoneIds = new Set(group.zones.map(z => z.id))
+              const groupeTacheIds = taches.filter(t => t.zone_id && zoneIds.has(t.zone_id)).map(t => t.id)
+              return (
               <div key={group.key} className="space-y-3">
                 {group.label && (
-                  <div className="flex items-center gap-2 px-1 pt-1">
+                  <div
+                    onClick={() => toggleBatiment(group.key)}
+                    className="flex items-center gap-2 px-1 pt-1 cursor-pointer select-none"
+                  >
+                    <ChevronRight className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${open ? 'rotate-90' : ''}`} />
                     <Building2 className="w-4 h-4 text-slate-400 shrink-0" />
                     <h3 className="text-sm font-bold text-slate-600 tracking-wide">{group.label}</h3>
                     <span className="text-xs text-slate-400">
-                      {group.zones.length} zone{group.zones.length > 1 ? 's' : ''}
+                      {group.zones.length} zone{group.zones.length > 1 ? 's' : ''} · {groupeTacheIds.length} tâche{groupeTacheIds.length > 1 ? 's' : ''}
                     </span>
-                    {(() => {
-                      const zoneIds = new Set(group.zones.map(z => z.id))
-                      const ids = taches.filter(t => t.zone_id && zoneIds.has(t.zone_id)).map(t => t.id)
-                      return ids.length > 0 ? (
-                        <button
-                          onClick={() => setJoursBulk({ label: group.label!, tacheIds: ids })}
-                          className="ml-auto flex items-center gap-1 text-xs font-semibold text-[#1A5FA8] hover:text-[#0A4A8A] transition-colors"
-                          title="Modifier les jours de toutes les tâches de ce bâtiment"
-                        >
-                          <CalendarX className="w-3.5 h-3.5" />
-                          Modifier les jours
-                        </button>
-                      ) : null
-                    })()}
+                    {groupeTacheIds.length > 0 && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setJoursBulk({ label: group.label!, tacheIds: groupeTacheIds }) }}
+                        className="ml-auto flex items-center gap-1 text-xs font-semibold text-[#1A5FA8] hover:text-[#0A4A8A] transition-colors"
+                        title="Modifier les jours de toutes les tâches de ce bâtiment"
+                      >
+                        <CalendarX className="w-3.5 h-3.5" />
+                        Modifier les jours
+                      </button>
+                    )}
                   </div>
                 )}
-                {group.zones.map(zone => {
+                {open && group.zones.map(zone => {
               const zoneTaches = tachesByZone(zone.id)
               const isOpen = expanded.has(zone.id)
               return (
@@ -577,7 +604,8 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
               )
                 })}
               </div>
-            ))}
+              )
+            })}
 
             {/* Tâches sans zone */}
             {unzonedTaches.length > 0 && (

@@ -22,7 +22,7 @@ async function resolveAndCheck(params: Params) {
   if (!residence) return { error: NextResponse.json({ error: 'Résidence introuvable ou non autorisée' }, { status: 403 }) }
 
   const { data: contrat } = await admin.from('contrats_residences')
-    .select('id, residence_id, type_contrat, agent_prefere_id, actif')
+    .select('id, residence_id, type_contrat, agent_prefere_id, actif, montant_mensuel, creneaux_acceptes')
     .eq('id', contratId)
     .eq('residence_id', residenceId)
     .single()
@@ -108,6 +108,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
   if (jours_interdits !== undefined)          patch.jours_interdits = jours_interdits
   if (notes_specifiques !== undefined)        patch.notes_specifiques = notes_specifiques
   if (actif !== undefined)                    patch.actif = actif
+
+  // ── Activation automatique à la COMPLÉTION initiale d'un placeholder ──────────
+  // Si le contrat était un placeholder INACTIF et INCOMPLET (jamais mis en service :
+  // montant null OU créneaux vides) et qu'il devient COMPLET (montant renseigné ET
+  // créneaux non vides), on l'active. On ne réveille JAMAIS un contrat déjà complet
+  // mis en sommeil volontairement (réactivation = action explicite via `actif`),
+  // ni quand `actif` est fourni explicitement dans la requête.
+  const hasCreneaux = (c: unknown) => Array.isArray(c) && c.length > 0
+  if (actif === undefined && contratMeta.actif === false) {
+    const beforeIncomplete = contratMeta.montant_mensuel == null || !hasCreneaux(contratMeta.creneaux_acceptes)
+    const afterMontant  = montant_mensuel   !== undefined ? montant_mensuel   : contratMeta.montant_mensuel
+    const afterCreneaux = creneaux_acceptes !== undefined ? creneaux_acceptes : contratMeta.creneaux_acceptes
+    const afterComplete = afterMontant != null && hasCreneaux(afterCreneaux)
+    if (beforeIncomplete && afterComplete) patch.actif = true
+  }
 
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: 'Aucun champ à mettre à jour.' }, { status: 400 })

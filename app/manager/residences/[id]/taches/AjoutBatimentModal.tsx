@@ -63,7 +63,7 @@ export default function AjoutBatimentModal({ residenceId, contratId, ordreBase, 
         const zRes = await fetch('/api/zones', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ residenceId, nom: tz.nom, ordre: ordre++, contratId, batiment: nomTrim }),
+          body: JSON.stringify({ residenceId, nom: tz.nom, ordre: ordre++, contratId, batiment: nomTrim, coefDuree: tz.coefDuree }),
         })
         const zJson = await zRes.json()
         if (!zRes.ok) throw new Error(zJson.error ?? 'Erreur création zone')

@@ -19,6 +19,7 @@ export default function ZoneFormModal({ residenceId, contratId, ordre, zone, bat
   const isEdit = zone !== null
   const [nom, setNom]           = useState(zone?.nom ?? '')
   const [batiment, setBatiment] = useState(zone?.batiment ?? '')
+  const [coef, setCoef]         = useState(String(zone?.coef_duree ?? 1))
   const [saving, setSaving]     = useState(false)
   const [error, setError]       = useState<string | null>(null)
 
@@ -28,6 +29,8 @@ export default function ZoneFormModal({ residenceId, contratId, ordre, zone, bat
     e.preventDefault()
     const nomTrim = nom.trim()
     if (!nomTrim) { setError('Le nom de la zone est obligatoire.'); return }
+    const coefNum = Number(coef)
+    const coefOk = Number.isFinite(coefNum) && coefNum > 0 ? coefNum : 1
     setSaving(true)
     setError(null)
 
@@ -36,17 +39,17 @@ export default function ZoneFormModal({ residenceId, contratId, ordre, zone, bat
         const res = await fetch('/api/zones', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: zone!.id, nom: nomTrim, batiment }),
+          body: JSON.stringify({ id: zone!.id, nom: nomTrim, batiment, coefDuree: coefOk }),
         })
         const json = await res.json()
         if (!res.ok) { setError(json.error ?? 'Erreur'); setSaving(false); return }
         // La route PATCH renvoie { ok } : on reconstruit la zone à jour côté client.
-        onSaved({ ...zone!, nom: nomTrim, batiment: batiment.trim() || null })
+        onSaved({ ...zone!, nom: nomTrim, batiment: batiment.trim() || null, coef_duree: coefOk })
       } else {
         const res = await fetch('/api/zones', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ residenceId, nom: nomTrim, ordre, contratId, batiment }),
+          body: JSON.stringify({ residenceId, nom: nomTrim, ordre, contratId, batiment, coefDuree: coefOk }),
         })
         const json = await res.json()
         if (!res.ok) { setError(json.error ?? 'Erreur'); setSaving(false); return }
@@ -101,6 +104,21 @@ export default function ZoneFormModal({ residenceId, contratId, ordre, zone, bat
           <p className="text-xs text-slate-400 mt-1.5">
             Laissez vide pour une résidence à un seul bâtiment.
           </p>
+        </div>
+
+        {/* Coefficient durée — discret, avancé (prorata pondéré). Défaut 1. */}
+        <div>
+          <label className="block text-xs font-medium text-slate-400 mb-1">
+            Coefficient durée <span className="text-slate-300">(avancé — 1 par défaut, 0.5 pour containers/poubelles)</span>
+          </label>
+          <input
+            type="number"
+            step="0.1"
+            min="0.1"
+            value={coef}
+            onChange={e => setCoef(e.target.value)}
+            className="w-28 px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#0BBFBF]/40 focus:border-[#0BBFBF]"
+          />
         </div>
 
         {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}

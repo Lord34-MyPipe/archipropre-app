@@ -54,6 +54,7 @@ export interface ZoneResidence {
   ordre: number
   couleur: string | null
   batiment?: string | null // étiquette bâtiment (niveau Bâtiment) — NULL = mono-bâtiment
+  coef_duree?: number      // coefficient de durée (prorata pondéré §4.2) — défaut 1
   created_at: string
 }
 

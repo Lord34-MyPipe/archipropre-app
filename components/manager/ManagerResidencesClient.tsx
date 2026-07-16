@@ -423,16 +423,25 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
             )}
           </div>
         ) : (
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-visible">
-            <table className="w-full text-sm">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-x-auto">
+            <table className="w-full table-fixed text-sm min-w-[820px]">
+              {/* Résidence dominante (≥40 %) ; autres colonnes resserrées à leur contenu */}
+              <colgroup>
+                <col style={{ width: '46%' }} />
+                <col style={{ width: '132px' }} />
+                <col style={{ width: '120px' }} />
+                <col style={{ width: '84px' }} />
+                <col style={{ width: '150px' }} />
+                <col style={{ width: '104px' }} />
+              </colgroup>
               <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
                 <tr className="text-left text-xs">
-                  <th className="px-4 py-2.5"><SortHeader label="Résidence" keyName="nom" /></th>
-                  <th className="px-3 py-2.5"><SortHeader label="État" keyName="etat" /></th>
-                  <th className="px-3 py-2.5 font-semibold text-slate-500">Type</th>
-                  <th className="px-3 py-2.5 font-semibold text-slate-500 text-center">Contrats</th>
-                  <th className="px-3 py-2.5"><SortHeader label="Agent" keyName="agent" /></th>
-                  <th className="px-3 py-2.5 font-semibold text-slate-500 text-right">Actions</th>
+                  <th className="px-4 py-2.5 whitespace-nowrap"><SortHeader label="Résidence" keyName="nom" /></th>
+                  <th className="px-3 py-2.5 whitespace-nowrap"><SortHeader label="État" keyName="etat" /></th>
+                  <th className="px-3 py-2.5 font-semibold text-slate-500 whitespace-nowrap">Type</th>
+                  <th className="px-3 py-2.5 font-semibold text-slate-500 text-center whitespace-nowrap">Contrats</th>
+                  <th className="px-3 py-2.5 whitespace-nowrap"><SortHeader label="Agent" keyName="agent" /></th>
+                  <th className="px-3 py-2.5 font-semibold text-slate-500 text-right whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -453,12 +462,12 @@ export default function ManagerResidencesClient({ residences, agents }: Props) {
                       onClick={() => router.push(`/manager/residences/${r.id}`)}
                       className={`h-14 cursor-pointer hover:bg-slate-50 transition-colors ${!r.actif ? 'opacity-60' : ''}`}
                     >
-                      {/* 1. Nom + adresse */}
-                      <td className="px-4 py-2 max-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-semibold text-slate-800 truncate">{r.nom}</span>
+                      {/* 1. Nom + adresse — nom jamais tronqué (wrap 2 lignes si besoin) */}
+                      <td className="px-4 py-2 align-middle">
+                        <div className="flex items-start gap-1.5">
+                          <span className="font-semibold text-slate-800 leading-snug break-words">{r.nom}</span>
                           {noteImport && (
-                            <span title={noteImport} className="shrink-0">
+                            <span title={noteImport} className="shrink-0 mt-0.5">
                               <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
                             </span>
                           )}

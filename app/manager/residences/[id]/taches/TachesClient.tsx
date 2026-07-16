@@ -9,6 +9,7 @@ import AjoutBatimentModal from './AjoutBatimentModal'
 import JoursBulkModal, { type JoursMode } from './JoursBulkModal'
 import type { ParametresSociete, StatsReel } from './page'
 import { ClipboardList, CalendarX, Building2, ChevronRight } from 'lucide-react'
+import { computeProrataZones, volumeHebdoMinutes, nbPassagesHebdo, type ProrataZoneInput, type ProrataZoneResult } from '@/lib/prorata'
 
 /* ── Constantes ──────────────────────────────── */
 
@@ -425,6 +426,65 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
     }
   }, [taches])
 
+  /* ── Compteur de contrôle (§4) — volume vendu vs réparti ────────────── */
+
+  // Taux effectif : celui du contrat, sinon le défaut société (même règle que
+  // /manager/interventions/[id]/rapport et /api/residences/[id]/rentabilite).
+  const tauxEffectif = contrat?.taux_horaire_facturation ?? parametres?.taux_horaire_facturation_defaut ?? 25
+  const volumeHebdoMin = useMemo(
+    () => volumeHebdoMinutes(contrat?.montant_mensuel ?? null, tauxEffectif),
+    [contrat?.montant_mensuel, tauxEffectif],
+  )
+
+  // Une zone avec duree_minutes saisie fournit sa durée hebdo explicite
+  // (durée d'UN passage × nb de passages) à computeProrataZones ; sinon
+  // repli sur le prorata pondéré (coef_duree) — cf lib/prorata.ts §4.3.
+  const prorataResults = useMemo(() => {
+    const inputs: ProrataZoneInput[] = zones.map(z => {
+      const zTaches = taches
+        .filter(t => t.zone_id === z.id)
+        .map(t => ({ frequence_type: t.frequence_type, jours_semaine: t.jours_semaine }))
+      const nbPassages = nbPassagesHebdo(zTaches)
+      return {
+        id: z.id,
+        coefDuree: z.coef_duree ?? 1,
+        taches: zTaches,
+        dureeExpliciteHebdoMin: z.duree_minutes != null ? z.duree_minutes * nbPassages : null,
+      }
+    })
+    return computeProrataZones(volumeHebdoMin, inputs)
+  }, [zones, taches, volumeHebdoMin])
+
+  const prorataByZoneId = useMemo(
+    () => new Map(prorataResults.map(r => [r.zoneId, r])),
+    [prorataResults],
+  )
+
+  const totalReparti = useMemo(
+    () => prorataResults.reduce((s, r) => s + r.dureeHebdoMin, 0),
+    [prorataResults],
+  )
+
+  // Réparti par jour, à titre indicatif : pour chaque jour, somme des durées
+  // d'UN passage des zones ayant ≥1 tâche hebdo planifiée ce jour-là.
+  const repartiParJour = useMemo(() => {
+    const map = new Map<string, number>(JOURS_ALL.map(j => [j, 0]))
+    for (const z of zones) {
+      const r = prorataByZoneId.get(z.id)
+      if (!r) continue
+      const joursZone = new Set(
+        taches.filter(t => t.zone_id === z.id && t.frequence_type === 'hebdo')
+          .flatMap(t => t.jours_semaine ?? []),
+      )
+      joursZone.forEach(j => { if (map.has(j)) map.set(j, (map.get(j) ?? 0) + r.dureePassageMin) })
+    }
+    return map
+  }, [zones, taches, prorataByZoneId])
+
+  const compteurPct = volumeHebdoMin > 0 ? (totalReparti / volumeHebdoMin) * 100 : null
+  const compteurCouleur: 'gray' | 'green' | 'orange' | 'red' =
+    compteurPct === null ? 'gray' : compteurPct <= 100 ? 'green' : compteurPct <= 115 ? 'orange' : 'red'
+
   /* ── Render ── */
 
   return (
@@ -493,6 +553,15 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
 
       {/* Corps */}
       <div className="p-4 md:p-8 pb-8 space-y-4">
+
+        {/* Compteur de contrôle — volume vendu vs réparti (§4) */}
+        <CompteurRepartition
+          volumeHebdoMin={volumeHebdoMin}
+          totalReparti={totalReparti}
+          pct={compteurPct}
+          couleur={compteurCouleur}
+          parJour={repartiParJour}
+        />
 
         {/* ── Vue par zone ── */}
         {view === 'zone' && (
@@ -619,6 +688,7 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
                   {/* Durée ZONE (§4.3) — puces cliquables, repli prorata si Auto */}
                   <ZoneDureeChips
                     zone={zone}
+                    prorata={prorataByZoneId.get(zone.id)}
                     onChange={minutes => handleZoneDureeChange(zone, minutes)}
                   />
 
@@ -913,9 +983,10 @@ function TacheRow({
 /* ── ZoneDureeChips — durée d'UN passage de la zone (§4.3) ───────────── */
 
 function ZoneDureeChips({
-  zone, onChange,
+  zone, prorata, onChange,
 }: {
   zone: ZoneResidence
+  prorata: ProrataZoneResult | undefined
   onChange: (minutes: number | null) => void
 }) {
   const current = zone.duree_minutes ?? null
@@ -947,6 +1018,77 @@ function ZoneDureeChips({
       >
         Auto
       </button>
+      {current === null && prorata && prorata.nbPassages > 0 && (
+        <span className="text-[11px] text-slate-400 italic">
+          ≈ {formatDuree(Math.round(prorata.dureePassageMin))}/passage (prorata)
+        </span>
+      )}
+    </div>
+  )
+}
+
+/* ── CompteurRepartition — volume vendu vs réparti (§4, non bloquant) ─── */
+
+const COULEUR_STYLES: Record<'gray'|'green'|'orange'|'red', { bar: string; text: string; bg: string }> = {
+  gray:   { bar: 'bg-slate-300',  text: 'text-slate-500',  bg: 'bg-slate-50' },
+  green:  { bar: 'bg-[#0BBFBF]',  text: 'text-[#0A8A8A]',  bg: 'bg-teal-50' },
+  orange: { bar: 'bg-amber-500',  text: 'text-amber-600',  bg: 'bg-amber-50' },
+  red:    { bar: 'bg-red-500',    text: 'text-red-600',    bg: 'bg-red-50' },
+}
+
+function CompteurRepartition({
+  volumeHebdoMin, totalReparti, pct, couleur, parJour,
+}: {
+  volumeHebdoMin: number
+  totalReparti: number
+  pct: number | null
+  couleur: 'gray' | 'green' | 'orange' | 'red'
+  parJour: Map<string, number>
+}) {
+  const style = COULEUR_STYLES[couleur]
+
+  return (
+    <div className={`rounded-2xl border border-slate-100 p-4 md:p-5 ${style.bg}`}>
+      {volumeHebdoMin <= 0 ? (
+        <p className="text-sm text-slate-400">
+          Montant du contrat non renseigné — compteur de contrôle indisponible.
+        </p>
+      ) : (
+        <>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <p className={`text-sm font-semibold ${style.text}`}>
+              Réparti : {formatDuree(Math.round(totalReparti))} sur {formatDuree(Math.round(volumeHebdoMin))} vendues/semaine
+            </p>
+            {pct !== null && (
+              <span className={`text-xs font-bold ${style.text}`}>{Math.round(pct)}%</span>
+            )}
+          </div>
+          <div className="h-2 rounded-full bg-white/70 overflow-hidden mt-2">
+            <div
+              className={`h-full rounded-full ${style.bar} transition-all`}
+              style={{ width: `${Math.min(pct ?? 0, 100)}%` }}
+            />
+          </div>
+          {pct !== null && pct > 100 && (
+            <p className={`text-xs font-semibold mt-1.5 ${style.text}`}>
+              ⚠ Dépassement de {formatDuree(Math.round(totalReparti - volumeHebdoMin))}
+            </p>
+          )}
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
+            {JOURS_ALL.map(j => {
+              const min = parJour.get(j) ?? 0
+              return (
+                <div key={j} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white/70 text-[11px]">
+                  <span className="font-semibold text-slate-500">{JOUR_COURTS[j]}</span>
+                  <span className={min > 0 ? 'text-slate-600' : 'text-slate-300'}>
+                    {min > 0 ? formatDuree(Math.round(min)) : '—'}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
     </div>
   )
 }

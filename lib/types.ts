@@ -86,6 +86,7 @@ export interface ContratResidence {
   date_debut: string
   date_fin: string
   montant_mensuel: number | null
+  taux_horaire_facturation?: number | null
   nb_interventions_mois: number
   jours_obliges: string[]
   jours_interdits: string[]

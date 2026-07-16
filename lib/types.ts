@@ -55,6 +55,7 @@ export interface ZoneResidence {
   couleur: string | null
   batiment?: string | null // étiquette bâtiment (niveau Bâtiment) — NULL = mono-bâtiment
   coef_duree?: number      // coefficient de durée (prorata pondéré §4.2) — défaut 1
+  duree_minutes?: number | null // durée manuelle d'UN passage (§4.3) — NULL = repli prorata
   created_at: string
 }
 

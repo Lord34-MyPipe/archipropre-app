@@ -53,7 +53,7 @@ export async function PATCH(req: NextRequest) {
   const managerId = await getManagerId()
   if (!managerId) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
-  const { id, nom, batiment, coefDuree } = await req.json()
+  const { id, nom, batiment, coefDuree, dureeMinutes } = await req.json()
   if (!id || !nom) return NextResponse.json({ error: 'Champs manquants' }, { status: 400 })
 
   const admin = await createAdminClient()
@@ -68,6 +68,15 @@ export async function PATCH(req: NextRequest) {
   if (coefDuree !== undefined) {
     const c = Number(coefDuree)
     upd.coef_duree = Number.isFinite(c) && c > 0 ? c : 1
+  }
+  // duree_minutes optionnel : mis à jour seulement s'il est fourni. null explicite = repli prorata (puce "Auto").
+  if (dureeMinutes !== undefined) {
+    if (dureeMinutes === null) {
+      upd.duree_minutes = null
+    } else {
+      const d = Number(dureeMinutes)
+      upd.duree_minutes = Number.isFinite(d) && d > 0 ? Math.round(d) : null
+    }
   }
 
   const { error } = await admin.from('zones_residence').update(upd).eq('id', id)

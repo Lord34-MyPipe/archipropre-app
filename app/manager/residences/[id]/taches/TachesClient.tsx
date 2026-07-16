@@ -88,6 +88,18 @@ function formatDuree(minutes: number): string {
   return h > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${m}min`
 }
 
+// Puces durée ZONE (§4.3) — durée d'UN passage. Distinctes des puces durée
+// TÂCHE ci-dessus (DUREE_PRESETS). null = "Auto" → repli sur le prorata.
+const ZONE_DUREE_PRESETS: { label: string; value: number }[] = [
+  { label: '5min',  value: 5 },
+  { label: '10min', value: 10 },
+  { label: '15min', value: 15 },
+  { label: '20min', value: 20 },
+  { label: '30min', value: 30 },
+  { label: '45min', value: 45 },
+  { label: '1h',    value: 60 },
+]
+
 /* ── Props ───────────────────────────────────── */
 
 interface Props {
@@ -314,6 +326,23 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
       }).catch(() => null)
       return prev
     })
+  }
+
+  /* ── Durée ZONE (§4.3) — puces cliquables, repli prorata si null ── */
+
+  async function handleZoneDureeChange(zone: ZoneResidence, minutes: number | null) {
+    setZones(zs => zs.map(z => z.id === zone.id ? { ...z, duree_minutes: minutes } : z))
+    const res = await fetch('/api/zones', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: zone.id, nom: zone.nom, dureeMinutes: minutes }),
+    })
+    if (!res.ok) {
+      showToast('Erreur enregistrement durée zone', 'error')
+      setZones(zs => zs.map(z => z.id === zone.id ? { ...z, duree_minutes: zone.duree_minutes ?? null } : z))
+      return
+    }
+    showToast(minutes === null ? '✓ Repli sur le prorata' : '✓ Durée zone enregistrée')
   }
 
   function onZoneCreated(zone: ZoneResidence) {
@@ -586,6 +615,12 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
                       </div>
                     )}
                   </div>
+
+                  {/* Durée ZONE (§4.3) — puces cliquables, repli prorata si Auto */}
+                  <ZoneDureeChips
+                    zone={zone}
+                    onChange={minutes => handleZoneDureeChange(zone, minutes)}
+                  />
 
                   {/* Tâches */}
                   {isOpen && (
@@ -871,6 +906,47 @@ function TacheRow({
           </button>
         )}
       </div>
+    </div>
+  )
+}
+
+/* ── ZoneDureeChips — durée d'UN passage de la zone (§4.3) ───────────── */
+
+function ZoneDureeChips({
+  zone, onChange,
+}: {
+  zone: ZoneResidence
+  onChange: (minutes: number | null) => void
+}) {
+  const current = zone.duree_minutes ?? null
+
+  return (
+    <div className="px-5 pb-3 -mt-1 flex items-center gap-1.5 flex-wrap" onClick={e => e.stopPropagation()}>
+      <span className="text-[11px] text-slate-400 font-medium mr-0.5">Durée zone :</span>
+      {ZONE_DUREE_PRESETS.map(p => (
+        <button
+          key={p.value}
+          onClick={() => onChange(p.value)}
+          className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
+            current === p.value
+              ? 'bg-[#0A2E5A] text-white'
+              : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+          }`}
+        >
+          {p.label}
+        </button>
+      ))}
+      <button
+        onClick={() => onChange(null)}
+        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
+          current === null
+            ? 'bg-[#0BBFBF] text-white'
+            : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+        }`}
+        title="Repli automatique sur le prorata pondéré"
+      >
+        Auto
+      </button>
     </div>
   )
 }

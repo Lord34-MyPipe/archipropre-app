@@ -53,6 +53,7 @@ export interface ZoneResidence {
   nom: string
   ordre: number
   couleur: string | null
+  batiment?: string | null // étiquette bâtiment (niveau Bâtiment) — NULL = mono-bâtiment
   created_at: string
 }
 

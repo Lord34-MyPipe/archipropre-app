@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import type { Residence, ZoneResidence, TacheTemplate, ContratResidence } from '@/lib/types'
 import TacheModal from './TacheModal'
+import ZoneFormModal from './ZoneFormModal'
 import type { ParametresSociete, StatsReel } from './page'
 import { ClipboardList, CalendarX } from 'lucide-react'
 
@@ -67,19 +68,6 @@ function Toast({ message, type, onDone }: { message: string; type: 'success'|'er
 
 /* ── Inline rename zone ───────────────────────── */
 
-function ZoneRenameInput({ initial, onSave, onCancel }: { initial: string; onSave: (v: string) => void; onCancel: () => void }) {
-  const [val, setVal] = useState(initial)
-  return (
-    <div className="flex gap-2 flex-1">
-      <input autoFocus value={val} onChange={e => setVal(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter') onSave(val); if (e.key === 'Escape') onCancel() }}
-        className="flex-1 px-3 py-1.5 rounded-lg border border-[#0BBFBF] text-sm focus:outline-none focus:ring-2 focus:ring-[#0BBFBF]"/>
-      <button onClick={() => onSave(val)} className="px-3 py-1.5 bg-[#0A2E5A] text-white rounded-lg text-xs font-semibold">✓</button>
-      <button onClick={onCancel} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs">✕</button>
-    </div>
-  )
-}
-
 /* ── Durée helpers ────────────────────────────── */
 
 const DUREE_PRESETS = [
@@ -120,7 +108,7 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
   const [expanded, setExpanded]   = useState<Set<string>>(new Set(initialZones.map(z => z.id)))
   const [modal, setModal]         = useState<{ open: boolean; zoneId?: string }>({ open: false })
   const [editingTache, setEditing]= useState<TacheTemplate | null>(null)
-  const [renamingZone, setRenaming] = useState<string | null>(null)
+  const [zoneModal, setZoneModal] = useState<{ mode: 'create' } | { mode: 'edit'; zone: ZoneResidence } | null>(null)
   const [toast, setToast]         = useState<{ message: string; type: 'success'|'error' } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'zone'|'tache'; id: string; label: string } | null>(null)
 
@@ -140,32 +128,26 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
 
   /* ── Zone CRUD ── */
 
-  async function handleAddZone() {
-    const nom = prompt('Nom de la nouvelle zone :')?.trim()
-    if (!nom) return
-    const res = await fetch('/api/zones', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ residenceId: residence.id, nom, ordre: zones.length + 1, ...(contratId ? { contratId } : {}) }),
-    })
-    const json = await res.json()
-    if (!res.ok) { showToast(json.error ?? 'Erreur', 'error'); return }
-    setZones(z => [...z, json.data as ZoneResidence])
-    setExpanded(s => new Set([...s, json.data.id]))
-    showToast('Zone ajoutée')
-  }
+  // Bâtiments déjà saisis sur ce contrat (autocomplétion du formulaire de zone)
+  const batimentsExistants = useMemo(
+    () => [...new Set(zones.map(z => z.batiment).filter((b): b is string => !!b && b.trim() !== ''))].sort(),
+    [zones],
+  )
 
-  async function handleRenameZone(id: string, nom: string) {
-    if (!nom.trim()) { setRenaming(null); return }
-    const res = await fetch('/api/zones', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, nom }),
-    })
-    if (!res.ok) { showToast('Erreur renommage', 'error'); return }
-    setZones(zs => zs.map(z => z.id === id ? { ...z, nom } : z))
-    setRenaming(null)
-    showToast('Zone renommée')
+  function handleAddZone() { setZoneModal({ mode: 'create' }) }
+
+  // Retour du formulaire de zone (création ou édition) → maj de l'état local
+  function handleZoneSaved(zone: ZoneResidence) {
+    const isNew = !zones.some(z => z.id === zone.id)
+    if (isNew) {
+      setZones(z => [...z, zone])
+      setExpanded(s => new Set([...s, zone.id]))
+      showToast('Zone ajoutée')
+    } else {
+      setZones(zs => zs.map(z => z.id === zone.id ? { ...z, ...zone } : z))
+      showToast('Zone modifiée')
+    }
+    setZoneModal(null)
   }
 
   async function handleDuplicateZone(zone: ZoneResidence) {
@@ -181,7 +163,6 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
     setZones(zs => [...zs, newZone])
     setTaches(ts => [...ts, ...newTaches])
     setExpanded(s => new Set([...s, newZone.id]))
-    setRenaming(newZone.id)
     showToast(`Zone dupliquée (${newTaches.length} tâche${newTaches.length > 1 ? 's' : ''} copiée${newTaches.length > 1 ? 's' : ''})`)
   }
 
@@ -416,13 +397,7 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
                       <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
                     </svg>
 
-                    {renamingZone === zone.id ? (
-                      <ZoneRenameInput
-                        initial={zone.nom}
-                        onSave={nom => handleRenameZone(zone.id, nom)}
-                        onCancel={() => setRenaming(null)}
-                      />
-                    ) : (() => {
+                    {(() => {
                       const zTotal = zoneTaches.reduce((s, t) => s + (t.duree_minutes ?? 0), 0)
                       const zIncomplete = zoneTaches.some(t => !t.duree_minutes)
                       return (
@@ -440,11 +415,11 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
                       )
                     })()}
 
-                    {renamingZone !== zone.id && (
+                    {(
                       <div className="flex gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-                        <button onClick={() => setRenaming(zone.id)}
+                        <button onClick={() => setZoneModal({ mode: 'edit', zone })}
                           className="w-7 h-7 rounded-lg bg-blue-50 text-blue-500 flex items-center justify-center hover:bg-blue-100 transition-colors"
-                          title="Renommer">
+                          title="Modifier la zone (nom, bâtiment)">
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/></svg>
                         </button>
                         <button onClick={() => handleDuplicateZone(zone)}
@@ -582,6 +557,19 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
           onClose={closeModal}
           onSaved={onTacheSaved}
           onZoneCreated={onZoneCreated}
+        />
+      )}
+
+      {/* Modal zone (création / édition — nom + bâtiment) */}
+      {zoneModal && (
+        <ZoneFormModal
+          residenceId={residence.id}
+          contratId={contratId ?? ''}
+          ordre={zones.length + 1}
+          zone={zoneModal.mode === 'edit' ? zoneModal.zone : null}
+          batimentsExistants={batimentsExistants}
+          onClose={() => setZoneModal(null)}
+          onSaved={handleZoneSaved}
         />
       )}
 

@@ -6,7 +6,7 @@ import type { Residence, ZoneResidence, TacheTemplate, ContratResidence } from '
 import TacheModal from './TacheModal'
 import ZoneFormModal from './ZoneFormModal'
 import type { ParametresSociete, StatsReel } from './page'
-import { ClipboardList, CalendarX } from 'lucide-react'
+import { ClipboardList, CalendarX, Building2 } from 'lucide-react'
 
 /* ── Constantes ──────────────────────────────── */
 
@@ -133,6 +133,37 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
     () => [...new Set(zones.map(z => z.batiment).filter((b): b is string => !!b && b.trim() !== ''))].sort(),
     [zones],
   )
+
+  // Regroupement des zones par bâtiment (affichage uniquement, §7.2).
+  // - Aucune zone étiquetée → un seul groupe plat, sans en-tête (mono-bâtiment inchangé).
+  // - Sinon → un groupe par bâtiment (ordre naturel), puis « Sans bâtiment » en dernier si besoin.
+  const zoneGroups = useMemo(() => {
+    const hasBatiment = zones.some(z => z.batiment && z.batiment.trim() !== '')
+    if (!hasBatiment) {
+      return [{ key: '__all__', label: null as string | null, zones }]
+    }
+    const parBatiment = new Map<string, ZoneResidence[]>()
+    const sansBatiment: ZoneResidence[] = []
+    for (const z of zones) {
+      const b = z.batiment?.trim()
+      if (b) {
+        const arr = parBatiment.get(b) ?? []
+        arr.push(z)
+        parBatiment.set(b, arr)
+      } else {
+        sansBatiment.push(z)
+      }
+    }
+    const keys = [...parBatiment.keys()].sort((a, b) =>
+      a.localeCompare(b, 'fr', { numeric: true, sensitivity: 'base' }),
+    )
+    const groups: { key: string; label: string | null; zones: ZoneResidence[] }[] =
+      keys.map(b => ({ key: b, label: b, zones: parBatiment.get(b)! }))
+    if (sansBatiment.length > 0) {
+      groups.push({ key: '__sans__', label: 'Sans bâtiment', zones: sansBatiment })
+    }
+    return groups
+  }, [zones])
 
   function handleAddZone() { setZoneModal({ mode: 'create' }) }
 
@@ -382,7 +413,18 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
               </div>
             )}
 
-            {zones.map(zone => {
+            {zoneGroups.map(group => (
+              <div key={group.key} className="space-y-3">
+                {group.label && (
+                  <div className="flex items-center gap-2 px-1 pt-1">
+                    <Building2 className="w-4 h-4 text-slate-400 shrink-0" />
+                    <h3 className="text-sm font-bold text-slate-600 tracking-wide">{group.label}</h3>
+                    <span className="text-xs text-slate-400">
+                      {group.zones.length} zone{group.zones.length > 1 ? 's' : ''}
+                    </span>
+                  </div>
+                )}
+                {group.zones.map(zone => {
               const zoneTaches = tachesByZone(zone.id)
               const isOpen = expanded.has(zone.id)
               return (
@@ -456,7 +498,9 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
                   )}
                 </div>
               )
-            })}
+                })}
+              </div>
+            ))}
 
             {/* Tâches sans zone */}
             {unzonedTaches.length > 0 && (

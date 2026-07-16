@@ -5,6 +5,7 @@ import Link from 'next/link'
 import type { Residence, ZoneResidence, TacheTemplate, ContratResidence } from '@/lib/types'
 import TacheModal from './TacheModal'
 import ZoneFormModal from './ZoneFormModal'
+import AjoutBatimentModal from './AjoutBatimentModal'
 import type { ParametresSociete, StatsReel } from './page'
 import { ClipboardList, CalendarX, Building2 } from 'lucide-react'
 
@@ -109,6 +110,7 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
   const [modal, setModal]         = useState<{ open: boolean; zoneId?: string }>({ open: false })
   const [editingTache, setEditing]= useState<TacheTemplate | null>(null)
   const [zoneModal, setZoneModal] = useState<{ mode: 'create' } | { mode: 'edit'; zone: ZoneResidence } | null>(null)
+  const [showBatimentModal, setShowBatimentModal] = useState(false)
   const [toast, setToast]         = useState<{ message: string; type: 'success'|'error' } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'zone'|'tache'; id: string; label: string } | null>(null)
 
@@ -166,6 +168,15 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
   }, [zones])
 
   function handleAddZone() { setZoneModal({ mode: 'create' }) }
+
+  // Instanciation d'un bâtiment standard (template) → ajoute zones + tâches créées
+  function handleBatimentDone(newZones: ZoneResidence[], newTaches: TacheTemplate[]) {
+    setZones(zs => [...zs, ...newZones])
+    setTaches(ts => [...ts, ...newTaches])
+    setExpanded(s => new Set([...s, ...newZones.map(z => z.id)]))
+    setShowBatimentModal(false)
+    showToast(`Bâtiment ajouté (${newZones.length} zones, ${newTaches.length} tâches)`)
+  }
 
   // Retour du formulaire de zone (création ou édition) → maj de l'état local
   function handleZoneSaved(zone: ZoneResidence) {
@@ -374,6 +385,11 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
           </svg>
           Ajouter une zone
+        </button>
+        <button onClick={() => setShowBatimentModal(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-[#1A5FA8] rounded-xl text-sm font-medium hover:bg-blue-100 transition-colors">
+          <Building2 className="w-4 h-4" />
+          Ajouter un bâtiment standard
         </button>
         <button onClick={() => openModal()}
           className="flex items-center gap-2 px-4 py-2 text-white rounded-xl text-sm font-medium transition-all"
@@ -614,6 +630,17 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
           batimentsExistants={batimentsExistants}
           onClose={() => setZoneModal(null)}
           onSaved={handleZoneSaved}
+        />
+      )}
+
+      {/* Modal bâtiment standard (instancie le template) */}
+      {showBatimentModal && (
+        <AjoutBatimentModal
+          residenceId={residence.id}
+          contratId={contratId ?? ''}
+          ordreBase={zones.length + 1}
+          onClose={() => setShowBatimentModal(false)}
+          onDone={handleBatimentDone}
         />
       )}
 

@@ -6,6 +6,7 @@ import type { Residence, ZoneResidence, TacheTemplate, ContratResidence } from '
 import TacheModal from './TacheModal'
 import ZoneFormModal from './ZoneFormModal'
 import AjoutBatimentModal from './AjoutBatimentModal'
+import JoursBulkModal, { type JoursMode } from './JoursBulkModal'
 import type { ParametresSociete, StatsReel } from './page'
 import { ClipboardList, CalendarX, Building2 } from 'lucide-react'
 
@@ -111,6 +112,8 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
   const [editingTache, setEditing]= useState<TacheTemplate | null>(null)
   const [zoneModal, setZoneModal] = useState<{ mode: 'create' } | { mode: 'edit'; zone: ZoneResidence } | null>(null)
   const [showBatimentModal, setShowBatimentModal] = useState(false)
+  const [joursBulk, setJoursBulk] = useState<{ label: string; tacheIds: string[] } | null>(null)
+  const [joursBulkBusy, setJoursBulkBusy] = useState(false)
   const [toast, setToast]         = useState<{ message: string; type: 'success'|'error' } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'zone'|'tache'; id: string; label: string } | null>(null)
 
@@ -176,6 +179,43 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
     setExpanded(s => new Set([...s, ...newZones.map(z => z.id)]))
     setShowBatimentModal(false)
     showToast(`Bâtiment ajouté (${newZones.length} zones, ${newTaches.length} tâches)`)
+  }
+
+  // Action groupée sur les jours (bâtiment ou zone) — PATCH en boucle sur les
+  // tâches ciblées (route existante réutilisée). Mode : remplacer / ajouter.
+  async function applyJoursBulk(mode: JoursMode, jours: string[]) {
+    if (!joursBulk) return
+    setJoursBulkBusy(true)
+    const updates = new Map<string, string[]>()
+    try {
+      for (const id of joursBulk.tacheIds) {
+        const t = taches.find(x => x.id === id)
+        if (!t) continue
+        const current = t.jours_semaine ?? []
+        const next = mode === 'replace'
+          ? [...jours]
+          : [...new Set([...current, ...jours])]
+        const res = await fetch('/api/taches-template', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, joursSemaine: next }),
+        })
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}))
+          throw new Error(j.error ?? 'Erreur mise à jour')
+        }
+        updates.set(id, next)
+      }
+      setTaches(ts => ts.map(t => updates.has(t.id) ? { ...t, jours_semaine: updates.get(t.id)! } : t))
+      setJoursBulk(null)
+      showToast(`Jours mis à jour (${updates.size} tâche${updates.size > 1 ? 's' : ''})`)
+    } catch (e) {
+      // Applique quand même les tâches déjà modifiées pour rester cohérent avec la base
+      if (updates.size) setTaches(ts => ts.map(t => updates.has(t.id) ? { ...t, jours_semaine: updates.get(t.id)! } : t))
+      showToast(e instanceof Error ? e.message : 'Erreur', 'error')
+    } finally {
+      setJoursBulkBusy(false)
+    }
   }
 
   // Retour du formulaire de zone (création ou édition) → maj de l'état local
@@ -438,6 +478,20 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
                     <span className="text-xs text-slate-400">
                       {group.zones.length} zone{group.zones.length > 1 ? 's' : ''}
                     </span>
+                    {(() => {
+                      const zoneIds = new Set(group.zones.map(z => z.id))
+                      const ids = taches.filter(t => t.zone_id && zoneIds.has(t.zone_id)).map(t => t.id)
+                      return ids.length > 0 ? (
+                        <button
+                          onClick={() => setJoursBulk({ label: group.label!, tacheIds: ids })}
+                          className="ml-auto flex items-center gap-1 text-xs font-semibold text-[#1A5FA8] hover:text-[#0A4A8A] transition-colors"
+                          title="Modifier les jours de toutes les tâches de ce bâtiment"
+                        >
+                          <CalendarX className="w-3.5 h-3.5" />
+                          Modifier les jours
+                        </button>
+                      ) : null
+                    })()}
                   </div>
                 )}
                 {group.zones.map(zone => {
@@ -475,6 +529,13 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
 
                     {(
                       <div className="flex gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+                        {zoneTaches.length > 0 && (
+                          <button onClick={() => setJoursBulk({ label: zone.nom, tacheIds: zoneTaches.map(t => t.id) })}
+                            className="w-7 h-7 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors"
+                            title="Modifier les jours de toutes les tâches de cette zone">
+                            <CalendarX className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button onClick={() => setZoneModal({ mode: 'edit', zone })}
                           className="w-7 h-7 rounded-lg bg-blue-50 text-blue-500 flex items-center justify-center hover:bg-blue-100 transition-colors"
                           title="Modifier la zone (nom, bâtiment)">
@@ -641,6 +702,17 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
           ordreBase={zones.length + 1}
           onClose={() => setShowBatimentModal(false)}
           onDone={handleBatimentDone}
+        />
+      )}
+
+      {/* Action groupée jours (bâtiment ou zone) */}
+      {joursBulk && (
+        <JoursBulkModal
+          label={joursBulk.label}
+          nbTaches={joursBulk.tacheIds.length}
+          busy={joursBulkBusy}
+          onClose={() => setJoursBulk(null)}
+          onApply={applyJoursBulk}
         />
       )}
 

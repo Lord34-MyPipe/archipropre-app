@@ -10,11 +10,22 @@ async function getManagerId(): Promise<string | null> {
   return p?.role === 'manager' ? user.id : null
 }
 
-const DAY_NAMES = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi']
-
 const DAY_ISO: Record<string, number> = {
   lundi: 1, mardi: 2, mercredi: 3, jeudi: 4, vendredi: 5, samedi: 6, dimanche: 7,
 }
+
+// Fuseau métier (règle CONTEXT.md) : jamais toISOString()/getDay() bruts pour
+// une date métier — toISOString() est UTC alors que getDay() est local, les
+// deux dérivent au fil des heures/saisons (bug corrigé ici, cf CONTEXT!).
+// On dérive TOUJOURS le jour de semaine ET la date depuis le même instant, en
+// heure de Paris explicite (même pattern que agent/scan/page.tsx et
+// /api/ia/copilote/route.ts).
+const TZ_PARIS = 'Europe/Paris'
+// weekday 'long' en locale fr-FR rend directement "lundi", "mardi"… en
+// minuscules — coïncide avec les clés utilisées partout dans ce fichier
+// (jours_semaine, creneaux_acceptes, DAY_ISO).
+const fmtWeekdayParis = new Intl.DateTimeFormat('fr-FR', { timeZone: TZ_PARIS, weekday: 'long' })
+const dateParisISO = (d: Date): string => d.toLocaleDateString('fr-CA', { timeZone: TZ_PARIS })
 
 /** Normalise "HH:MM:SS" → "HH:MM", null si null */
 const normalizeTime = (t: string | null | undefined): string | null =>
@@ -258,8 +269,11 @@ export async function POST(req: NextRequest) {
   console.log('[generer] bâtiments:', zoneGroups.map(g => g.label ?? '(mono-bâtiment)').join(', '))
 
   // ── 5. Génération des dates ──────────────────────────────────────────────────
-  const start   = new Date(dateDebut + 'T00:00:00')
-  const end     = new Date(dateFin   + 'T00:00:00')
+  // Ancrage à midi (comme semaineDe() dans /api/ia/copilote/route.ts) : évite
+  // tout risque de bascule de jour local↔Paris au parsing, quel que soit le
+  // fuseau système du serveur.
+  const start   = new Date(dateDebut + 'T12:00:00')
+  const end     = new Date(dateFin   + 'T12:00:00')
   const current = new Date(start)
 
   type InterventionRow = {
@@ -275,9 +289,9 @@ export async function POST(req: NextRequest) {
   const rows: InterventionRow[] = []
 
   while (current <= end) {
-    const dayName = DAY_NAMES[current.getDay()]
+    const dayName = fmtWeekdayParis.format(current)
     if (joursActifs.includes(dayName)) {
-      const dateStr  = current.toISOString().split('T')[0]
+      const dateStr  = dateParisISO(current)
       const creneau  = creneauPourJour(creneaux, dayName)
       const hFinMax  = creneau ? normalizeTime(creneau.heure_fin) ?? null : null
 
@@ -325,7 +339,9 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 6. Filtrer les dates passées (le DELETE ne couvre que >= aujourd'hui) ────
-  const today = new Date().toISOString().split('T')[0]
+  // "Aujourd'hui" en heure Paris (même pattern que agent/scan/page.tsx) — pas
+  // toISOString() qui reste sur la veille jusqu'à 1h/2h du matin en France.
+  const today = dateParisISO(new Date())
   const rowsFuturs = rows.filter(r => r.date_prevue >= today)
 
   console.log(`[generer] ${rows.length} interventions générées, ${rowsFuturs.length} futures (>= ${today})`)
@@ -369,7 +385,7 @@ export async function POST(req: NextRequest) {
 
   const interventionsForUI = rowsForUI.map(r => ({
     date:       r.date_prevue,
-    dayName:    DAY_NAMES[new Date(r.date_prevue + 'T00:00:00').getDay()],
+    dayName:    fmtWeekdayParis.format(new Date(r.date_prevue + 'T12:00:00')),
     heureDebut: r.heure_debut_prevue,
     heureFin:   r.heure_fin_prevue,
     agentId:    r.agent_id,

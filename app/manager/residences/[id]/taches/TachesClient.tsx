@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
 import Link from 'next/link'
 import type { Residence, ZoneResidence, TacheTemplate, ContratResidence } from '@/lib/types'
 import TacheModal from './TacheModal'
@@ -771,48 +771,75 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
                   </tr>
                 </thead>
                 <tbody>
-                  {[...zones, { id: null as unknown as string, nom: 'Sans zone', ordre: 999, couleur: null, residence_id: '', created_at: '' }].map(zone => {
-                    const zoneTachesForDay = taches.filter(t => (zone.id ? t.zone_id === zone.id : !t.zone_id))
-                    if (zoneTachesForDay.length === 0) return null
+                  {(() => {
+                    const nbCols = 1 + JOURS_ALL.length + Object.keys(FREQ_COL_LABELS).length
+                    const FREQ_CLR: Record<string,string> = {
+                      mensuel:'bg-blue-50 text-blue-700', trimestriel:'bg-orange-50 text-orange-700',
+                      semestriel:'bg-purple-50 text-purple-700', annuel:'bg-red-50 text-red-700',
+                      sur_passage:'bg-slate-100 text-slate-600',
+                    }
+                    // Ligne d'une zone (réutilisée pour chaque groupe bâtiment et pour "Sans zone").
+                    const renderZoneRow = (zone: { id: string | null; nom: string }) => {
+                      const zoneTachesForDay = taches.filter(t => (zone.id ? t.zone_id === zone.id : !t.zone_id))
+                      if (zoneTachesForDay.length === 0) return null
+                      return (
+                        <tr key={zone.id ?? 'none'} className="border-b border-slate-100 hover:bg-slate-50 transition-colors align-top">
+                          <td className="px-4 py-3 font-medium text-slate-700 text-xs">{zone.nom}</td>
+                          {JOURS_ALL.map(j => {
+                            const cell = dayColData[j]?.filter(e => (zone.id ? e.zone.id === zone.id : !e.zone.id)) ?? []
+                            return (
+                              <td key={j} className="px-2 py-3 text-center align-top">
+                                {cell.map(({ tache: t }) => (
+                                  <div key={t.id} className="text-[10px] bg-green-50 text-green-700 rounded px-1.5 py-1 mb-1 text-left leading-tight">
+                                    {t.libelle}
+                                    {t.frequence_type === 'contrainte_horaire' && t.heure_debut && (
+                                      <span className="block text-amber-600">{t.heure_debut}→{t.heure_fin}</span>
+                                    )}
+                                  </div>
+                                ))}
+                              </td>
+                            )
+                          })}
+                          {Object.keys(FREQ_COL_LABELS).map(ft => {
+                            const cell = dayColData[ft]?.filter(e => (zone.id ? e.zone.id === zone.id : !e.zone.id)) ?? []
+                            return (
+                              <td key={ft} className="px-2 py-3 text-center align-top">
+                                {cell.map(({ tache: t }) => (
+                                  <div key={t.id} className={`text-[10px] rounded px-1.5 py-1 mb-1 text-left leading-tight ${FREQ_CLR[ft] ?? ''}`}>
+                                    {t.libelle}
+                                  </div>
+                                ))}
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      )
+                    }
 
                     return (
-                      <tr key={zone.id ?? 'none'} className="border-b border-slate-100 hover:bg-slate-50 transition-colors align-top">
-                        <td className="px-4 py-3 font-medium text-slate-700 text-xs">{zone.nom}</td>
-                        {JOURS_ALL.map(j => {
-                          const cell = dayColData[j]?.filter(e => (zone.id ? e.zone.id === zone.id : !e.zone.id)) ?? []
-                          return (
-                            <td key={j} className="px-2 py-3 text-center align-top">
-                              {cell.map(({ tache: t }) => (
-                                <div key={t.id} className="text-[10px] bg-green-50 text-green-700 rounded px-1.5 py-1 mb-1 text-left leading-tight">
-                                  {t.libelle}
-                                  {t.frequence_type === 'contrainte_horaire' && t.heure_debut && (
-                                    <span className="block text-amber-600">{t.heure_debut}→{t.heure_fin}</span>
-                                  )}
-                                </div>
-                              ))}
-                            </td>
-                          )
-                        })}
-                        {Object.keys(FREQ_COL_LABELS).map(ft => {
-                          const cell = dayColData[ft]?.filter(e => (zone.id ? e.zone.id === zone.id : !e.zone.id)) ?? []
-                          const FREQ_CLR: Record<string,string> = {
-                            mensuel:'bg-blue-50 text-blue-700', trimestriel:'bg-orange-50 text-orange-700',
-                            semestriel:'bg-purple-50 text-purple-700', annuel:'bg-red-50 text-red-700',
-                            sur_passage:'bg-slate-100 text-slate-600',
-                          }
-                          return (
-                            <td key={ft} className="px-2 py-3 text-center align-top">
-                              {cell.map(({ tache: t }) => (
-                                <div key={t.id} className={`text-[10px] rounded px-1.5 py-1 mb-1 text-left leading-tight ${FREQ_CLR[ft] ?? ''}`}>
-                                  {t.libelle}
-                                </div>
-                              ))}
-                            </td>
-                          )
-                        })}
-                      </tr>
+                      <>
+                        {/* Groupé par bâtiment (réutilise zoneGroups — cohérent avec la vue Par zone).
+                            Mono-bâtiment : group.label est null, aucun en-tête, affichage inchangé. */}
+                        {zoneGroups.map(group => (
+                          <Fragment key={group.key}>
+                            {group.label && (
+                              <tr className="bg-slate-50">
+                                <td colSpan={nbCols} className="px-4 py-1.5">
+                                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 tracking-wide">
+                                    <Building2 className="w-3 h-3 shrink-0" />
+                                    {group.label}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                            {group.zones.map(zone => renderZoneRow(zone))}
+                          </Fragment>
+                        ))}
+                        {/* Tâches sans zone — hors regroupement bâtiment */}
+                        {renderZoneRow({ id: null, nom: 'Sans zone' })}
+                      </>
                     )
-                  })}
+                  })()}
                 </tbody>
               </table>
               {taches.length === 0 && (

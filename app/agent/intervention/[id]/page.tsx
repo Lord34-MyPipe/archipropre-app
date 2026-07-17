@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import type { TacheIntervention, Intervention, Residence } from '@/lib/types'
+import { Building2, Camera, X, TriangleAlert, Check, Circle } from 'lucide-react'
 
 type FullIntervention = Intervention & {
   residences: Residence
@@ -29,6 +30,9 @@ export default function InterventionPage() {
   const [finalizing,     setFinalizing]     = useState(false)
   const [expandedComment, setExpandedComment] = useState<string | null>(null)
   const [commentDraft,   setCommentDraft]   = useState<Record<string, string>>({})
+  // Panneau "?" — détail consultatif des tâches d'UNE zone (étape 9f, §7.3).
+  // null = fermé. Purement UI : la validation reste au niveau zone.
+  const [detailZone,     setDetailZone]     = useState<string | null>(null)
 
   // ── Chargement ────────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -139,6 +143,15 @@ export default function InterventionPage() {
     setExpandedComment(null)
   }
 
+  // ── Signaler un problème sur une tâche (étape 9f) ─────────────────────────────
+  // Compose les deux mécaniques existantes : statut → non_realisee + commentaire.
+  // Ne bloque pas la validation du reste de la zone (validerZone ignore les
+  // tâches déjà traitées, y compris non_realisee).
+  async function signalerProbleme(tache: TacheIntervention, texte: string) {
+    await setStatutTache(tache, 'non_realisee')
+    await saveCommentaire(tache.id, texte)
+  }
+
   // ── Upload photo pour une zone ─────────────────────────────────────────────────
   async function handlePhotoZone(zoneNom: string, file: File) {
     setUploadingZone(zoneNom)
@@ -206,6 +219,18 @@ export default function InterventionPage() {
     router.push(`/agent/intervention/${params.id}/controle-final`)
   }
 
+  // ── Retour — vers l'écran niveau 1 (bâtiments) si on vient de là, sinon
+  // navigation standard (étape 9f). intervention.batiment renseigné = résidence
+  // multi-bâtiments = l'écran niveau 1 existe. Mono-bâtiment : comportement
+  // inchangé (router.back()), aucun contexte "bâtiment" à afficher.
+  function handleBack() {
+    if (intervention?.batiment && intervention?.contrat_id) {
+      router.push(`/agent/mission/${intervention.contrat_id}`)
+    } else {
+      router.back()
+    }
+  }
+
   // ── Calculs dérivés ───────────────────────────────────────────────────────────
   const groupes: Record<string, TacheIntervention[]> = {}
   for (const t of taches) {
@@ -251,6 +276,8 @@ export default function InterventionPage() {
     </div>
   )
 
+  const zoneDetailTaches = detailZone ? (groupes[detailZone] ?? []) : []
+
   // ── Rendu principal ────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-slate-50">
@@ -261,7 +288,7 @@ export default function InterventionPage() {
         style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}
       >
         <button
-          onClick={() => router.back()}
+          onClick={handleBack}
           className="flex items-center gap-2 text-blue-200 text-sm mb-3 active:opacity-70"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -271,9 +298,17 @@ export default function InterventionPage() {
         </button>
 
         <h1 className="text-xl font-bold text-white truncate">{intervention.residences?.nom}</h1>
-        {intervention.contrats_residences?.libelle && (
-          <p className="text-[#0BBFBF] text-sm font-semibold truncate mt-0.5">{intervention.contrats_residences.libelle}</p>
-        )}
+        <div className="flex items-center gap-2 mt-1 flex-wrap">
+          {intervention.contrats_residences?.libelle && (
+            <span className="text-[#0BBFBF] text-sm font-semibold truncate">{intervention.contrats_residences.libelle}</span>
+          )}
+          {intervention.batiment && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/15 text-white text-xs font-bold">
+              <Building2 className="w-3 h-3" />
+              {intervention.batiment}
+            </span>
+          )}
+        </div>
         <p className="text-blue-200 text-sm truncate mt-0.5">{intervention.residences?.adresse}</p>
 
         <div className="mt-3 flex items-center gap-3 flex-wrap">
@@ -295,14 +330,15 @@ export default function InterventionPage() {
         </div>
       </div>
 
-      {/* Zones */}
+      {/* Zones — validation PAR ZONE (étape 9f, §7.3). Le détail des 5 tâches
+          n'est plus affiché par défaut : il est consultatif, derrière le "?". */}
       <div className="px-5 py-4 space-y-4 pb-36">
         {zones.map(zone => {
-          const zoneTaches   = groupes[zone]
-          const zonePhotos   = photosZone[zone] ?? []
-          const complete     = zoneComplete(zone)
-          const toutesTraitees = zoneTaches.every(t => estTraitee(t))
-          const aDesAfaire   = zoneTaches.some(t => t.statut_tache === 'a_faire')
+          const zoneTaches     = groupes[zone]
+          const zonePhotos     = photosZone[zone] ?? []
+          const complete       = zoneComplete(zone)
+          const aDesAfaire     = zoneTaches.some(t => t.statut_tache === 'a_faire')
+          const nbSignalements = zoneTaches.filter(t => t.statut_tache === 'non_realisee').length
 
           return (
             <div
@@ -312,248 +348,102 @@ export default function InterventionPage() {
               }`}
             >
               {/* En-tête de zone */}
-              <div className={`px-4 py-3.5 flex items-center justify-between gap-3 ${
-                complete ? 'bg-green-50' : 'bg-white'
-              }`}>
-                <div className="flex items-center gap-2.5 min-w-0">
+              <div className={`px-4 py-3.5 flex items-center gap-3 ${complete ? 'bg-green-50' : 'bg-white'}`}>
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
                   {complete ? (
-                    <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center shrink-0">
-                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5"/>
-                      </svg>
+                    <div className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center shrink-0">
+                      <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
                     </div>
                   ) : (
-                    <div className={`w-5 h-5 rounded-full border-2 shrink-0 ${
-                      toutesTraitees ? 'border-amber-400' : 'border-slate-300'
-                    }`}/>
+                    <Circle className={`w-6 h-6 shrink-0 ${nbSignalements > 0 ? 'text-amber-400' : 'text-slate-300'}`} strokeWidth={2} />
                   )}
-                  <h2 className="font-bold text-slate-800 truncate">{zone}</h2>
+                  <div className="min-w-0">
+                    <h2 className="font-bold text-slate-800 truncate">{zone}</h2>
+                    {complete ? (
+                      <p className="text-xs text-green-600 font-semibold mt-0.5">
+                        ✓ Photo · Zone validée{nbSignalements > 0 ? ` · ${nbSignalements} signalement${nbSignalements > 1 ? 's' : ''}` : ''}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {zoneTaches.length} tâche{zoneTaches.length > 1 ? 's' : ''}
+                        {nbSignalements > 0 ? ` · ${nbSignalements} signalée${nbSignalements > 1 ? 's' : ''}` : ''}
+                      </p>
+                    )}
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
-                  {complete ? (
-                    <span className="text-xs text-green-600 font-semibold">✓ Complète</span>
-                  ) : toutesTraitees && zonePhotos.length === 0 ? (
-                    <span className="text-xs text-amber-600 font-semibold">📸 Photo requise</span>
-                  ) : (
-                    <span className="text-xs text-slate-400">
-                      {zoneTaches.filter(t => estTraitee(t)).length}/{zoneTaches.length}
-                    </span>
-                  )}
-
-                  {/* Bouton "Tout valider" — visible si ≥1 tâche a_faire et zone non complète */}
-                  {!complete && aDesAfaire && (
-                    <button
-                      onClick={() => validerZone(zone)}
-                      className="px-3 py-1.5 rounded-xl text-xs font-semibold text-white active:opacity-80"
-                      style={{ background: '#0A2E5A' }}
-                    >
-                      Tout valider
-                    </button>
-                  )}
-                </div>
+                {/* Bouton Détail "?" — panneau consultatif, jamais bloquant */}
+                <button
+                  onClick={() => setDetailZone(zone)}
+                  className="w-9 h-9 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center shrink-0 font-bold text-sm active:bg-slate-200 transition-colors"
+                  title="Détail des tâches"
+                >
+                  ?
+                </button>
               </div>
 
-              {/* Liste des tâches */}
-              <div className="bg-white divide-y divide-slate-50">
-                {zoneTaches.map(tache => {
-                  const traite      = estTraitee(tache)
-                  const commentOpen = expandedComment === tache.id
-                  const draft       = commentDraft[tache.id] ?? tache.commentaire ?? ''
-
-                  return (
-                    <div key={tache.id}>
-                      {/* Ligne principale */}
-                      <div className="px-4 pt-4 pb-2 flex items-start gap-3">
-                        {/* Icône statut */}
-                        <div className={`w-6 h-6 rounded-full shrink-0 mt-0.5 flex items-center justify-center ${
-                          tache.statut_tache === 'realisee'
-                            ? 'bg-green-500'
-                            : tache.statut_tache === 'non_realisee'
-                              ? 'bg-red-400'
-                              : 'border-2 border-slate-300'
-                        }`}>
-                          {tache.statut_tache === 'realisee' && (
-                            <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5"/>
-                            </svg>
-                          )}
-                          {tache.statut_tache === 'non_realisee' && (
-                            <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>
-                            </svg>
-                          )}
-                        </div>
-
-                        {/* Libellé */}
-                        <span className={`flex-1 text-sm leading-snug ${
-                          tache.statut_tache === 'realisee'
-                            ? 'line-through text-slate-400'
-                            : tache.statut_tache === 'non_realisee'
-                              ? 'text-slate-400'
-                              : 'text-slate-800 font-medium'
-                        }`}>
-                          {tache.libelle}
-                        </span>
-
-                        {/* Bouton commentaire */}
-                        <button
-                          onClick={() => {
-                            setExpandedComment(commentOpen ? null : tache.id)
-                            if (!commentOpen) setCommentDraft(p => ({ ...p, [tache.id]: tache.commentaire ?? '' }))
-                          }}
-                          className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-base transition-colors ${
-                            tache.commentaire
-                              ? 'bg-amber-100 text-amber-600'
-                              : 'text-slate-300 active:bg-slate-100'
-                          }`}
-                          title="Commentaire"
-                        >
-                          💬
-                        </button>
-                      </div>
-
-                      {/* Boutons action (tâche non traitée) */}
-                      {tache.statut_tache === 'a_faire' && (
-                        <div className="px-4 pb-4 flex gap-2">
-                          <button
-                            onClick={() => setStatutTache(tache, 'realisee')}
-                            className="flex-1 py-2.5 rounded-xl bg-green-50 text-green-700 text-sm font-semibold border border-green-200 active:bg-green-100 transition-colors"
-                          >
-                            ✓ Réalisé
-                          </button>
-                          <button
-                            onClick={() => setStatutTache(tache, 'non_realisee')}
-                            className="flex-1 py-2.5 rounded-xl bg-red-50 text-red-600 text-sm font-semibold border border-red-200 active:bg-red-100 transition-colors"
-                          >
-                            ✗ Non réalisé
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Badge statut + heure + annuler (tâche traitée) */}
-                      {traite && (
-                        <div className="px-4 pb-3 flex items-center gap-2">
-                          {tache.statut_tache === 'realisee' ? (
-                            <span className="text-xs text-green-600 font-semibold">✓ Réalisé</span>
-                          ) : (
-                            <span className="text-xs text-red-500 font-semibold">✗ Non réalisé</span>
-                          )}
-                          {tache.heure_validation && (
-                            <span className="text-xs text-slate-400 tabular-nums">
-                              {new Date(tache.heure_validation).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          )}
-                          {!complete && (
-                            <button
-                              onClick={() => setStatutTache(tache, 'a_faire')}
-                              className="ml-auto text-xs text-slate-400 underline active:opacity-70"
-                            >
-                              Annuler
-                            </button>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Commentaire affiché (si non ouvert) */}
-                      {!commentOpen && tache.commentaire && (
-                        <div className="px-4 pb-3 ml-9">
-                          <p className="text-xs text-amber-800 bg-amber-50 rounded-xl px-3 py-2 italic border border-amber-100">
-                            {tache.commentaire}
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Éditeur commentaire inline */}
-                      {commentOpen && (
-                        <div className="px-4 pb-4">
-                          <textarea
-                            value={draft}
-                            onChange={e => setCommentDraft(p => ({ ...p, [tache.id]: e.target.value }))}
-                            rows={2}
-                            placeholder="Ajouter un commentaire (problème, remarque…)"
-                            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#0BBFBF] focus:border-transparent"
-                            autoFocus
-                          />
-                          <div className="flex gap-2 mt-2">
-                            <button
-                              onClick={() => setExpandedComment(null)}
-                              className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium active:opacity-70"
-                            >
-                              Annuler
-                            </button>
-                            <button
-                              onClick={() => saveCommentaire(tache.id, draft)}
-                              className="flex-[2] py-2.5 rounded-xl text-white text-sm font-semibold active:opacity-90"
-                              style={{ background: '#0BBFBF' }}
-                            >
-                              Enregistrer
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-
-              {/* Section photos de zone */}
-              <div className="bg-slate-50 px-4 pt-3 pb-4 border-t border-slate-100">
-                {zonePhotos.length > 0 && (
-                  <div className="flex gap-2 mb-3 flex-wrap">
-                    {zonePhotos.map(photo => (
-                      <div key={photo.id} className="relative w-16 h-16 rounded-xl overflow-hidden bg-slate-200 shrink-0">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={photo.signedUrl} alt="Photo zone" className="w-full h-full object-cover"/>
-                        {!complete && (
+              {/* Actions principales — Photo + Valider la zone */}
+              {!complete && (
+                <div className="bg-white px-4 pb-4 pt-1 space-y-3">
+                  {zonePhotos.length > 0 && (
+                    <div className="flex gap-2 flex-wrap">
+                      {zonePhotos.map(photo => (
+                        <div key={photo.id} className="relative w-16 h-16 rounded-xl overflow-hidden bg-slate-200 shrink-0">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={photo.signedUrl} alt="Photo zone" className="w-full h-full object-cover"/>
                           <button
                             onClick={() => handleDeletePhotoZone(zone, photo)}
                             className="absolute top-0.5 right-0.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center shadow font-bold leading-none"
                           >
                             ×
                           </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
-                {!complete && (
-                  <label className="cursor-pointer block">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      className="sr-only"
-                      onChange={e => e.target.files?.[0] && handlePhotoZone(zone, e.target.files[0])}
-                    />
-                    {uploadingZone === zone ? (
-                      <div className="flex items-center gap-2.5 h-12 px-4 rounded-xl bg-[#0BBFBF]/10 text-[#0BBFBF] text-sm font-semibold">
-                        <div className="w-4 h-4 border-2 border-[#0BBFBF] border-t-transparent rounded-full animate-spin"/>
-                        Envoi en cours…
-                      </div>
-                    ) : (
-                      <div className={`flex items-center gap-2.5 h-12 px-4 rounded-xl border-2 border-dashed text-sm font-medium transition-colors active:scale-[0.98] ${
-                        toutesTraitees && zonePhotos.length === 0
-                          ? 'border-amber-400 text-amber-600 bg-amber-50'
-                          : 'border-slate-300 text-slate-500 hover:border-[#0BBFBF] hover:text-[#0BBFBF]'
-                      }`}>
-                        <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z"/>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z"/>
-                        </svg>
-                        {zonePhotos.length > 0 ? 'Ajouter une photo' : 'Prendre une photo pour valider cette zone'}
-                      </div>
+                  <div className="flex gap-2">
+                    <label className="flex-1 cursor-pointer">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="sr-only"
+                        onChange={e => e.target.files?.[0] && handlePhotoZone(zone, e.target.files[0])}
+                      />
+                      {uploadingZone === zone ? (
+                        <div className="h-12 rounded-xl bg-[#0BBFBF]/10 text-[#0BBFBF] text-sm font-semibold flex items-center justify-center gap-2">
+                          <div className="w-4 h-4 border-2 border-[#0BBFBF] border-t-transparent rounded-full animate-spin"/>
+                          Envoi…
+                        </div>
+                      ) : (
+                        <div className={`h-12 rounded-xl border-2 border-dashed flex items-center justify-center gap-2 text-sm font-semibold transition-colors active:scale-[0.98] ${
+                          zonePhotos.length === 0
+                            ? 'border-amber-400 text-amber-600 bg-amber-50'
+                            : 'border-slate-300 text-slate-500'
+                        }`}>
+                          <Camera className="w-4 h-4 shrink-0" />
+                          Photo
+                        </div>
+                      )}
+                    </label>
+
+                    {aDesAfaire && (
+                      <button
+                        onClick={() => validerZone(zone)}
+                        className="flex-[1.4] h-12 rounded-xl text-white font-bold text-sm active:opacity-90 transition-opacity"
+                        style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}
+                      >
+                        ✓ Valider la zone
+                      </button>
                     )}
-                  </label>
-                )}
+                  </div>
 
-                {complete && (
-                  <p className="text-xs text-green-600 font-medium">
-                    ✓ {zonePhotos.length} photo{zonePhotos.length > 1 ? 's' : ''} — zone validée
-                  </p>
-                )}
-              </div>
+                  {!aDesAfaire && zonePhotos.length === 0 && (
+                    <p className="text-xs text-amber-600 text-center font-medium">📸 Une photo est nécessaire pour valider la zone</p>
+                  )}
+                </div>
+              )}
             </div>
           )
         })}
@@ -565,6 +455,127 @@ export default function InterventionPage() {
           </div>
         )}
       </div>
+
+      {/* Panneau "?" — détail consultatif d'une zone (étape 9f) */}
+      {detailZone && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setDetailZone(null)}/>
+          <div className="relative bg-white rounded-t-3xl max-h-[85vh] flex flex-col">
+            <div className="px-6 pt-6 pb-4 border-b border-slate-100 shrink-0 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-slate-800 truncate">Détail — {detailZone}</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Pour rappel — la validation se fait par zone</p>
+              </div>
+              <button
+                onClick={() => setDetailZone(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center shrink-0 active:bg-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 px-6 py-2 divide-y divide-slate-50">
+              {zoneDetailTaches.map(tache => {
+                const commentOpen = expandedComment === tache.id
+                const draft       = commentDraft[tache.id] ?? tache.commentaire ?? ''
+                const signale     = tache.statut_tache === 'non_realisee'
+                const realisee    = tache.statut_tache === 'realisee'
+
+                return (
+                  <div key={tache.id} className="py-3.5">
+                    <div className="flex items-center gap-3">
+                      {realisee ? (
+                        <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center shrink-0">
+                          <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                        </div>
+                      ) : signale ? (
+                        <div className="w-5 h-5 rounded-full bg-red-400 flex items-center justify-center shrink-0">
+                          <X className="w-3 h-3 text-white" strokeWidth={3} />
+                        </div>
+                      ) : (
+                        <Circle className="w-5 h-5 text-slate-300 shrink-0" strokeWidth={2} />
+                      )}
+                      <span className={`flex-1 text-sm ${
+                        realisee ? 'text-slate-400 line-through' : signale ? 'text-red-600 font-medium' : 'text-slate-700 font-medium'
+                      }`}>
+                        {tache.libelle}
+                      </span>
+                    </div>
+
+                    {/* Commentaire existant (affiché si l'éditeur n'est pas ouvert) */}
+                    {!commentOpen && tache.commentaire && (
+                      <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-xl px-3 py-2 mt-2 ml-8 italic">
+                        {tache.commentaire}
+                      </p>
+                    )}
+
+                    {!commentOpen ? (
+                      <div className="flex items-center gap-3 mt-2 ml-8">
+                        <button
+                          onClick={() => {
+                            setExpandedComment(tache.id)
+                            setCommentDraft(p => ({ ...p, [tache.id]: tache.commentaire ?? '' }))
+                          }}
+                          className={`flex items-center gap-1.5 text-xs font-semibold ${signale ? 'text-red-500' : 'text-slate-400'}`}
+                        >
+                          <TriangleAlert className="w-3.5 h-3.5" />
+                          {signale ? 'Modifier le signalement' : 'Signaler un problème'}
+                        </button>
+                        {signale && (
+                          <button
+                            onClick={() => setStatutTache(tache, 'a_faire')}
+                            className="text-xs text-slate-400 underline active:opacity-70"
+                          >
+                            Annuler
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="mt-2 ml-8 space-y-2">
+                        <textarea
+                          value={draft}
+                          onChange={e => setCommentDraft(p => ({ ...p, [tache.id]: e.target.value }))}
+                          rows={2}
+                          placeholder="Décrivez le problème (accès bloqué, local fermé…)"
+                          className="w-full px-3 py-2.5 rounded-xl border border-red-200 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-300 focus:border-transparent"
+                          autoFocus
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setExpandedComment(null)}
+                            className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium active:opacity-70"
+                          >
+                            Annuler
+                          </button>
+                          <button
+                            onClick={() => signalerProbleme(tache, draft)}
+                            className="flex-[2] py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold active:opacity-90"
+                          >
+                            Confirmer le signalement
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+
+              {zoneDetailTaches.length === 0 && (
+                <p className="text-center text-slate-400 text-sm py-6">Aucune tâche pour cette zone.</p>
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t border-slate-100 shrink-0 pb-safe">
+              <button
+                onClick={() => setDetailZone(null)}
+                className="w-full h-12 rounded-xl bg-slate-100 text-slate-700 font-semibold text-sm active:bg-slate-200"
+              >
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bouton valider rapport */}
       {peutFinaliser && !finalizing && (

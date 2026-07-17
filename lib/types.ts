@@ -121,6 +121,7 @@ export interface Intervention {
   id: string
   agent_id: string
   residence_id: string
+  contrat_id?: string | null
   date_prevue: string
   heure_debut_prevue: string | null
   heure_fin_prevue: string | null
@@ -130,6 +131,7 @@ export interface Intervention {
   geoloc_lat: number | null
   geoloc_lng: number | null
   disponible_apres_fin: boolean
+  batiment?: string | null // étiquette bâtiment (niveau Bâtiment, §5.2) — NULL = mono-bâtiment
   created_at: string
 }
 

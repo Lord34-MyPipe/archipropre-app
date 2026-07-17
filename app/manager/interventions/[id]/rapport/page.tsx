@@ -173,8 +173,24 @@ export default async function ManagerRapportPage({ params }: { params: Promise<{
 
   if (!inter) redirect('/manager/planning')
 
+  // Autres bâtiments de la mission du jour (étape 9i, option A) — même triplet
+  // (agent_id, contrat_id, date_prevue) que la clôture groupée (9g/9h). Sans
+  // contrat_id (intervention hors contrat) : pas de mission, liste vide.
+  async function loadMissionSiblings() {
+    if (!inter.contrat_id) return []
+    const { data } = await supabase
+      .from('interventions')
+      .select('id, batiment')
+      .eq('agent_id', inter.agent_id)
+      .eq('contrat_id', inter.contrat_id)
+      .eq('date_prevue', inter.date_prevue)
+      .neq('statut', 'annulee')
+      .order('heure_debut_prevue')
+    return (data ?? []) as { id: string; batiment: string | null }[]
+  }
+
   // Contrat actif + taux Base (en séquentiel car besoin de residence_id)
-  const [{ data: contrat }, { data: param }] = await Promise.all([
+  const [{ data: contrat }, { data: param }, missionSiblings] = await Promise.all([
     supabase
       .from('contrats_residences')
       .select('montant_mensuel, nb_interventions_mois, taux_horaire_facturation')
@@ -186,7 +202,14 @@ export default async function ManagerRapportPage({ params }: { params: Promise<{
       .select('taux_horaire_facturation_defaut')
       .limit(1)
       .maybeSingle(),
+    loadMissionSiblings(),
   ])
+
+  // N bâtiments> 1 aujourd'hui = mission multi-bâtiments (mêmes critères que
+  // l'écran niveau 1 agent et la clôture groupée). Sinon : rapport inchangé.
+  const isMulti       = missionSiblings.length > 1
+  const nbBatiments    = isMulti ? missionSiblings.length : 1
+  const indexBatiment  = isMulti ? missionSiblings.findIndex(s => s.id === inter.id) + 1 : 1
 
   // Signed URLs pour les photos (bucket privé)
   const photosWithUrls: (PhotoZone & { signedUrl: string | null })[] = await Promise.all(
@@ -344,18 +367,29 @@ export default async function ManagerRapportPage({ params }: { params: Promise<{
         </Link>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-white">{residence?.nom ?? '—'}</h1>
+            <h1 className="text-2xl font-bold text-white">
+              {isMulti
+                ? `${residence?.nom ?? '—'} — ${inter.batiment ?? 'Bâtiment'} (${indexBatiment}/${nbBatiments} bâtiments)`
+                : (residence?.nom ?? '—')}
+            </h1>
             <p className="text-blue-200 mt-1">
               {agent ? `${agent.prenom} ${agent.nom}` : '—'}
               {' · '}
               {inter.date_prevue ? new Date(inter.date_prevue + 'T12:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) : '—'}
             </p>
-            <p className="text-blue-300 text-sm mt-0.5">
-              {fmt(inter.heure_scan, { hour: '2-digit', minute: '2-digit' })}
-              {' → '}
-              {fmt(inter.heure_fin, { hour: '2-digit', minute: '2-digit' })}
-              {dureeMin !== null && ` (${fmtDuree(dureeMin)})`}
-            </p>
+            <div className="text-blue-300 text-sm mt-0.5">
+              {isMulti && (
+                <p className="text-[11px] text-blue-400 font-semibold uppercase tracking-wide">
+                  Temps total mission (résidence entière, tous bâtiments)
+                </p>
+              )}
+              <p>
+                {fmt(inter.heure_scan, { hour: '2-digit', minute: '2-digit' })}
+                {' → '}
+                {fmt(inter.heure_fin, { hour: '2-digit', minute: '2-digit' })}
+                {dureeMin !== null && ` (${fmtDuree(dureeMin)})`}
+              </p>
+            </div>
           </div>
           <span className={`mt-1 shrink-0 px-3 py-1 rounded-full text-xs font-semibold ${
             inter.statut === 'validee'
@@ -370,6 +404,25 @@ export default async function ManagerRapportPage({ params }: { params: Promise<{
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
+
+        {/* Navigation entre bâtiments de la mission (étape 9i, option A) */}
+        {isMulti && (
+          <div className="flex items-center gap-2 flex-wrap -mt-2">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide mr-1">Bâtiments de la mission :</span>
+            {missionSiblings.map(s => (
+              s.id === inter.id ? (
+                <span key={s.id} className="px-3 py-1 rounded-full text-xs font-bold bg-[#1A5FA8] text-white">
+                  {s.batiment ?? 'Bâtiment'}
+                </span>
+              ) : (
+                <Link key={s.id} href={`/manager/interventions/${s.id}/rapport`}
+                  className="px-3 py-1 rounded-full text-xs font-semibold bg-white border border-slate-200 text-slate-600 hover:border-[#1A5FA8] hover:text-[#1A5FA8] transition-colors">
+                  {s.batiment ?? 'Bâtiment'}
+                </Link>
+              )
+            ))}
+          </div>
+        )}
 
         {/* KPI résumé */}
         <div className="grid grid-cols-4 gap-4">

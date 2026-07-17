@@ -136,9 +136,10 @@ export default function RapportSyndicClient({ residenceId, residenceNom }: Props
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState<string | null>(null)
   // Toggle avec/sans photos — état d'affichage pur côté client (aucun impact
-  // sur la donnée récupérée), utile pour prévisualiser la future version PDF
-  // légère (S4) sans repartir chercher le payload.
+  // sur la donnée récupérée), pilote aussi le contenu du PDF (S4) : actif →
+  // photos incluses (redimensionnées), inactif → PDF texte seul, plus léger.
   const [avecPhotos, setAvecPhotos] = useState(true)
+  const [generatingPdf, setGeneratingPdf] = useState(false)
 
   const { debut, fin } = mode === 'mois'
     ? moisVersPlage(monthOptions[moisIdx].year, monthOptions[moisIdx].month)
@@ -165,6 +166,23 @@ export default function RapportSyndicClient({ residenceId, residenceNom }: Props
   }, [payload])
 
   const mois = debut && fin ? moisTouches(debut, fin) : []
+
+  async function handleTelechargerPdf() {
+    if (!payload || generatingPdf) return
+    setGeneratingPdf(true)
+    try {
+      const { genererRapportSyndicPDF } = await import('@/lib/rapportSyndic')
+      await genererRapportSyndicPDF({
+        residence:   payload.residence,
+        periode:     payload.periode,
+        nb_passages: payload.nb_passages,
+        batiments:   payload.batiments,
+        avecPhotos,
+      })
+    } finally {
+      setGeneratingPdf(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -372,11 +390,23 @@ export default function RapportSyndicClient({ residenceId, residenceNom }: Props
               )}
             </div>
 
-            {/* ── Actions export (inactives pour l'instant — S4/S5) ── */}
+            {/* ── Actions export — PDF actif (S4), lien web toujours inactif (S5) ── */}
             <div className="flex gap-3">
-              <button disabled title="Bientôt disponible"
-                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-slate-100 text-slate-400 text-sm font-semibold cursor-not-allowed">
-                <Download className="w-4 h-4" /> Télécharger PDF
+              <button
+                onClick={handleTelechargerPdf}
+                disabled={generatingPdf}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-colors ${
+                  generatingPdf ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'text-white'
+                }`}
+                style={generatingPdf ? undefined : { background: '#0A2E5A' }}
+              >
+                {generatingPdf ? (
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                  </svg>
+                ) : <Download className="w-4 h-4" />}
+                {generatingPdf ? 'Génération…' : 'Télécharger PDF'}
               </button>
               <button disabled title="Bientôt disponible"
                 className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-slate-100 text-slate-400 text-sm font-semibold cursor-not-allowed">

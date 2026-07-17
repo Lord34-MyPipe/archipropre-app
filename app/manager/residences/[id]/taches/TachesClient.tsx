@@ -39,27 +39,31 @@ const FREQ_COL_LABELS: Record<string,string> = {
   mensuel: 'Mensuel', trimestriel: 'Trim.', semestriel: 'Semest.', annuel: 'Annuel', sur_passage: 'Passage',
 }
 
-function freqSummary(t: TacheTemplate): string {
-  const joursStr = (t.jours_semaine ?? []).map(j => JOUR_COURTS[j] ?? j).join('+')
-  const semaine  = SEMAINE_LABELS[t.semaine_du_mois?.[0] ?? 0] ?? ''
-  const mois     = (t.mois_de_annee ?? []).map(m => MOIS_COURTS[m-1]).join(' ')
+// Découpe la fréquence en texte + jours (§ item 3) : les jours sont rendus en
+// puces (JourPuces) plutôt qu'en notation compacte "L+V" dans le texte.
+interface FreqParts { before?: string; jours: string[]; after?: string }
+
+function freqParts(t: TacheTemplate): FreqParts {
+  const jours   = t.jours_semaine ?? []
+  const semaine = SEMAINE_LABELS[t.semaine_du_mois?.[0] ?? 0] ?? ''
+  const mois    = (t.mois_de_annee ?? []).map(m => MOIS_COURTS[m-1]).join(' ')
 
   switch (t.frequence_type) {
-    case 'hebdo':             return joursStr
-    case 'mensuel':           return `${semaine} ${joursStr} /mois`
-    case 'trimestriel':       return `${semaine} ${joursStr} · ${mois}`
-    case 'semestriel':        return `${semaine} ${joursStr} · ${mois}`
-    case 'annuel':            return `${semaine} ${joursStr} · ${mois}`
-    case 'sur_passage':       return 'Sur passage'
+    case 'hebdo':             return { jours }
+    case 'mensuel':           return { before: semaine, jours, after: '/mois' }
+    case 'trimestriel':       return { before: semaine, jours, after: `· ${mois}` }
+    case 'semestriel':        return { before: semaine, jours, after: `· ${mois}` }
+    case 'annuel':            return { before: semaine, jours, after: `· ${mois}` }
+    case 'sur_passage':       return { jours: [], after: 'Sur passage' }
     case 'contrainte_horaire':
-      return t.heure_debut && t.heure_fin ? `${joursStr} ${t.heure_debut}→${t.heure_fin}` : joursStr
-    default: return ''
+      return { jours, after: t.heure_debut && t.heure_fin ? `${t.heure_debut}→${t.heure_fin}` : undefined }
+    default: return { jours: [] }
   }
 }
 
 // Puces de jours lisibles (polish) : "Lun" "Ven"… triées Lun→Dim, dédupliquées.
 // Remplace la notation compacte "L+V". Réutilisé pour l'en-tête bâtiment et
-// sous chaque tâche (freqSummary).
+// sous chaque tâche (freqParts).
 function JourPuces({ jours }: { jours: string[] }) {
   const sorted = JOURS_ALL.filter(j => jours.includes(j))
   if (!sorted.length) return null
@@ -935,12 +939,18 @@ function TacheRow({
     setCustomVal('')
   }
 
+  const parts = freqParts(t)
+
   return (
     <div className="px-5 py-3 hover:bg-slate-50 transition-colors">
       <div className="flex items-center gap-3">
         <div className="flex-1 min-w-0">
           <p className="text-sm text-slate-800 font-medium truncate">{t.libelle}</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">{freqSummary(t)}</p>
+          <div className="flex items-center gap-1 flex-wrap mt-0.5">
+            {parts.before && <span className="text-[11px] text-slate-400">{parts.before}</span>}
+            {parts.jours.length > 0 && <JourPuces jours={parts.jours} />}
+            {parts.after && <span className="text-[11px] text-slate-400">{parts.after}</span>}
+          </div>
         </div>
         <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${badge?.bg ?? 'bg-slate-100 text-slate-600'}`}>
           {badge?.label ?? t.frequence_type}

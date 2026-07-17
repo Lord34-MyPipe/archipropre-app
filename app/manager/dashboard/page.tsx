@@ -24,6 +24,82 @@ function diffMinutes(from: string, to: string): number {
   return (th * 60 + tm) - (fh * 60 + fm)
 }
 
+// ── Regroupement par MISSION (résidence + contrat), pas par bâtiment ─────────
+// Une résidence multi-bâtiments = N interventions mais UNE seule mission —
+// même piège que 9h (clôture groupée) / 9j (dashboard agent) / le calcul du
+// temps journée : ne jamais compter les bâtiments dans les totaux. Clé =
+// (agent_id, contrat_id ?? id) — même critère qu'ailleurs dans le chantier
+// bâtiments. Mono-bâtiment (1 intervention, pas de contrat_id partagé) :
+// 1 groupe = 1 intervention, comportement inchangé par construction.
+
+interface MissionAgg {
+  key: string
+  agent_id: string
+  statut: string
+  heure_debut_prevue: string | null
+  heure_fin_prevue: string | null
+  residence_nom: string | null
+  nb_batiments: number
+}
+
+interface InterventionForMission {
+  id: string
+  agent_id: string
+  contrat_id?: string | null
+  statut: string
+  heure_debut_prevue: string | null
+  heure_fin_prevue: string | null
+  residences: { nom: string } | { nom: string }[] | null
+}
+
+function statutMission(statuts: string[]): string {
+  if (statuts.some(s => s === 'en_cours')) return 'en_cours'
+  // 'validee' = rapport reçu ET validé RH — strictement postérieur à 'terminee'
+  // (la validation RH ne porte que sur des interventions déjà 'terminee'), donc
+  // une mission entièrement validée reste "Terminé" au sens du dashboard.
+  if (statuts.every(s => s === 'terminee' || s === 'validee')) return 'terminee'
+  if (statuts.every(s => s === 'planifiee')) return 'planifiee'
+  // Mixte (ex. certains bâtiments terminés, d'autres pas) : travail commencé.
+  return 'en_cours'
+}
+
+function groupMissions(ints: InterventionForMission[]): MissionAgg[] {
+  const map = new Map<string, InterventionForMission[]>()
+  for (const i of ints) {
+    const key = `${i.agent_id}::${i.contrat_id ?? i.id}`
+    const arr = map.get(key)
+    if (arr) arr.push(i)
+    else map.set(key, [i])
+  }
+
+  const missions: MissionAgg[] = []
+  for (const [key, groupe] of map) {
+    let heureDebut: string | null = null
+    let heureFin: string | null = null
+    for (const i of groupe) {
+      if (i.heure_debut_prevue && (!heureDebut || i.heure_debut_prevue < heureDebut)) heureDebut = i.heure_debut_prevue
+      if (i.heure_fin_prevue && (!heureFin || i.heure_fin_prevue > heureFin)) heureFin = i.heure_fin_prevue
+    }
+    const first = groupe[0]
+    const res = first.residences
+    const residenceNom = res
+      ? (Array.isArray(res) ? res[0]?.nom : (res as { nom: string }).nom) ?? null
+      : null
+
+    missions.push({
+      key,
+      agent_id:            first.agent_id,
+      statut:              statutMission(groupe.map(i => i.statut)),
+      heure_debut_prevue:  heureDebut,
+      heure_fin_prevue:    heureFin,
+      residence_nom:       residenceNom,
+      nb_batiments:        groupe.length,
+    })
+  }
+
+  return missions.sort((a, b) => (a.heure_debut_prevue ?? '23:59').localeCompare(b.heure_debut_prevue ?? '23:59'))
+}
+
 export default async function ManagerDashboard() {
   const supabase  = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -57,7 +133,7 @@ export default async function ManagerDashboard() {
     { data: absencesRaw },
   ] = await Promise.all([
     supabase.from('interventions')
-      .select('id, agent_id, statut, heure_debut_prevue, heure_fin_prevue, residence_id, residences(nom)')
+      .select('id, agent_id, statut, heure_debut_prevue, heure_fin_prevue, residence_id, contrat_id, residences(nom)')
       .in('agent_id', agentIds)
       .eq('date_prevue', todayStr)
       .neq('statut', 'annulee')
@@ -114,17 +190,17 @@ export default async function ManagerDashboard() {
     }))
 
   const statutParAgent = agents.map(agent => {
-    const ints = interventions
-      .filter(i => i.agent_id === agent.id)
-      .map(i => ({
-        ...i,
-        residences: Array.isArray(i.residences) ? i.residences[0] : i.residences,
-      }))
+    const ints = interventions.filter(i => i.agent_id === agent.id)
+    const missions = groupMissions(ints)
 
-    const nbTotal     = ints.length
-    const nbTerminees = ints.filter(i => i.statut === 'terminee').length
-    const nbEnCours   = ints.filter(i => i.statut === 'en_cours').length
-    const enRetard    = ints.some(
+    const nbTotal     = missions.length
+    const nbTerminees = missions.filter(m => m.statut === 'terminee').length
+    const nbEnCours   = missions.filter(m => m.statut === 'en_cours').length
+    // enRetard reste un booléen sur les interventions brutes (pas un compteur) :
+    // signale correctement "au moins un créneau planifié déjà dépassé", que ce
+    // soit pour une mission mono ou multi-bâtiments (le 1er créneau du chaînage
+    // suffit à détecter le retard de la mission entière).
+    const enRetard = ints.some(
       i => i.statut === 'planifiee' && i.heure_debut_prevue && diffMinutes(i.heure_debut_prevue.slice(0, 5), nowTime) >= SEUIL_RETARD_SCAN_MIN
     )
     const absent = absentsIds.has(agent.id)
@@ -137,17 +213,20 @@ export default async function ManagerDashboard() {
     else if (enRetard)                      statut = 'en_retard'
     else                                    statut = 'pas_scanne'
 
-    return { ...agent, statut, nbTotal, nbTerminees, nbEnCours, interventions: ints }
+    return { ...agent, statut, nbTotal, nbTerminees, nbEnCours, missions }
   })
 
   const statutParAgentFiltre = statutParAgent.filter(a => a.statut !== 'disponible')
 
   const alertesUrgentes = alertes.filter(a => a.type !== 'reorganisation_proposee' && a.type !== 'rapport_soumis')
 
+  // KPI comptés par MISSION (résidence), pas par intervention brute — une
+  // résidence multi-bâtiments (ex. PRIEURE, 9 bâtiments) compte pour 1, pas 9.
+  const missionsJour = groupMissions(interventions)
   const kpis = {
-    totalJour:        interventions.length,
-    scansEffectues:   interventions.filter(i => i.statut !== 'planifiee').length,
-    rapportsRecus:    interventions.filter(i => i.statut === 'terminee').length,
+    totalJour:        missionsJour.length,
+    scansEffectues:   missionsJour.filter(m => m.statut !== 'planifiee').length,
+    rapportsRecus:    missionsJour.filter(m => m.statut === 'terminee').length,
     pointsAttention:  scanManquants.length + rapportsEnRetard.length + alertesUrgentes.length,
   }
 

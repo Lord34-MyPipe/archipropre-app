@@ -5,6 +5,15 @@ import JourneeAgentPanel from './JourneeAgentPanel'
 
 type StatutAgent = 'disponible' | 'en_cours' | 'terminee' | 'pas_scanne' | 'en_retard' | 'absent'
 
+interface AgentMission {
+  key: string
+  statut: string
+  heure_debut_prevue: string | null
+  heure_fin_prevue: string | null
+  residence_nom: string | null
+  nb_batiments: number
+}
+
 interface AgentStatut {
   id: string
   prenom: string
@@ -13,13 +22,14 @@ interface AgentStatut {
   nbTotal: number
   nbTerminees: number
   nbEnCours: number
-  interventions: Array<{
-    id: string
-    statut: string
-    heure_debut_prevue: string | null
-    heure_fin_prevue: string | null
-    residences: { nom: string } | null
-  }>
+  missions: AgentMission[]
+}
+
+// "PRIEURE" en mono-bâtiment, "PRIEURE (9 bâtiments)" en multi — le détail du
+// nombre de bâtiments reste visible, mais ne compte jamais dans les totaux.
+function missionLabel(m: AgentMission): string {
+  const nom = m.residence_nom ?? '—'
+  return m.nb_batiments > 1 ? `${nom} (${m.nb_batiments} bâtiments)` : nom
 }
 
 const ORDRE: StatutAgent[] = ['en_retard', 'pas_scanne', 'en_cours', 'terminee', 'absent', 'disponible']
@@ -36,16 +46,16 @@ const GROUPES: Record<StatutAgent, { label: string; couleur: string; bg: string;
 function contexteAgent(agent: AgentStatut): string {
   if (agent.statut === 'absent') return 'Absent aujourd\'hui'
   if (agent.statut === 'disponible') return 'Aucune intervention'
-  const enCours = agent.interventions.find(i => i.statut === 'en_cours')
-  if (enCours) return enCours.residences?.nom ?? '—'
-  const derniereTerminee = [...agent.interventions].reverse().find(i => i.statut === 'terminee')
+  const enCours = agent.missions.find(m => m.statut === 'en_cours')
+  if (enCours) return missionLabel(enCours)
+  const derniereTerminee = [...agent.missions].reverse().find(m => m.statut === 'terminee')
   if (derniereTerminee && agent.statut === 'terminee') {
     const heure = derniereTerminee.heure_fin_prevue?.slice(0, 5) ?? '—'
-    return `${agent.nbTerminees} interv. · fin ${heure}`
+    return `${missionLabel(derniereTerminee)} · fin ${heure}`
   }
-  const prochaine = agent.interventions.find(i => i.statut === 'planifiee')
-  if (prochaine) return `${agent.nbTotal} interv. · ${prochaine.heure_debut_prevue?.slice(0, 5) ?? '—'}`
-  return `${agent.nbTotal} intervention${agent.nbTotal > 1 ? 's' : ''}`
+  const prochaine = agent.missions.find(m => m.statut === 'planifiee')
+  if (prochaine) return `${missionLabel(prochaine)} · ${prochaine.heure_debut_prevue?.slice(0, 5) ?? '—'}`
+  return `${agent.nbTotal} mission${agent.nbTotal > 1 ? 's' : ''}`
 }
 
 function todayParis(): string {

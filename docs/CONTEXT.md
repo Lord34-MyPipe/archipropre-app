@@ -1,6 +1,26 @@
-# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 15 juillet 2026 — MVP terminé, testé, sécurisé)
+# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 17 juillet 2026 — chantier "niveau bâtiment" terminé fonctionnellement)
 
-**MVP JUILLET 2026 : développement TERMINÉ, testé, sécurisé.** Toutes les
+**CHANTIER "NIVEAU BÂTIMENT" TERMINÉ (fonctionnellement).** Modèle final :
+Résidence → Contrat → [Bâtiment = étiquette texte sur zone] → Zone → Tâche.
+Spec de référence : `docs/CONCEPTION_BATIMENTS.md` (déposé dans le repo).
+**PRIEURE = résidence de référence multi-bâtiments** (9 bâtiments, 54 zones,
+270 tâches, compteur 100% = 19h59/19h59) — **NE PAS SUPPRIMER**, config réelle
+définitive. Détail complet (décisions de modèle, migrations, commits, parcours
+agent, bug reconstruction + fix) : voir section « CHANTIER BÂTIMENTS — ÉTAPES
+LIVRÉES » plus bas.
+
+**RESTE À FAIRE avant config avec Ana :**
+1. Test terrain complet d'une mission NEUVE sur iPhone (scan PRIEURE un jour où
+   le planning est frais/`planifiee`, valider plusieurs bâtiments, envoyer le
+   rapport, vérifier côté manager). Les validations « en base » de Claude Code
+   ne suffisent pas pour ce parcours intégré — le bug de reconstruction (voir
+   section dédiée plus bas) n'est sorti qu'au test iPhone réel.
+2. Régénérer les plannings des résidences configurées AVANT le fix date
+   `ff7d43e` (dates potentiellement décalées d'un jour).
+3. Reprendre la config des 156 autres résidences avec Ana (utiliser « Ajouter
+   un bâtiment standard » pour les multi-bâtiments).
+
+Avant (15 juillet 2026) : **MVP JUILLET 2026 : développement TERMINÉ, testé, sécurisé.** Toutes les
 fonctions du périmètre MVP sont fonctionnelles et **vérifiées en live** (audit
 pré-vol navigation des 3 rôles, 15/07). Périmètre agent (scan → zones/photos →
 rapport), planning agent 2 semaines, création manuelle d'intervention manager
@@ -534,6 +554,17 @@ WHERE email LIKE '%@archipropre-services.com';
    À re-nettoyer avant mise en prod (106 interventions de test).
 ℹ️ "Container" ALTHEA typé parties_communes au lieu de containers — non bloquant pour les tests,
    à corriger pour cohérence type_contrat.
+ℹ️ Bloc "Comparaison des durées" (page rapport manager) : compare le temps réel
+   GLOBAL mission à l'estimation d'UN SEUL bâtiment → écart trompeur en
+   multi-bâtiments. Décision de conception à prendre (sommer l'estimation sur
+   tous les bâtiments ? afficher autrement ?). Non bloquant.
+ℹ️ Test terrain d'une mission NEUVE requis (le bug reconstruction n'est sorti
+   qu'au test iPhone réel, pas en base).
+ℹ️ Fichiers .claude/ et Agents.numbers non suivis dans le repo → vérifier qu'ils
+   sont dans .gitignore.
+ℹ️ v_charge_agent reste hardcodée sur la semaine courante (contournée sur
+   /manager/charge par recalcul, mais la vue elle-même n'est pas corrigée — si
+   d'autres écrans en dépendent pour une autre semaine, même problème).
 
 ## À faire Phase 1 (dans l'ordre)
 
@@ -1549,6 +1580,98 @@ agent ne lit pas. **NE PAS truncate/supprimer cette table.** DETTE à clarifier
 post-lancement : migrer `valider/route.ts` + `directeur/planning` vers
 `interventions`, OU documenter le rôle distinct de chaque table.
 
+## CHANTIER BÂTIMENTS — ÉTAPES LIVRÉES (17 juillet 2026)
+
+Chantier "niveau bâtiment" **terminé fonctionnellement**. Spec de référence :
+`docs/CONCEPTION_BATIMENTS.md` (déposé dans le repo). Modèle final :
+Résidence → Contrat → [Bâtiment = étiquette texte sur zone] → Zone → Tâche.
+
+### Décisions de modèle (fermes)
+- Bâtiment = champ texte `zones_residence.batiment` (PAS de table). 1 QR/résidence,
+  pas de facturation par bâtiment → le bâtiment ne fait que regrouper les zones.
+- Contrat commercial reste UNIQUE par résidence. Le « quand » (fréquence+jours)
+  reste sur la TÂCHE.
+- Template standard « copropriété » en code (`lib/templates/`) : 6 zones (Hall/
+  Ascenseur, Palier, Escalier service, SAS/Sous-sol, Garage, Extérieur) × 5
+  tâches (Toiles, Dépoussiérage, Vitres, Poubelles, Sol = protocole 5 doigts).
+  Registre extensible pour futurs templates (tertiaire…) sans table.
+- Durée : prorata PONDÉRÉ (coefficient par zone : normale=1, containers=0.5),
+  calculé à la volée depuis le volume horaire (montant÷taux). Repli : durée
+  explicite par zone si saisie (puces cliquables 5/10/15/20/30/45/60min + Auto).
+- Compteur de contrôle : volume vendu/semaine vs total saisi, détail par jour,
+  non bloquant si dépassement.
+- Enchaînement : bâtiments d'un même jour enchaînés dans la fenêtre du créneau
+  (Bât A 8h→9h30, Bât B 9h30→…).
+- Saisonnier : HORS PÉRIMÈTRE, repli via multi-contrats datés.
+
+### Migrations appliquées en prod
+024 (`zones_residence.batiment TEXT NULL`), 025 (`zones_residence.coef_duree
+NUMERIC DEFAULT 1`), 026 (`zones_residence.duree_minutes INTEGER NULL`), 027
+(`interventions.batiment TEXT NULL`), 028 (RPC `planifier_interventions`
+CREATE OR REPLACE : ajout `batiment` INSERT/SELECT + `CURRENT_DATE` →
+`(now() AT TIME ZONE 'Europe/Paris')::date`, DELETE inchangé, ancienne def
+documentée en commentaire pour rollback).
+
+### Commits clés du chantier
+`d96edf8` étape1 (migration batiment), `fac9278` étape2 (template code),
+`f02b992` étape3 (champ batiment formulaire zone), `9d1b255` étape4 (regroupement
+affichage), `75febd5` étape5 (bouton « Ajouter bâtiment standard »), `1286a0d`
+étape6 (action groupée jours), `79aca9b` étape6bis (bâtiments repliables),
+`d7e9325` étape7 (`lib/prorata.ts` calcul), `b70551c` étape8a (colonne coef_duree),
+`0a66d52`+`cfbddc1` étape8b1/8b2 (durée par zone puces + compteur contrôle),
+`dd70e12`+`45a67e0`+`2c0e29f` (polish jours : en-tête bâtiment, pré-sélection modal,
+puces lisibles Lun/Ven), `41e5684` (bâtiment dans vue Par jour), `603c18e` étape8b3
+(durée par zone + enchaînement génération), `ff7d43e` (**FIX date UTC génération** —
+4 endroits, Europe/Paris), `7399837` étape8b4 (colonne batiment + RPC + affichage
+planning manager).
+
+### Parcours agent multi-bâtiments (sous-étapes 9)
+`396ab3c` 9a (scan lit TOUTES les interventions du jour, plus `.limit(1)`),
+`94ca530` 9e (démarrage global : `heure_scan`+`en_cours` sur toutes au scan),
+`2be1ac1` 9b (écran niveau 1 `/agent/mission/[contratId]` : liste bâtiments du
+jour), `a776294` 9c (scope zones par bâtiment → résout la fusion des zones
+homonymes), `d5d8f13` 9f (validation PAR ZONE + panneau « ? » consultatif +
+« signaler un problème »), `89fdd73` 9j (dashboard agent regroupé par résidence :
+1 carte PRIEURE au lieu de 9, KPI comptent les missions), `d628106` 9g (bouton
+« Envoyer le rapport » au niveau mission, actif quand tous bâtiments prêts —
+mono-bâtiment garde le bouton sur l'écran intervention), `d6e3c9a` 9h (clôture
+GROUPÉE : UPDATE toutes les interventions du jour, même heure_fin, temps
+global, 1 seule alerte `rapport_soumis` avec `intervention_id=null`+metadata),
+`3f51e8a` 9i (rapport manager option A : chaque page bâtiment montre ses zones +
+le temps global mission + chips navigation entre bâtiments), `72a9a2f` (**FIX
+reconstruction** : la boucle de reconstruction `taches_intervention` tourne sur
+TOUS les bâtiments de la mission, pas juste `intersJour[0]`).
+
+### Modèle parcours agent validé (mockup validé avec Julien)
+- Scan QR → chrono démarre (temps GLOBAL résidence, un seul démarrage, jamais
+  par bâtiment — sinon le 2e bâtiment hériterait du temps du 1er).
+- Écran niveau 1 : liste des bâtiments du jour (cartes cliquables, état Prêt/
+  À faire/En cours, compteur X/Y zones exact). Mono-bâtiment → PAS d'écran
+  niveau 1, route directe vers l'intervention.
+- Clic bâtiment → écran niveau 2 : zones du bâtiment, validation PAR ZONE (Photo
+  + Valider), PAS tâche par tâche. Le « ? » ouvre un panneau consultatif des 5
+  tâches + « signaler un problème » (réutilise `statut_tache='non_realisee'`+commentaire).
+- Tous bâtiments prêts → « Envoyer le rapport » (niveau 1) → clôture toute la
+  mission, 1 seul rapport résidence, temps global.
+- Rapport manager : N pages (une par bâtiment, option A), chacune ses zones+photos
+  + temps global mission affiché + navigation entre bâtiments.
+
+## FEATURE : IDENTIFIANT AGENT SANS EMAIL (17 juillet 2026)
+Beaucoup d'agents terrain n'ont pas d'email. Domaine technique interne
+`@archipropre.local` : l'agent saisit un identifiant simple (« andre »), le système
+complète en `andre@archipropre.local` de façon transparente (création, connexion,
+affichage masque le suffixe). Les vrais emails (`@archipropre-services.com`)
+continuent de fonctionner. Testé : André se connecte avec « andre » + mot de passe.
+
+## FEATURE : NAVIGATION SEMAINE PAGE CHARGE (17 juillet 2026 — commit `fde35a7`)
+`/manager/charge` : flèches ← → + « Semaine courante », tous les indicateurs
+recalculés par semaine. **DÉCOUVERTE :** `v_charge_agent` est codée en dur sur
+`date_trunc('week', CURRENT_DATE)` → impossible à filtrer sur une autre semaine.
+Remplacé la dépendance à la vue par un recalcul direct de la même formule depuis
+les tables sources (`interventions`, `conges`, `absences`, `profiles`), paramétré par
+semaine. Recalcul vérifié identique à la vue sur la semaine courante. Bornes
+lundi→dimanche en Europe/Paris (pattern noon-anchor, pas de bug UTC).
+
 ## Ordre de configuration (session Ana)
 
 Séquence obligatoire (l'étape ③ du wizard résidence dépend des agents existants) :
@@ -1617,6 +1740,22 @@ connexion) + **Item 6** (masqué de la liste agents). Suffisant — pas de suppr
   `manager@archipropre.fr` (accès **manager**) + `marquant@archipropre-services.com`
   (rôle **agent**, id `1d46fd73-…`, actuellement `actif=false`). Reflète sa double casquette
   manager + terrain — ne pas confondre les deux comptes.
+
+### Chantier bâtiments (17 juillet 2026)
+
+- **Bât I de PRIEURE a une config VOULUE différente** (6 zones actives le vendredi,
+  pas seulement le hall comme les 8 autres bâtiments). Ne pas « corriger ».
+- **Les vérifications « en base par simulation » de Claude Code confirment la logique
+  SQL mais PAS le parcours réel.** Bug reconstruction (`72a9a2f`) présent depuis 9c,
+  invisible en base (on testait toujours Bât A), sorti seulement au scan iPhone
+  réel de Julien. → Toujours faire un test terrain iPhone pour les parcours agent.
+- **Changer signature/comportement d'une RPC :** CREATE OR REPLACE additif, signature
+  identique, ne pas toucher le DELETE (partie sensible), documenter l'ancienne
+  def pour rollback (fait en migration 028).
+- **Réparer un état déjà cassé ≠ corriger le bug :** le fix reconstruction protège
+  les futures missions, mais un rescan ne répare pas un état déjà `en_cours`+vide
+  (`shouldRebuildTaches` ne se déclenche pas). PRIEURE a été réparée à la main en
+  base pour permettre la vérif immédiate.
 
 ## À faire Phase 3
 

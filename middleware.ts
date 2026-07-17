@@ -39,6 +39,9 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico|icons|manifest.json|sw.js|public).*)',
+    // /rapport/[token] (P3-2 S5) est une page PUBLIQUE sans session — le
+    // syndic n'a pas de compte. Sécurité assurée par le token (uuid
+    // imprévisible) + vérif actif=true dans la page elle-même, pas ici.
+    '/((?!api|_next/static|_next/image|favicon.ico|icons|manifest.json|sw.js|public|rapport).*)',
   ],
 }

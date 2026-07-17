@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Calendar, Building2, TriangleAlert, Download, Link2, ImageOff } from 'lucide-react'
+import { ArrowLeft, Calendar, Building2, TriangleAlert, Download, Link2, ImageOff, Check, Ban } from 'lucide-react'
 
 // Rapport syndic (P3-2, étape S2) — affichage seulement. Le payload S1 ne
 // contient déjà aucune donnée temps/coût (garde-fou côté route) : on n'affiche
@@ -23,6 +23,15 @@ interface RapportSyndicPayload {
   periode: { debut: string; fin: string; libelle: string }
   nb_passages: number
   batiments: BatimentPayload[]
+}
+interface LienGenere {
+  id: string
+  token: string
+  periode_debut: string
+  periode_fin: string
+  avec_photos: boolean
+  actif: boolean
+  created_at: string
 }
 
 const MOIS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet',
@@ -140,6 +149,11 @@ export default function RapportSyndicClient({ residenceId, residenceNom }: Props
   // photos incluses (redimensionnées), inactif → PDF texte seul, plus léger.
   const [avecPhotos, setAvecPhotos] = useState(true)
   const [generatingPdf, setGeneratingPdf] = useState(false)
+  const [generatingLien, setGeneratingLien] = useState(false)
+  const [lienCopie, setLienCopie]     = useState(false)
+  const [lienErreur, setLienErreur]   = useState<string | null>(null)
+  const [liens, setLiens]             = useState<LienGenere[]>([])
+  const [revokingId, setRevokingId]   = useState<string | null>(null)
 
   const { debut, fin } = mode === 'mois'
     ? moisVersPlage(monthOptions[moisIdx].year, monthOptions[moisIdx].month)
@@ -166,6 +180,48 @@ export default function RapportSyndicClient({ residenceId, residenceNom }: Props
   }, [payload])
 
   const mois = debut && fin ? moisTouches(debut, fin) : []
+
+  function loadLiens() {
+    fetch(`/api/residences/${residenceId}/rapport-syndic/lien`)
+      .then(r => r.json())
+      .then((d: { liens: LienGenere[] }) => setLiens(d.liens ?? []))
+      .catch(() => {})
+  }
+
+  useEffect(loadLiens, [residenceId])
+
+  async function handleCopierLien() {
+    if (!payload || generatingLien) return
+    setGeneratingLien(true)
+    setLienErreur(null)
+    try {
+      const res = await fetch(`/api/residences/${residenceId}/rapport-syndic/lien`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ debut, fin, avecPhotos }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error ?? 'Échec de la création du lien')
+      await navigator.clipboard.writeText(data.url as string)
+      setLienCopie(true)
+      loadLiens()
+      setTimeout(() => setLienCopie(false), 2500)
+    } catch (e) {
+      setLienErreur(e instanceof Error ? e.message : 'Échec de la création du lien')
+    } finally {
+      setGeneratingLien(false)
+    }
+  }
+
+  async function handleRevoquer(lienId: string) {
+    setRevokingId(lienId)
+    try {
+      await fetch(`/api/residences/${residenceId}/rapport-syndic/lien/${lienId}`, { method: 'PATCH' })
+      loadLiens()
+    } finally {
+      setRevokingId(null)
+    }
+  }
 
   async function handleTelechargerPdf() {
     if (!payload || generatingPdf) return
@@ -390,7 +446,7 @@ export default function RapportSyndicClient({ residenceId, residenceNom }: Props
               )}
             </div>
 
-            {/* ── Actions export — PDF actif (S4), lien web toujours inactif (S5) ── */}
+            {/* ── Actions export — PDF (S4) et lien web (S5), tous deux actifs ── */}
             <div className="flex gap-3">
               <button
                 onClick={handleTelechargerPdf}
@@ -408,11 +464,60 @@ export default function RapportSyndicClient({ residenceId, residenceNom }: Props
                 ) : <Download className="w-4 h-4" />}
                 {generatingPdf ? 'Génération…' : 'Télécharger PDF'}
               </button>
-              <button disabled title="Bientôt disponible"
-                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-slate-100 text-slate-400 text-sm font-semibold cursor-not-allowed">
-                <Link2 className="w-4 h-4" /> Copier le lien web
+              <button
+                onClick={handleCopierLien}
+                disabled={generatingLien}
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-colors ${
+                  generatingLien ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                    : lienCopie ? 'bg-green-50 text-green-700' : 'text-white'
+                }`}
+                style={(generatingLien || lienCopie) ? undefined : { background: '#0BBFBF' }}
+              >
+                {generatingLien ? (
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                  </svg>
+                ) : lienCopie ? <Check className="w-4 h-4" /> : <Link2 className="w-4 h-4" />}
+                {generatingLien ? 'Génération…' : lienCopie ? 'Lien copié !' : 'Copier le lien web'}
               </button>
             </div>
+            {lienErreur && <p className="text-xs text-red-500 mt-2 text-center">{lienErreur}</p>}
+
+            {/* ── Liens déjà générés (révocables) ── */}
+            {liens.length > 0 && (
+              <div className="mt-6 bg-white rounded-2xl border border-slate-100 overflow-hidden">
+                <div className="px-5 py-3 border-b border-slate-100">
+                  <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">Liens générés</h2>
+                </div>
+                <div className="divide-y divide-slate-50">
+                  {liens.map(l => (
+                    <div key={l.id} className="flex items-center justify-between px-5 py-3 gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm text-slate-700 truncate">
+                          {l.periode_debut} → {l.periode_fin}
+                          {l.avec_photos ? '' : ' · sans photos'}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          Créé le {new Date(l.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris' })}
+                        </p>
+                      </div>
+                      {l.actif ? (
+                        <button
+                          onClick={() => handleRevoquer(l.id)}
+                          disabled={revokingId === l.id}
+                          className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 transition-colors disabled:opacity-50"
+                        >
+                          <Ban className="w-3.5 h-3.5" /> {revokingId === l.id ? 'Révocation…' : 'Révoquer'}
+                        </button>
+                      ) : (
+                        <span className="shrink-0 text-xs font-semibold text-slate-400 px-3 py-1.5">Révoqué</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

@@ -280,10 +280,15 @@ function ScanPageInner() {
       })
     }
 
-    // 8. Naviguer vers l'intervention
+    // 8. Naviguer — mono-bâtiment (1 intervention) : direct vers l'écran de zones,
+    // comme aujourd'hui. Multi-bâtiment (étape 9b) : écran de choix niveau 1.
     streamRef.current?.getTracks().forEach(t => t.stop())
     cancelAnimationFrame(rafRef.current)
-    router.push(`/agent/intervention/${inter.id}`)
+    if ((intersJour ?? []).length > 1) {
+      router.push(`/agent/mission/${contrat.id}`)
+    } else {
+      router.push(`/agent/intervention/${inter.id}`)
+    }
   }, [status, router])
 
   // ── Lecture automatique du token depuis l'URL (?token=xxx) ────────────────

@@ -20,6 +20,11 @@ LIVRÉES » plus bas.
 3. Reprendre la config des 156 autres résidences avec Ana (utiliser « Ajouter
    un bâtiment standard » pour les multi-bâtiments).
 
+**FIX MAJEUR post-audit (commit `bf6e47a`) :** le test terrain iPhone (item 1
+ci-dessus) a révélé un bug de double comptage du temps journée agent en
+multi-bâtiments (impact direct PAIE/RH) — **CORRIGÉ**. Voir section « FIX
+MAJEUR : double comptage temps journée agent » plus bas.
+
 Avant (15 juillet 2026) : **MVP JUILLET 2026 : développement TERMINÉ, testé, sécurisé.** Toutes les
 fonctions du périmètre MVP sont fonctionnelles et **vérifiées en live** (audit
 pré-vol navigation des 3 rôles, 15/07). Périmètre agent (scan → zones/photos →
@@ -1672,6 +1677,40 @@ les tables sources (`interventions`, `conges`, `absences`, `profiles`), paramét
 semaine. Recalcul vérifié identique à la vue sur la semaine courante. Bornes
 lundi→dimanche en Europe/Paris (pattern noon-anchor, pas de bug UTC).
 
+## FIX MAJEUR : double comptage temps journée agent (17 juillet 2026 — commit `bf6e47a`)
+
+**BUG trouvé au test terrain iPhone** (impact direct PAIE/RH) : le panneau
+« Journée de [agent] » (`JourneeAgentPanel`) et le calcul RH additionnaient le
+temps de CHAQUE intervention. Depuis 9h, les N interventions d'une mission
+multi-bâtiments partagent le même `heure_scan`/`heure_fin` (temps global) →
+le total empilait N fois le même temps (PRIEURE : 9 × 3h59 = **35h51 au lieu
+de 3h59**). **Aucune donnée RH corrompue avant le fix** (`journees_agent`
+n'avait que 2 lignes saines, la journée PRIEURE concernée n'avait pas encore
+été validée — vérifié en base avant correction).
+
+Correction :
+- `lib/journeeAgent.ts` (nouveau) : `calculerJourneeAgent()` — regroupe les
+  interventions par MISSION (`contrat_id ?? id`, même critère que 9g/9h/9j),
+  un segment PAR MISSION, durée comptée UNE fois, trajets inter-chantiers
+  recalculés ENTRE missions (pas entre bâtiments d'une même mission).
+- `GET /api/agents/[id]/journee` : utilise cette fonction — affiche
+  « PRIEURE (9 bâtiments) 3h59 » au lieu de 9 lignes à 3h59 chacune.
+- **GARDE-FOU serveur** `POST /api/agents/[id]/journee/valider` : ne fait
+  plus confiance au total envoyé par le client — recalcule côté serveur avec
+  la même fonction (`lib/journeeAgent.ts`) avant d'écrire dans
+  `journees_agent` (donnée de paie). GET et validation ne peuvent plus diverger.
+- `JourneeAgentPanel.tsx` : n'envoie plus les totaux au serveur (seulement
+  `date` + `notes`).
+- `/manager/charge`, `/manager/charge/[id]`, export RH PDF (`lib/rapportRH.ts`) :
+  **non touchés** — ils relisent `journees_agent`, corrigés en cascade dès
+  qu'une validation utilise le nouveau calcul.
+
+Vérifié (simulation avec les vraies données PRIEURE du 17/07, sans écrire en
+base) : PRIEURE → 1 segment, 239 min (3h59) au lieu de 2151 min (35h51) ;
+témoin mono-bâtiment → résultat inchangé (non-régression) ; journée avec 2
+missions distinctes le même jour → chaque mission comptée séparément (239 +
+30 min) + trajet inter-missions recalculé correctement (14 min).
+
 ## Ordre de configuration (session Ana)
 
 Séquence obligatoire (l'étape ③ du wizard résidence dépend des agents existants) :
@@ -1756,6 +1795,15 @@ connexion) + **Item 6** (masqué de la liste agents). Suffisant — pas de suppr
   les futures missions, mais un rescan ne répare pas un état déjà `en_cours`+vide
   (`shouldRebuildTaches` ne se déclenche pas). PRIEURE a été réparée à la main en
   base pour permettre la vérif immédiate.
+- **PIÈGE multi-bâtiments (temps réel partagé) :** tout temps RÉEL partagé entre
+  interventions d'une mission (`heure_scan`/`heure_fin` identiques depuis 9h)
+  doit être compté PAR MISSION (grouper par `contrat_id ?? id`), jamais par
+  intervention. Le planifié (`heure_debut_prevue`/`heure_fin_prevue`, distinct
+  par bâtiment) n'a PAS ce problème — à ne pas confondre lors d'un futur calcul
+  sur les interventions.
+- **Donnée PAIE/RH : toujours recalculer côté serveur à la validation**, ne
+  jamais faire confiance à un total envoyé par le client (garde-fou). Un bug
+  d'affichage ne doit jamais pouvoir corrompre une donnée de paie persistée.
 
 ## À faire Phase 3
 

@@ -145,7 +145,7 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
   const [editingTache, setEditing]= useState<TacheTemplate | null>(null)
   const [zoneModal, setZoneModal] = useState<{ mode: 'create' } | { mode: 'edit'; zone: ZoneResidence } | null>(null)
   const [showBatimentModal, setShowBatimentModal] = useState(false)
-  const [joursBulk, setJoursBulk] = useState<{ label: string; tacheIds: string[] } | null>(null)
+  const [joursBulk, setJoursBulk] = useState<{ label: string; tacheIds: string[]; initialJours: string[] } | null>(null)
   const [joursBulkBusy, setJoursBulkBusy] = useState(false)
   const [toast, setToast]         = useState<{ message: string; type: 'success'|'error' } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'zone'|'tache'; id: string; label: string } | null>(null)
@@ -631,7 +631,7 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
                     <JourPuces jours={joursBatiment} />
                     {groupeTacheIds.length > 0 && (
                       <button
-                        onClick={(e) => { e.stopPropagation(); setJoursBulk({ label: group.label!, tacheIds: groupeTacheIds }) }}
+                        onClick={(e) => { e.stopPropagation(); setJoursBulk({ label: group.label!, tacheIds: groupeTacheIds, initialJours: joursBatiment }) }}
                         className="ml-auto flex items-center gap-1 text-xs font-semibold text-[#1A5FA8] hover:text-[#0A4A8A] transition-colors"
                         title="Modifier les jours de toutes les tâches de ce bâtiment"
                       >
@@ -644,6 +644,8 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
                 {open && group.zones.map(zone => {
               const zoneTaches = tachesByZone(zone.id)
               const isOpen = expanded.has(zone.id)
+              // Union des jours_semaine des tâches de la zone (item 2 — pré-sélection modal).
+              const joursZone = [...new Set(zoneTaches.flatMap(t => t.jours_semaine ?? []))]
               return (
                 <div key={zone.id} className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
                   {/* Zone header */}
@@ -677,7 +679,7 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
                     {(
                       <div className="flex gap-1 shrink-0" onClick={e => e.stopPropagation()}>
                         {zoneTaches.length > 0 && (
-                          <button onClick={() => setJoursBulk({ label: zone.nom, tacheIds: zoneTaches.map(t => t.id) })}
+                          <button onClick={() => setJoursBulk({ label: zone.nom, tacheIds: zoneTaches.map(t => t.id), initialJours: joursZone })}
                             className="w-7 h-7 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors"
                             title="Modifier les jours de toutes les tâches de cette zone">
                             <CalendarX className="w-3.5 h-3.5" />
@@ -865,6 +867,7 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
         <JoursBulkModal
           label={joursBulk.label}
           nbTaches={joursBulk.tacheIds.length}
+          initialJours={joursBulk.initialJours}
           busy={joursBulkBusy}
           onClose={() => setJoursBulk(null)}
           onApply={applyJoursBulk}

@@ -7,6 +7,7 @@ export type JoursMode = 'replace' | 'add'
 interface Props {
   label: string          // ex. « Bât A » ou « Hall »
   nbTaches: number       // nombre de tâches ciblées
+  initialJours?: string[] // jours déjà attribués (union) — pré-cochés à l'ouverture
   busy?: boolean
   onClose: () => void
   onApply: (mode: JoursMode, jours: string[]) => void
@@ -24,9 +25,11 @@ const JOURS: { value: string; label: string }[] = [
 
 // Sélecteur de jours pour l'action groupée (bâtiment ou zone). §3.4.
 // Deux modes explicites : Remplacer (écrase) / Ajouter (fusionne sans écraser).
-export default function JoursBulkModal({ label, nbTaches, busy, onClose, onApply }: Props) {
+export default function JoursBulkModal({ label, nbTaches, initialJours, busy, onClose, onApply }: Props) {
   const [mode, setMode]   = useState<JoursMode>('add')
-  const [jours, setJours] = useState<string[]>([])
+  // Pré-coché avec les jours déjà attribués : l'utilisateur voit l'état actuel
+  // avant de modifier (§ item 2). Le mode Ajouter/Remplacer reste inchangé.
+  const [jours, setJours] = useState<string[]>(initialJours ?? [])
 
   function toggle(j: string) {
     setJours(prev => prev.includes(j) ? prev.filter(x => x !== j) : [...prev, j])

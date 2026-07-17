@@ -101,8 +101,11 @@ function ScanPageInner() {
 
     setMessage('Recherche de l\'intervention…')
 
-    // 5. Intervention active de CE CONTRAT pour aujourd'hui (binôme : agent_id = user.id)
-    const { data: inter } = await supabase
+    // 5. TOUTES les interventions de CE CONTRAT pour aujourd'hui (binôme : agent_id
+    // = user.id). Depuis le chantier bâtiments, un jour multi-bâtiments = plusieurs
+    // interventions distinctes (une par bâtiment, enchaînées) — on travaille
+    // désormais sur la liste complète, jamais sur un id fixe (étape 9, §7.3).
+    const { data: intersJour } = await supabase
       .from('interventions')
       .select('id, statut')
       .eq('agent_id', user.id)
@@ -110,8 +113,11 @@ function ScanPageInner() {
       .eq('date_prevue', today)
       .in('statut', ['planifiee', 'en_cours'])
       .order('heure_debut_prevue')
-      .limit(1)
-      .maybeSingle()
+
+    // Pour l'instant (écran niveau 1 = étape 9b, pas encore fait) : on route
+    // toujours vers la première de la liste. Mono-bâtiment (liste à 1 élément) →
+    // comportement strictement identique à avant.
+    const inter = (intersJour ?? [])[0] ?? null
 
     if (!inter) {
       // Anti-doublon : intervention déjà terminée/validée → rouvrir sans alerte

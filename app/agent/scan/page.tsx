@@ -107,7 +107,7 @@ function ScanPageInner() {
     // désormais sur la liste complète, jamais sur un id fixe (étape 9, §7.3).
     const { data: intersJour } = await supabase
       .from('interventions')
-      .select('id, statut')
+      .select('id, statut, batiment')
       .eq('agent_id', user.id)
       .eq('contrat_id', contrat.id)
       .eq('date_prevue', today)
@@ -211,11 +211,16 @@ function ScanPageInner() {
       }).in('id', idsADemarrer)
     }
 
-    // 7. Zones de CE CONTRAT (toujours, premier scan ET rescan)
-    const { data: zones } = await supabase
-      .from('zones_residence')
-      .select('id, nom')
-      .eq('contrat_id', contrat.id)
+    // 7. Zones de CE BÂTIMENT (toujours, premier scan ET rescan) — étape 9c, §7.3.
+    // inter.batiment = null (mono-bâtiment) → aucun filtre, toutes les zones du
+    // contrat comme avant (comportement identique par construction, pas de
+    // if/else séparé). inter.batiment renseigné → seulement les zones de CE
+    // bâtiment, ce qui évite que les tâches de tous les bâtiments atterrissent
+    // sur la même intervention et que les noms de zone homonymes fusionnent
+    // (zone_nom redevient unique par intervention, cf audit scan).
+    let zonesQuery = supabase.from('zones_residence').select('id, nom').eq('contrat_id', contrat.id)
+    if (inter.batiment) zonesQuery = zonesQuery.eq('batiment', inter.batiment)
+    const { data: zones } = await zonesQuery
 
     const zoneMap: Record<string, string> = {}
     const zoneIds: string[] = []

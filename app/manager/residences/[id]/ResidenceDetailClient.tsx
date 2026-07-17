@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Building2, Trash2, Leaf, MapPin, AlertTriangle, User } from 'lucide-react'
+import { Building2, Trash2, Leaf, MapPin, AlertTriangle, User, FileText } from 'lucide-react'
 import RentabiliteModal from './RentabiliteModal'
 import AjoutContratModal from './AjoutContratModal'
 import { FEATURES } from '@/lib/features'
@@ -368,6 +368,16 @@ export default function ResidenceDetailClient({ residence: r, etat, agentNom, co
               <IcoReport />
             </span>
             <span className="text-sm font-semibold text-slate-700">Rapports</span>
+          </Link>
+
+          <Link
+            href={`/manager/residences/${r.id}/rapport-syndic`}
+            className="bg-white rounded-xl p-5 flex flex-col items-center gap-2 shadow-sm hover:shadow-md hover:bg-slate-50 transition-all border border-slate-100 text-center"
+          >
+            <span className="w-10 h-10 rounded-full bg-[#EAF2FF] flex items-center justify-center text-[#1A5FA8]">
+              <FileText className="w-5 h-5" />
+            </span>
+            <span className="text-sm font-semibold text-slate-700">Rapport syndic</span>
           </Link>
 
           {FEATURES.rentabilite && (

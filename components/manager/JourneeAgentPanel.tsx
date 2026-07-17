@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 interface Segment {
-  intervention_id: string
+  mission_key: string
   residence_nom: string
+  nb_batiments: number
   heure_debut: string | null
   heure_fin: string | null
   duree_minutes: number | null
@@ -79,13 +80,13 @@ export default function JourneeAgentPanel({ open, onClose, agentId, agentNom, da
   async function handleValider() {
     if (!data) return
     setSaving(true)
+    // total_minutes_terrain/trajets ne sont plus envoyés : le serveur
+    // recalcule lui-même depuis les interventions (garde-fou RH, lib/journeeAgent.ts).
     const res = await fetch(`/api/agents/${agentId}/journee/valider`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         date,
-        total_minutes_terrain: data.totalTerrain,
-        total_minutes_trajets: data.totalTrajets,
         notes: notes || null,
       }),
     })
@@ -144,13 +145,18 @@ export default function JourneeAgentPanel({ open, onClose, agentId, agentNom, da
                 ) : (
                   <div className="space-y-0">
                     {data.segments.map((seg, i) => (
-                      <div key={seg.intervention_id}>
-                        {/* Intervention */}
+                      <div key={seg.mission_key}>
+                        {/* Mission (résidence, éventuellement multi-bâtiments) */}
                         <div className="flex items-center gap-3 py-3 border-b border-slate-50">
                           <div className="w-1 self-stretch rounded-full shrink-0"
                             style={{ background: seg.statut === 'validee' ? '#16A34A' : '#1A5FA8', minHeight: 36 }}/>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-slate-800 truncate">{seg.residence_nom}</p>
+                            <p className="text-sm font-semibold text-slate-800 truncate">
+                              {seg.residence_nom}
+                              {seg.nb_batiments > 1 && (
+                                <span className="text-xs font-normal text-slate-400"> ({seg.nb_batiments} bâtiments)</span>
+                              )}
+                            </p>
                             <p className="text-xs text-slate-400 mt-0.5">
                               {fmtHeure(seg.heure_debut)} → {fmtHeure(seg.heure_fin)}
                             </p>

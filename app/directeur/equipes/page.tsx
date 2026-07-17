@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import type { Profile } from '@/lib/types'
+import { displayIdentifiant } from '@/lib/agent-identifiant'
 
 export default async function DirecteurEquipes() {
   const supabase = await createClient()
@@ -50,7 +51,7 @@ export default async function DirecteurEquipes() {
                 </div>
                 <div>
                   <p className="font-semibold text-slate-800 text-sm">{a.prenom} {a.nom}</p>
-                  <p className="text-xs text-slate-400">{a.email}</p>
+                  <p className="text-xs text-slate-400">{displayIdentifiant(a.email)}</p>
                 </div>
                 <div className={`ml-auto w-2.5 h-2.5 rounded-full ${a.actif ? 'bg-green-400' : 'bg-slate-300'}`}/>
               </div>

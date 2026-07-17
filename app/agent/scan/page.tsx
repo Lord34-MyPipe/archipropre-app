@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { distanceMetres } from '@/lib/geo'
+import { displayIdentifiant } from '@/lib/agent-identifiant'
 import { Suspense } from 'react'
 
 // ─── Logique principale ────────────────────────────────────────────────────────
@@ -95,7 +96,7 @@ function ScanPageInner() {
       .maybeSingle()
     const agentNom = agentProfil
       ? `${agentProfil.prenom ?? ''} ${agentProfil.nom ?? ''}`.trim()
-      : user.email ?? user.id
+      : displayIdentifiant(user.email) || user.id
 
     const today = new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' })
 

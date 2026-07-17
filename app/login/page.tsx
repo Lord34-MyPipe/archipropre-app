@@ -3,10 +3,11 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
+import { resolveLoginValue } from '@/lib/agent-identifiant'
 
 export default function LoginPage() {
   const router = useRouter()
-  const [email, setEmail]       = useState('')
+  const [identifiant, setIdentifiant] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
@@ -47,10 +48,13 @@ export default function LoginPage() {
     setError('')
 
     const supabase = createClient()
-    const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error: authError } = await supabase.auth.signInWithPassword({
+      email: resolveLoginValue(identifiant),
+      password,
+    })
 
     if (authError || !data.user) {
-      setError('Email ou mot de passe incorrect.')
+      setError('Identifiant ou mot de passe incorrect.')
       setLoading(false)
       return
     }
@@ -109,12 +113,12 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Email</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Identifiant</label>
             <input
-              type="email" required autoComplete="email"
-              value={email} onChange={e => setEmail(e.target.value)}
+              type="text" required autoComplete="username"
+              value={identifiant} onChange={e => setIdentifiant(e.target.value)}
               className="w-full px-4 py-3.5 rounded-xl border border-slate-200 text-slate-900 text-base focus:outline-none focus:ring-2 focus:ring-[#0BBFBF] focus:border-transparent transition"
-              placeholder="votre@email.com"
+              placeholder="votre identifiant ou email"
             />
           </div>
           <div>

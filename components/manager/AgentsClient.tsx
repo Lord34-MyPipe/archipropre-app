@@ -8,6 +8,7 @@ import AgentFormModal from './AgentFormModal'
 import AgentAbsenceDrawer from './AgentAbsenceDrawer'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
+import { displayIdentifiant } from '@/lib/agent-identifiant'
 
 interface AgentWithStats extends Profile {
   stats: { total: number; terminees: number }
@@ -87,8 +88,8 @@ function AgentCard({
         </button>
       </div>
 
-      {/* Email */}
-      <p className="px-4 mt-2 text-[11px] text-slate-400 truncate">{agent.email}</p>
+      {/* Identifiant */}
+      <p className="px-4 mt-2 text-[11px] text-slate-400 truncate">{displayIdentifiant(agent.email)}</p>
 
       {/* ── Stats ── */}
       {agent.stats.total === 0 ? (

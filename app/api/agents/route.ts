@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase-server'
+import { resolveIdentifiant, isIdentifiantDejaPris } from '@/lib/agent-identifiant'
 
 async function getManagerUser() {
   const supabase = await createClient()
@@ -40,23 +41,39 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Champs obligatoires manquants' }, { status: 400 })
   }
 
+  // Identifiant simple sans email (agent terrain) ou vrai email — résolu vers
+  // un email technique valide pour Supabase Auth dans les deux cas.
+  const resolved = resolveIdentifiant(String(email))
+  if (!resolved) {
+    return NextResponse.json(
+      { error: 'Identifiant invalide — utilisez un email, ou un identifiant simple (lettres, chiffres, points, tirets)' },
+      { status: 400 }
+    )
+  }
+
   const admin = await createAdminClient()
 
   // Créer le compte auth
   const { data: authData, error: authErr } = await admin.auth.admin.createUser({
-    email,
+    email: resolved.email,
     password,
     email_confirm: true,
     user_metadata: { nom, prenom },
   })
-  if (authErr) return NextResponse.json({ error: authErr.message }, { status: 400 })
+  if (authErr) {
+    const dejaPris = isIdentifiantDejaPris(authErr)
+    return NextResponse.json(
+      { error: dejaPris ? 'Cet identifiant est déjà utilisé par un autre compte.' : authErr.message },
+      { status: dejaPris ? 409 : 400 }
+    )
+  }
 
   // Créer le profil
   const { error: profileErr } = await admin.from('profiles').insert({
     id: authData.user.id,
     nom,
     prenom,
-    email,
+    email: resolved.email,
     telephone: telephone || null,
     role: 'agent',
     vehicule: vehicule ?? false,
@@ -104,20 +121,22 @@ export async function PATCH(req: NextRequest) {
   // s'arrête immédiatement en cas d'échec pour ne jamais laisser les deux
   // diverger (pas d'écriture profiles si l'écriture auth a échoué).
   if (email !== undefined) {
-    const newEmail = String(email).trim().toLowerCase()
-    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!EMAIL_RE.test(newEmail)) {
-      return NextResponse.json({ error: "Format d'email invalide" }, { status: 400 })
+    const resolved = resolveIdentifiant(String(email))
+    if (!resolved) {
+      return NextResponse.json(
+        { error: 'Identifiant invalide — utilisez un email, ou un identifiant simple (lettres, chiffres, points, tirets)' },
+        { status: 400 }
+      )
     }
+    const newEmail = resolved.email
     const currentEmail = (agent?.email ?? '').toLowerCase()
     if (newEmail !== currentEmail) {
       const { error: emailErr } = await admin.auth.admin.updateUserById(id, { email: newEmail })
       if (emailErr) {
         console.error('[PATCH /api/agents] updateUserById(email) error:', JSON.stringify(emailErr, null, 2))
-        const dejaPris = emailErr.code === 'email_exists'
-          || /already.*registered|already.*exists|duplicate/i.test(emailErr.message ?? '')
+        const dejaPris = isIdentifiantDejaPris(emailErr)
         return NextResponse.json(
-          { error: dejaPris ? 'Cet email est déjà utilisé par un autre compte.' : (emailErr.message || 'Erreur mise à jour email') },
+          { error: dejaPris ? 'Cet identifiant est déjà utilisé par un autre compte.' : (emailErr.message || 'Erreur mise à jour identifiant') },
           { status: dejaPris ? 409 : 400 }
         )
       }

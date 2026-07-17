@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, KeyboardEvent } from 'react'
 import type { Profile } from '@/lib/types'
 import { Users, AlertTriangle } from 'lucide-react'
+import { resolveIdentifiant, displayIdentifiant } from '@/lib/agent-identifiant'
 
 const JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'] as const
 const JOURS_LABELS: Record<string, string> = {
@@ -48,7 +49,7 @@ function defaultForm(agent?: Profile | null): FormState {
   return {
     nom: agent?.nom ?? '',
     prenom: agent?.prenom ?? '',
-    email: agent?.email ?? '',
+    email: displayIdentifiant(agent?.email) ?? '',
     telephone: agent?.telephone ?? '',
     adresse_domicile: agent?.adresse_domicile ?? '',
     password: agent ? '' : genPassword(),
@@ -141,9 +142,8 @@ export default function AgentFormModal({ agent, agents = [], onClose, onSaved }:
     e.preventDefault()
     setError('')
 
-    const emailTrim = form.email.trim()
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
-      setError("Format d'email invalide")
+    if (!resolveIdentifiant(form.email)) {
+      setError("Identifiant invalide — utilisez un email, ou un identifiant simple (lettres, chiffres, points, tirets)")
       return
     }
 
@@ -234,16 +234,16 @@ export default function AgentFormModal({ agent, agents = [], onClose, onSaved }:
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Email *</label>
-            <input required type="email" value={form.email} onChange={e => set('email', e.target.value)}
-              autoComplete="email"
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Identifiant de connexion *</label>
+            <input required type="text" value={form.email} onChange={e => set('email', e.target.value)}
+              autoComplete="username"
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0BBFBF] focus:border-transparent transition"
-              placeholder="marie.dupont@email.com"/>
-            {isEdit && (
-              <p className="text-xs text-slate-400 mt-1">
-                C&apos;est l&apos;identifiant de connexion de l&apos;agent — le modifier change son login.
-              </p>
-            )}
+              placeholder="andre  —  ou  marie.dupont@email.com"/>
+            <p className="text-xs text-slate-400 mt-1">
+              {isEdit
+                ? "C'est l'identifiant de connexion de l'agent — le modifier change son login."
+                : "Un prénom suffit si l'agent n'a pas d'email (ex. \"andre\"). Un email complet fonctionne aussi."}
+            </p>
           </div>
 
           <div>

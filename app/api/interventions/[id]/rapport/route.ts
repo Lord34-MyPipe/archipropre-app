@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase-server'
+import { displayIdentifiant } from '@/lib/agent-identifiant'
 
 export async function POST(
   req: NextRequest,
@@ -52,7 +53,7 @@ export async function POST(
   if (managerId) {
     const nomAgent = agentProfil
       ? `${agentProfil.prenom ?? ''} ${agentProfil.nom ?? ''}`.trim()
-      : user.email ?? 'un agent'
+      : displayIdentifiant(user.email) || 'un agent'
     const nomResidence = residence?.nom ?? 'une résidence'
     await admin.from('alertes').insert({
       intervention_id: interventionId,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase-server'
+import { displayIdentifiant } from '@/lib/agent-identifiant'
 
 interface LigneInput {
   produit_id?: string | null
@@ -80,7 +81,7 @@ export async function POST(
       .maybeSingle()
     const agentNom = agentProfil
       ? `${agentProfil.prenom ?? ''} ${agentProfil.nom ?? ''}`.trim()
-      : user.email ?? user.id
+      : displayIdentifiant(user.email) || user.id
 
     const nbLignes = lignes.length
     const nbAmpoules = lignes.filter(l => l.type_ligne === 'ampoule').length

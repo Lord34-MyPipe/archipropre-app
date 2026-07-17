@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import type { ChargeAgent } from './page'
 import { Car, TramFront } from 'lucide-react'
 
@@ -42,6 +43,11 @@ type SortKey = 'taux_desc' | 'nom' | 'dispo_desc'
 interface Props {
   agents: ChargeAgent[]
   managerId: string
+  weekLabel: string
+  isCurrentWeek: boolean
+  prevWeekHref: string
+  nextWeekHref: string
+  currentWeekHref: string
 }
 
 // Barre : échelle 0–125% du contrat.
@@ -49,7 +55,7 @@ interface Props {
 const ECHELLE      = 125
 const CONTRAT_X    = (100 / ECHELLE) * 100  // 80 %
 
-export default function ChargeClient({ agents }: Props) {
+export default function ChargeClient({ agents, weekLabel, isCurrentWeek, prevWeekHref, nextWeekHref, currentWeekHref }: Props) {
   const router = useRouter()
   const [search, setSearch]       = useState('')
   const [modeFilter, setModeFilter] = useState<'tous' | 'voiture' | 'tramway'>('tous')
@@ -86,7 +92,32 @@ export default function ChargeClient({ agents }: Props) {
       <div className="bg-[#0A2E5A] text-white px-6 py-8 md:px-10">
         <p className="text-xs text-blue-300 uppercase tracking-widest mb-1">Manager</p>
         <h1 className="text-2xl font-bold">Charge des agents</h1>
-        <p className="text-blue-300 text-sm mt-1">Semaine courante — capacité &amp; disponibilité</p>
+
+        {/* Navigation semaine */}
+        <div className="flex items-center gap-2 mt-4">
+          <Link href={prevWeekHref}
+            className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-colors shrink-0">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/>
+            </svg>
+          </Link>
+          <div className="flex-1 text-center min-w-0">
+            <p className="text-sm font-semibold text-white truncate">{weekLabel}</p>
+            <p className="text-[11px] text-blue-300">capacité &amp; disponibilité</p>
+          </div>
+          <Link href={nextWeekHref}
+            className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-colors shrink-0">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
+            </svg>
+          </Link>
+          {!isCurrentWeek && (
+            <Link href={currentWeekHref}
+              className="ml-1 px-3 py-2 rounded-xl bg-[#0BBFBF]/20 text-[#0BBFBF] text-xs font-semibold hover:bg-[#0BBFBF]/30 transition-colors whitespace-nowrap shrink-0">
+              Semaine courante
+            </Link>
+          )}
+        </div>
       </div>
 
       <div className="px-4 md:px-10 py-6 max-w-5xl mx-auto space-y-6">

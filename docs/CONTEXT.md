@@ -25,6 +25,19 @@ ci-dessus) a révélé un bug de double comptage du temps journée agent en
 multi-bâtiments (impact direct PAIE/RH) — **CORRIGÉ**. Voir section « FIX
 MAJEUR : double comptage temps journée agent » plus bas.
 
+**NOUVEAU CHANTIER LIVRÉ : RAPPORT SYNDIC (P3-2)**, complet de bout en bout
+(S1→S5) — premier morceau de la Phase 3 (espace/rapport client), différenciateur
+commercial face à Organilogue. Voir section « RAPPORT SYNDIC (P3-2) — LIVRÉ »
+plus bas pour le détail complet.
+
+**RESTE À FAIRE (rapport syndic) :**
+1. Test terrain réel par Julien (génération d'un lien depuis l'UI manager,
+   ouverture en navigation privée, révocation) — les vérifications faites par
+   Claude Code sont en navigateur réel mais via serveur dev local, pas encore
+   confirmées par Julien sur la prod archipropre-app.vercel.app.
+2. P3-1 (rôle client à part entière) reste à faire — S5 en est l'embryon
+   technique (page publique par token) mais pas encore un vrai rôle/compte.
+
 Avant (15 juillet 2026) : **MVP JUILLET 2026 : développement TERMINÉ, testé, sécurisé.** Toutes les
 fonctions du périmètre MVP sont fonctionnelles et **vérifiées en live** (audit
 pré-vol navigation des 3 rôles, 15/07). Périmètre agent (scan → zones/photos →
@@ -1742,6 +1755,88 @@ missions distinctes le même jour → chaque mission comptée séparément (239 
   vérification immédiate. Toute future alerte hors zone utilisera le format
   enrichi automatiquement.
 
+## RAPPORT SYNDIC (P3-2) — LIVRÉ (17 juillet 2026)
+
+Premier morceau de la Phase 3 (espace/rapport client). Différenciateur
+commercial face à Organilogue.
+
+### Cadrage validé avec Julien avant conception
+- Rapport PAR RÉSIDENCE (fusion multi-contrats par défaut, séparable si
+  demandé), sur une période (mois ou entre 2 dates).
+- Deux niveaux : récap général (chiffres factuels + calendrier mensuel avec
+  VRAIES DATES, jamais d'heure) + détail par bâtiment (dates de passage, zones
+  traitées, photos).
+- JAMAIS de %, JAMAIS de conformité chiffrée (risque d'afficher un mauvais %
+  si planning jamais généré un mois donné — angle mort identifié à l'audit) :
+  toujours un chiffre factuel ("41 passages réalisés").
+- Tâches non réalisées : affichées SEULEMENT si commentées/justifiées par le
+  manager (jamais listées brutes).
+- Interdits absolus dans tout le payload/PDF/lien : durée, heure, coût, marge,
+  taux horaire, montant — vérifié explicitement à chaque étape (recherche de
+  `heure|duree|montant|taux|cout|marge` dans le JSON produit).
+- Export : PDF (condensé, sans photos par défaut, toggle avec photos) + lien
+  web sécurisé (photos toujours incluses, snapshot figé).
+
+### Découpage livré (S1→S5)
+
+- **S1** (commit `0e31277`) : route `GET /api/residences/[id]/rapport-syndic?debut=&fin=&contratId=`
+  — payload étanche (résidence, période, `nb_passages` factuel, bâtiments avec
+  `dates_passage`/`zones_traitees`/`photos`/`taches_non_realisees`). Zones
+  traitées DÉRIVÉES de `taches_intervention`+`photos_zone` (règle
+  `zoneComplete`), PAS de `zones_intervention` (non fiable — cas réel trouvé
+  sur Bât A PRIEURE où une zone complète n'avait pas de ligne
+  `zones_intervention`). Passages comptés PAR MISSION (cohérent avec le reste
+  du chantier bâtiments).
+- **S2** (commit `1288df6`) : page `/manager/residences/[id]/rapport-syndic`
+  (UI manager), sélecteur période (mois glissant ou 2 dates), rendu selon
+  mockup validé. Bouton "Rapport syndic" ajouté à la grille nav résidence.
+- **S3** (commit `a4a6ed7`) : vraies photos (signed URLs générées DANS la
+  route S1, jamais stockées, jamais mises en cache — cohérent avec le principe
+  déjà établi ailleurs dans le projet). Toggle "Avec photos" (actif par
+  défaut), état client, pilote aussi le PDF.
+- **S4** (commit `008eba9`) : export PDF (`lib/rapportSyndic.ts`, même pattern
+  jsPDF que `lib/rapportRH.ts`). Version CONDENSÉE (pas le détail exhaustif).
+  Sans photos par défaut (léger), avec photos si toggle actif (recompressées
+  côté client, canvas ~360px qualité 0.6). Accents français vérifiés au niveau
+  octet (encodage WinAnsi correct). Marqueur "!" au lieu du triangle Unicode
+  qui casse jsPDF (leçon déjà connue, réappliquée).
+- **S5** (commit `671806b`) : lien web sécurisé, ARCHITECTURE OPTION A
+  (validée par audit dédié avant implémentation) :
+  - Table `rapports_syndic_liens` (migration 029) : `token` (uuid unique,
+    colonne séparée de `id`, même pattern que `qr_code_token`),
+    `residence_id`, `contrat_id` nullable, `periode_debut`/`fin`, `snapshot`
+    JSONB (= payload S1 figé), `avec_photos`, `actif` (flag révocation),
+    `created_by`, `created_at`, `revoked_at`.
+  - RLS ACTIVÉE, ZÉRO POLICY anon/authenticated (deny total intentionnel) —
+    tout accès passe par du code serveur (`createAdminClient` + vérifs
+    explicites). Point de sécurité critique identifié à l'audit : une policy
+    qui semblerait anodine (`FOR SELECT USING actif=true`) permettrait de
+    LISTER tous les tokens actifs via PostgREST — à ne jamais faire.
+  - Snapshot FIGÉ à la génération (photos incluses en chemin brut ; si
+    `avec_photos=false`, les entrées photos sont RETIRÉES PHYSIQUEMENT du
+    JSON, pas juste masquées côté affichage — défense en profondeur).
+  - `lib/rapportSyndicData.ts` (nouveau) : `construireRapportSyndic()` +
+    `signerPhotos()` — SEULE source de vérité, partagée par S1/création de
+    lien/page publique. Aucun risque de divergence.
+  - Page publique `app/rapport/[token]/page.tsx` : Server Component, PAS de
+    session, résout `token`+`actif=true` AVANT tout, message générique unique
+    si invalide (aucune distinction révoqué/inexistant — testé et confirmé :
+    pas de faille d'énumération). `force-dynamic`, meta `noindex`. Photos
+    signées à la volée UNIQUEMENT après validation du token.
+  - **FIX PRÉALABLE OBLIGATOIRE** : `middleware.ts` redirigeait TOUT vers
+    `/login`, y compris `/rapport/[token]` — corrigé en excluant `rapport` du
+    matcher (même mécanisme que `api`/`manifest.json` déjà exclus). Sans ce
+    fix, le lien n'aurait JAMAIS fonctionné pour un syndic sans compte. Fait
+    en premier, avant le reste de S5.
+  - Bonus non demandé mais utile : GET/PATCH liste+révocation des liens,
+    exposé dans `RapportSyndicClient` ("Liens générés" + bouton Révoquer) —
+    sans ça la révocation aurait été inaccessible depuis l'UI.
+  - Vérifié en navigateur réel (serveur dev, sans session, car page publique
+    par nature) : rendu correct + vraies signed URLs générées sans session ;
+    révocation testée (`actif=false` → message générique immédiat) ; token
+    aléatoire inexistant → même message générique (pas de faille
+    d'énumération).
+
 ## Ordre de configuration (session Ana)
 
 Séquence obligatoire (l'étape ③ du wizard résidence dépend des agents existants) :
@@ -1847,6 +1942,32 @@ connexion) + **Item 6** (masqué de la liste agents). Suffisant — pas de suppr
 - **Un fix d'alerte enrichie ne réécrit pas les alertes déjà émises**
   (metadata point-in-time à la création) — toujours vérifier l'horodatage de
   l'alerte vs. celui du déploiement avant de conclure à un bug de code.
+
+### Rapport syndic (P3-2, 17 juillet 2026)
+
+- **`zones_intervention` n'est pas fiable à 100 % comme source de « zone
+  traitée »** (peut manquer une ligne même si la zone est complète) — toujours
+  dériver depuis `taches_intervention` + `photos_zone` (règle `zoneComplete`)
+  pour tout rapport/export qui a besoin de savoir « cette zone a-t-elle été
+  traitée ».
+- **Indicateur « conformité % » envoyé à un tiers externe (syndic) :
+  dangereux** si le calcul du « prévu » a un angle mort (ex. planning jamais
+  généré). Préférer un chiffre factuel brut à un pourcentage qui peut mal
+  représenter la réalité.
+- **Page PUBLIQUE sans authentification** (nouveau pattern dans ce projet) :
+  - RLS avec ZÉRO policy anon = seule architecture sûre pour une table
+    consultée par token secret — une policy « innocente » peut permettre de
+    lister tous les enregistrements via PostgREST.
+  - Toujours vérifier le middleware global AVANT de construire une route
+    publique — un middleware d'auth généraliste peut bloquer silencieusement
+    une route censée être publique.
+  - Snapshot figé + signature de fichiers à la volée (jamais stockée) permet
+    de combiner « contenu qui ne change jamais » avec « accès fichiers qui
+    expire proprement » (la révocation reste réellement effective,
+    contrairement à un bucket public ou une signed URL longue durée).
+  - Le message d'erreur d'un lookup par token doit être IDENTIQUE dans tous
+    les cas d'échec (révoqué / inexistant / malformé) — ne jamais laisser une
+    différence de message devenir un oracle d'énumération.
 
 ## À faire Phase 3
 

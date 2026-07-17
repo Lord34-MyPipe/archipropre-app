@@ -127,6 +127,21 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
     else photosParIntervention.set(p.intervention_id, [p])
   }
 
+  // Signed URLs (étape S3) — bucket privé photos-interventions, même mécanisme
+  // que app/manager/interventions/[id]/rapport/page.tsx (createSignedUrl, 1h).
+  // Générées à CHAQUE appel de la route, jamais stockées : le payload n'est
+  // jamais mis en cache côté serveur, donc une URL expirée ne peut pas
+  // "traîner" — un simple rechargement de la page en régénère de fraîches.
+  const bucket = admin.storage.from('photos-interventions')
+  const signedUrlByPath = new Map<string, string | null>()
+  await Promise.all(
+    (photosRaw ?? []).map(async p => {
+      if (signedUrlByPath.has(p.photo_url)) return
+      const { data } = await bucket.createSignedUrl(p.photo_url, 3600)
+      signedUrlByPath.set(p.photo_url, data?.signedUrl ?? null)
+    })
+  )
+
   // Zones traitées d'une intervention — dérivées de taches_intervention +
   // photos_zone (règle zoneComplete de l'écran agent : toutes les tâches de
   // la zone traitées + ≥1 photo), PAS zones_intervention (source non fiable,
@@ -166,14 +181,14 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
     const datesPassage = [...new Set(g.interventions.map(i => i.date_prevue))].sort()
 
     const zonesTraitees = new Set<string>()
-    const photos: { zone_nom: string; photo_url: string }[] = []
+    const photos: { zone_nom: string; photo_url: string; signed_url: string | null }[] = []
     const tachesNonRealisees: { zone_nom: string; libelle: string; commentaire: string; date: string }[] = []
 
     for (const inter of g.interventions) {
       for (const zone of zonesCompletesDe(inter.id)) zonesTraitees.add(zone)
 
       for (const p of (photosParIntervention.get(inter.id) ?? [])) {
-        photos.push({ zone_nom: p.zone_nom, photo_url: p.photo_url })
+        photos.push({ zone_nom: p.zone_nom, photo_url: p.photo_url, signed_url: signedUrlByPath.get(p.photo_url) ?? null })
       }
 
       for (const t of (tachesParIntervention.get(inter.id) ?? [])) {

@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Calendar, Building2, Image as ImageIcon, TriangleAlert, Download, Link2 } from 'lucide-react'
+import { ArrowLeft, Calendar, Building2, TriangleAlert, Download, Link2, ImageOff } from 'lucide-react'
 
 // Rapport syndic (P3-2, étape S2) — affichage seulement. Le payload S1 ne
 // contient déjà aucune donnée temps/coût (garde-fou côté route) : on n'affiche
 // ici que ce que le payload fournit, on n'ajoute jamais de champ heure/durée/
 // coût glané ailleurs.
 
-interface PhotoItem { zone_nom: string; photo_url: string }
+interface PhotoItem { zone_nom: string; photo_url: string; signed_url: string | null }
 interface TacheNonRealisee { zone_nom: string; libelle: string; commentaire: string; date: string }
 interface BatimentPayload {
   libelle: string | null
@@ -135,6 +135,10 @@ export default function RapportSyndicClient({ residenceId, residenceNom }: Props
   const [payload, setPayload]     = useState<RapportSyndicPayload | null>(null)
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState<string | null>(null)
+  // Toggle avec/sans photos — état d'affichage pur côté client (aucun impact
+  // sur la donnée récupérée), utile pour prévisualiser la future version PDF
+  // légère (S4) sans repartir chercher le payload.
+  const [avecPhotos, setAvecPhotos] = useState(true)
 
   const { debut, fin } = mode === 'mois'
     ? moisVersPlage(monthOptions[moisIdx].year, monthOptions[moisIdx].month)
@@ -220,6 +224,21 @@ export default function RapportSyndicClient({ residenceId, residenceNom }: Props
               </div>
             </>
           )}
+
+          {/* Toggle avec/sans photos — purement d'affichage, aucun refetch */}
+          <label className="ml-auto flex items-center gap-2.5 cursor-pointer select-none">
+            <span className="text-sm font-medium text-slate-600">Avec photos</span>
+            <span className="relative inline-block w-10 h-6">
+              <input
+                type="checkbox"
+                checked={avecPhotos}
+                onChange={e => setAvecPhotos(e.target.checked)}
+                className="sr-only peer"
+              />
+              <span className="absolute inset-0 rounded-full bg-slate-200 peer-checked:bg-[#0BBFBF] transition-colors" />
+              <span className="absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4" />
+            </span>
+          </label>
         </div>
 
         {loading && (
@@ -301,18 +320,36 @@ export default function RapportSyndicClient({ residenceId, residenceNom }: Props
                       )) : <span className="text-sm text-slate-400">—</span>}
                     </div>
 
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Photos</p>
-                    {b.photos.length > 0 ? (
-                      <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 mb-4">
-                        {b.photos.map((p, i) => (
-                          <div key={i} className="aspect-square rounded-xl bg-slate-100 border border-slate-200 flex flex-col items-center justify-center gap-1 p-1">
-                            <ImageIcon className="w-5 h-5 text-slate-300" />
-                            <span className="text-[9px] text-slate-400 text-center leading-tight truncate w-full px-0.5">{p.zone_nom}</span>
+                    {avecPhotos && (
+                      <>
+                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Photos</p>
+                        {b.photos.length > 0 ? (
+                          <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 mb-4">
+                            {b.photos.map((p, i) => (
+                              p.signed_url ? (
+                                <a key={i} href={p.signed_url} target="_blank" rel="noopener noreferrer"
+                                  className="group block">
+                                  <div className="aspect-square rounded-xl overflow-hidden border border-slate-200 bg-slate-100">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={p.signed_url} alt={p.zone_nom}
+                                      className="w-full h-full object-cover group-hover:opacity-90 transition-opacity" />
+                                  </div>
+                                  <span className="block text-[9px] text-slate-400 text-center leading-tight truncate mt-1">{p.zone_nom}</span>
+                                </a>
+                              ) : (
+                                <div key={i}>
+                                  <div className="aspect-square rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center">
+                                    <ImageOff className="w-5 h-5 text-slate-300" />
+                                  </div>
+                                  <span className="block text-[9px] text-slate-400 text-center leading-tight truncate mt-1">{p.zone_nom}</span>
+                                </div>
+                              )
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-slate-400 mb-4">Aucune photo</p>
+                        ) : (
+                          <p className="text-sm text-slate-400 mb-4">Aucune photo</p>
+                        )}
+                      </>
                     )}
 
                     {b.taches_non_realisees.length > 0 && (

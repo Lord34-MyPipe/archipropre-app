@@ -192,15 +192,23 @@ function ScanPageInner() {
       return
     }
 
-    // 6. Démarrer si planifiée
-    if (inter.statut === 'planifiee') {
+    // 6. Démarrage GLOBAL : le chrono démarre UNE fois au scan, pour toute la
+    // résidence — jamais par bâtiment (sinon le 2e bâtiment hériterait du temps
+    // du 1er). On démarre donc TOUTES les interventions du jour encore
+    // 'planifiee' en une passe, avec le même heure_scan/geoloc (étape 9e, §7.3).
+    // Celles déjà 'en_cours' (rescan) ne sont pas retouchées, comme aujourd'hui.
+    // Mono-bâtiment : la liste ne contient qu'1 id → comportement identique à avant.
+    const idsADemarrer = (intersJour ?? [])
+      .filter(i => i.statut === 'planifiee')
+      .map(i => i.id)
+    if (idsADemarrer.length > 0) {
       setMessage('Démarrage de l\'intervention…')
       await supabase.from('interventions').update({
         statut:     'en_cours',
         heure_scan: new Date().toISOString(),
         geoloc_lat,
         geoloc_lng,
-      }).eq('id', inter.id)
+      }).in('id', idsADemarrer)
     }
 
     // 7. Zones de CE CONTRAT (toujours, premier scan ET rescan)

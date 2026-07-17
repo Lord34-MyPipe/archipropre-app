@@ -14,8 +14,9 @@ import { computeProrataZones, volumeHebdoMinutes, nbPassagesHebdo, type ProrataZ
 /* ── Constantes ──────────────────────────────── */
 
 const JOURS_ALL = ['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche']
+// 3 lettres partout (polish3) — puces lisibles au lieu de "L+V".
 const JOUR_COURTS: Record<string,string> = {
-  lundi:'L', mardi:'M', mercredi:'Me', jeudi:'J', vendredi:'V', samedi:'S', dimanche:'D',
+  lundi:'Lun', mardi:'Mar', mercredi:'Mer', jeudi:'Jeu', vendredi:'Ven', samedi:'Sam', dimanche:'Dim',
 }
 const JOUR_NOMS: Record<string,string> = {
   lundi:'Lundi', mardi:'Mardi', mercredi:'Mercredi', jeudi:'Jeudi',
@@ -54,6 +55,23 @@ function freqSummary(t: TacheTemplate): string {
       return t.heure_debut && t.heure_fin ? `${joursStr} ${t.heure_debut}→${t.heure_fin}` : joursStr
     default: return ''
   }
+}
+
+// Puces de jours lisibles (polish) : "Lun" "Ven"… triées Lun→Dim, dédupliquées.
+// Remplace la notation compacte "L+V". Réutilisé pour l'en-tête bâtiment et
+// sous chaque tâche (freqSummary).
+function JourPuces({ jours }: { jours: string[] }) {
+  const sorted = JOURS_ALL.filter(j => jours.includes(j))
+  if (!sorted.length) return null
+  return (
+    <span className="inline-flex items-center gap-1 flex-wrap">
+      {sorted.map(j => (
+        <span key={j} className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-semibold">
+          {JOUR_COURTS[j]}
+        </span>
+      ))}
+    </span>
+  )
 }
 
 /* ── Toast ───────────────────────────────────── */
@@ -593,7 +611,10 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
               const isMono = group.label === null
               const open   = isMono || expandedBatiments.has(group.key)
               const zoneIds = new Set(group.zones.map(z => z.id))
-              const groupeTacheIds = taches.filter(t => t.zone_id && zoneIds.has(t.zone_id)).map(t => t.id)
+              const groupeTaches = taches.filter(t => t.zone_id && zoneIds.has(t.zone_id))
+              const groupeTacheIds = groupeTaches.map(t => t.id)
+              // Union des jours_semaine de toutes les tâches du bâtiment (item 1).
+              const joursBatiment = [...new Set(groupeTaches.flatMap(t => t.jours_semaine ?? []))]
               return (
               <div key={group.key} className="space-y-3">
                 {group.label && (
@@ -607,6 +628,7 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
                     <span className="text-xs text-slate-400">
                       {group.zones.length} zone{group.zones.length > 1 ? 's' : ''} · {groupeTacheIds.length} tâche{groupeTacheIds.length > 1 ? 's' : ''}
                     </span>
+                    <JourPuces jours={joursBatiment} />
                     {groupeTacheIds.length > 0 && (
                       <button
                         onClick={(e) => { e.stopPropagation(); setJoursBulk({ label: group.label!, tacheIds: groupeTacheIds }) }}

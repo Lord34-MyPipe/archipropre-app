@@ -570,6 +570,9 @@ WHERE email LIKE '%@archipropre-services.com';
 ℹ️ v_charge_agent reste hardcodée sur la semaine courante (contournée sur
    /manager/charge par recalcul, mais la vue elle-même n'est pas corrigée — si
    d'autres écrans en dépendent pour une autre semaine, même problème).
+ℹ️ Dashboard manager : les cartes détail "scan manquant"/"rapport en retard"
+   (DashboardAlertes) restent par intervention/bâtiment (choix assumé). À
+   regrouper par mission si ça devient bruyant en multi-bâtiments.
 
 ## À faire Phase 1 (dans l'ordre)
 
@@ -1711,6 +1714,34 @@ témoin mono-bâtiment → résultat inchangé (non-régression) ; journée avec
 missions distinctes le même jour → chaque mission comptée séparément (239 +
 30 min) + trajet inter-missions recalculé correctement (14 min).
 
+## FINITIONS DASHBOARD MANAGER MULTI-BÂTIMENTS (17 juillet 2026)
+
+- **`8aab1a6`** : compteurs dashboard manager par MISSION (pas par
+  intervention/bâtiment). `groupMissions()` — clé `agent_id::(contrat_id ?? id)`,
+  même critère que 9g/9h/9j/journée agent. Les KPI `totalJour`/`scansEffectues`/
+  `rapportsRecus` + le bloc Équipe comptent désormais des missions. André = 1
+  mission PRIEURE → 1/1/1, plus 9. **Validé en prod** (capture dashboard : 1
+  intervention / 1 scan / 1 rapport, André "Terminé").
+  **DÉCOUVERTE :** le statut "Terminé" ne reconnaissait pas `'validee'`
+  (seulement `'terminee'`) → une mission validée RH retombait en "pas encore
+  scanné". Corrigé dans `statutMission()` : `'validee'` traité comme
+  `'terminee'`. C'était la cause réelle du bug "pas encore scanné" observé
+  après validation de journée.
+  **Hors scope volontaire :** les cartes détail "scan manquant"/"rapport en
+  retard" (`DashboardAlertes`) restent par intervention (savoir quel bâtiment
+  précis est en retard reste une info utile).
+
+- **`04a3467`** : alerte hors zone (scan > 200 m) enrichie. `metadata` JSONB
+  point-in-time (agent_id/nom, residence_id/nom, distance_m, date, heure) à la
+  création, même convention que `scan_hors_planning` (B6a). Message :
+  *"André Sabatier a scanné PRIEURE à 8913 m de la résidence le 17/07 à
+  16h47."* Code vérifié correct ; l'alerte de test qui paraissait non enrichie
+  était simplement antérieure au déploiement du fix (le fix ne réécrit pas les
+  alertes déjà émises). Alerte existante enrichie manuellement en base
+  (distance recalculée depuis `interventions.geoloc_lat/lng` déjà stocké) pour
+  vérification immédiate. Toute future alerte hors zone utilisera le format
+  enrichi automatiquement.
+
 ## Ordre de configuration (session Ana)
 
 Séquence obligatoire (l'étape ③ du wizard résidence dépend des agents existants) :
@@ -1804,6 +1835,18 @@ connexion) + **Item 6** (masqué de la liste agents). Suffisant — pas de suppr
 - **Donnée PAIE/RH : toujours recalculer côté serveur à la validation**, ne
   jamais faire confiance à un total envoyé par le client (garde-fou). Un bug
   d'affichage ne doit jamais pouvoir corrompre une donnée de paie persistée.
+- **RÈGLE GÉNÉRALE multi-bâtiments** (généralise le piège ci-dessus) : PARTOUT
+  où on compte/somme quelque chose lié aux interventions (compteurs, temps,
+  scans, rapports), regrouper D'ABORD par mission (`contrat_id ?? id`).
+  Compter par intervention = gonfler par le nombre de bâtiments. Appliqué :
+  journée agent (`bf6e47a`), dashboard agent (9j), dashboard manager (`8aab1a6`).
+- **Statuts : `'validee'` doit être traité comme `'terminee'` partout où on
+  teste « est-ce fini »** — la validation RH ne porte que sur des
+  interventions déjà terminées, donc `'validee'` est un sur-ensemble de
+  `'terminee'`, jamais un état distinct à exclure.
+- **Un fix d'alerte enrichie ne réécrit pas les alertes déjà émises**
+  (metadata point-in-time à la création) — toujours vérifier l'horodatage de
+  l'alerte vs. celui du déploiement avant de conclure à un bug de code.
 
 ## À faire Phase 3
 

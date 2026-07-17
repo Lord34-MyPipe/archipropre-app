@@ -61,6 +61,7 @@ function ScanPageInner() {
     let geoloc_lat: number | null = null
     let geoloc_lng: number | null = null
     let hors_zone = false
+    let distanceM: number | null = null
 
     try {
       setMessage('Capture de la position GPS…')
@@ -75,6 +76,7 @@ function ScanPageInner() {
 
       if (residence.lat && residence.lng) {
         const dist = distanceMetres(geoloc_lat, geoloc_lng, residence.lat, residence.lng)
+        distanceM = Math.round(dist)
         if (dist > 200) hors_zone = true
       }
     } catch {
@@ -284,13 +286,32 @@ function ScanPageInner() {
       }
     }
 
-    // Alerte hors zone (premier scan uniquement)
+    // Alerte hors zone (premier scan uniquement) — enrichie sur le modèle de
+    // scan_hors_planning (B6a) : agent/résidence/distance/date/heure stockés
+    // dans metadata à la création (point-in-time), pas de join au render.
     if (inter.statut === 'planifiee' && hors_zone && residence.manager_id) {
+      const nowHorsZone = new Date()
+      const heureFR = nowHorsZone.toLocaleTimeString('fr-FR', {
+        hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris',
+      }).replace(':', 'h')
+      const dateFR = new Date(today + 'T12:00:00').toLocaleDateString('fr-FR', {
+        day: '2-digit', month: '2-digit', timeZone: 'Europe/Paris',
+      })
+
       await supabase.from('alertes').insert({
         intervention_id: inter.id,
         type:            'hors_zone',
-        message:         `Agent hors zone au moment du scan (plus de 200 m de la résidence).`,
+        message:         `${agentNom} a scanné ${residence.nom} à ${distanceM ?? '?'} m de la résidence le ${dateFR} à ${heureFR}.`,
         destinataire_id: residence.manager_id,
+        metadata: {
+          agent_id:      user.id,
+          agent_nom:     agentNom,
+          residence_id:  residence.id,
+          residence_nom: residence.nom,
+          distance_m:    distanceM,
+          date:          today,
+          heure:         nowHorsZone.toISOString(),
+        },
       })
     }
 

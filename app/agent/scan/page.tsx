@@ -212,67 +212,75 @@ function ScanPageInner() {
       }).in('id', idsADemarrer)
     }
 
-    // 7. Zones de CE BÂTIMENT (toujours, premier scan ET rescan) — étape 9c, §7.3.
-    // inter.batiment = null (mono-bâtiment) → aucun filtre, toutes les zones du
-    // contrat comme avant (comportement identique par construction, pas de
-    // if/else séparé). inter.batiment renseigné → seulement les zones de CE
-    // bâtiment, ce qui évite que les tâches de tous les bâtiments atterrissent
-    // sur la même intervention et que les noms de zone homonymes fusionnent
-    // (zone_nom redevient unique par intervention, cf audit scan).
-    let zonesQuery = supabase.from('zones_residence').select('id, nom').eq('contrat_id', contrat.id)
-    if (inter.batiment) zonesQuery = zonesQuery.eq('batiment', inter.batiment)
-    const { data: zones } = await zonesQuery
+    // 7. Zones + tâches de CHAQUE BÂTIMENT de la mission du jour (toujours,
+    // premier scan ET rescan) — étape 9c, §7.3, étendu au fix "reconstruction
+    // multi-bâtiments" : cette logique tournait auparavant seulement sur
+    // inter = intersJour[0], laissant les autres bâtiments sans
+    // taches_intervention pour toujours (le 1er bâtiment restant en_cours
+    // jusqu'à la clôture groupée 9h, jamais délogé de la position [0]). Même
+    // logique exacte que pour un seul bâtiment, appliquée en boucle à toute la
+    // liste. jourInter.batiment = null (mono-bâtiment) → aucun filtre, toutes
+    // les zones du contrat comme avant. Mono-bâtiment : la liste ne contient
+    // qu'1 élément → 1 seule itération, comportement identique à avant.
+    const jourCourant = new Intl.DateTimeFormat('fr-FR', {
+      timeZone: 'Europe/Paris', weekday: 'long',
+    }).format(new Date())
 
-    const zoneMap: Record<string, string> = {}
-    const zoneIds: string[] = []
-    const zoneNoms = new Set<string>()
-    for (const z of zones ?? []) {
-      zoneMap[z.id] = z.nom
-      zoneIds.push(z.id)
-      zoneNoms.add(z.nom)
-    }
+    for (const jourInter of (intersJour ?? [])) {
+      // Zones de CE bâtiment — évite que les tâches de tous les bâtiments
+      // atterrissent sur la même intervention et que les noms de zone
+      // homonymes fusionnent (zone_nom redevient unique par intervention).
+      let zonesQuery = supabase.from('zones_residence').select('id, nom').eq('contrat_id', contrat.id)
+      if (jourInter.batiment) zonesQuery = zonesQuery.eq('batiment', jourInter.batiment)
+      const { data: zones } = await zonesQuery
 
-    // Détecter taches stale : zone_nom présente dans taches_intervention
-    // mais absente des zones de ce contrat (résidu d'un scan pré-B6a ou mauvais contrat)
-    let shouldRebuildTaches = inter.statut === 'planifiee'
-    if (!shouldRebuildTaches) {
-      const { data: existingTaches } = await supabase
-        .from('taches_intervention')
-        .select('zone_nom')
-        .eq('intervention_id', inter.id)
-      shouldRebuildTaches = (existingTaches ?? []).some(
-        t => t.zone_nom != null && !zoneNoms.has(t.zone_nom)
-      )
-    }
+      const zoneMap: Record<string, string> = {}
+      const zoneIds: string[] = []
+      const zoneNoms = new Set<string>()
+      for (const z of zones ?? []) {
+        zoneMap[z.id] = z.nom
+        zoneIds.push(z.id)
+        zoneNoms.add(z.nom)
+      }
 
-    if (shouldRebuildTaches) {
-      const jourCourant = new Intl.DateTimeFormat('fr-FR', {
-        timeZone: 'Europe/Paris', weekday: 'long',
-      }).format(new Date())
-
-      type TacheRaw = { id: string; libelle: string; jours_semaine: string[]; zone_id: string | null }
-      let tachesDuJour: TacheRaw[] = []
-      if (zoneIds.length > 0) {
-        const { data: taches } = await supabase
-          .from('taches_template')
-          .select('id, libelle, jours_semaine, zone_id')
-          .in('zone_id', zoneIds)
-          .order('ordre')
-        tachesDuJour = (taches as TacheRaw[] ?? []).filter(t =>
-          !t.jours_semaine?.length || t.jours_semaine.includes(jourCourant)
+      // Détecter taches stale : zone_nom présente dans taches_intervention
+      // mais absente des zones de ce bâtiment (résidu d'un scan pré-B6a ou mauvais contrat)
+      let shouldRebuildTaches = jourInter.statut === 'planifiee'
+      if (!shouldRebuildTaches) {
+        const { data: existingTaches } = await supabase
+          .from('taches_intervention')
+          .select('zone_nom')
+          .eq('intervention_id', jourInter.id)
+        shouldRebuildTaches = (existingTaches ?? []).some(
+          t => t.zone_nom != null && !zoneNoms.has(t.zone_nom)
         )
       }
 
-      await supabase.from('taches_intervention').delete().eq('intervention_id', inter.id)
-      if (tachesDuJour.length > 0) {
-        await supabase.from('taches_intervention').insert(
-          tachesDuJour.map(t => ({
-            intervention_id:   inter.id,
-            tache_template_id: t.id,
-            libelle:           t.libelle,
-            zone_nom:          t.zone_id ? (zoneMap[t.zone_id] ?? null) : null,
-          }))
-        )
+      if (shouldRebuildTaches) {
+        type TacheRaw = { id: string; libelle: string; jours_semaine: string[]; zone_id: string | null }
+        let tachesDuJour: TacheRaw[] = []
+        if (zoneIds.length > 0) {
+          const { data: taches } = await supabase
+            .from('taches_template')
+            .select('id, libelle, jours_semaine, zone_id')
+            .in('zone_id', zoneIds)
+            .order('ordre')
+          tachesDuJour = (taches as TacheRaw[] ?? []).filter(t =>
+            !t.jours_semaine?.length || t.jours_semaine.includes(jourCourant)
+          )
+        }
+
+        await supabase.from('taches_intervention').delete().eq('intervention_id', jourInter.id)
+        if (tachesDuJour.length > 0) {
+          await supabase.from('taches_intervention').insert(
+            tachesDuJour.map(t => ({
+              intervention_id:   jourInter.id,
+              tache_template_id: t.id,
+              libelle:           t.libelle,
+              zone_nom:          t.zone_id ? (zoneMap[t.zone_id] ?? null) : null,
+            }))
+          )
+        }
       }
     }
 

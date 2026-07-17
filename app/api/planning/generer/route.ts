@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase-server'
+import { computeProrataZones, volumeHebdoMinutes, nbPassagesHebdo, type ProrataZoneInput } from '@/lib/prorata'
 
 async function getManagerId(): Promise<string | null> {
   const supabase = await createClient()
@@ -51,6 +52,44 @@ function creneauPourJour(creneaux: Creneau[], jour: string): Creneau | null {
   return creneaux.find(c => c.jours.includes(jour)) ?? null
 }
 
+interface ZoneRow {
+  id: string
+  batiment: string | null
+  coef_duree: number
+  duree_minutes: number | null
+}
+
+/**
+ * Regroupe les zones du contrat par bâtiment (étape 8b-3, §5.2).
+ * Même logique et même tri que zoneGroups dans TachesClient.tsx, pour rester
+ * cohérent avec l'écran de config : mono-bâtiment (aucune étiquette) → un seul
+ * groupe { label: null } = comportement actuel inchangé.
+ */
+function groupZonesByBatiment(zones: ZoneRow[]): { label: string | null; zones: ZoneRow[] }[] {
+  const hasBatiment = zones.some(z => z.batiment && z.batiment.trim() !== '')
+  if (!hasBatiment) return [{ label: null, zones }]
+
+  const parBatiment = new Map<string, ZoneRow[]>()
+  const sansBatiment: ZoneRow[] = []
+  for (const z of zones) {
+    const b = z.batiment?.trim()
+    if (b) {
+      const arr = parBatiment.get(b) ?? []
+      arr.push(z)
+      parBatiment.set(b, arr)
+    } else {
+      sansBatiment.push(z)
+    }
+  }
+  const keys = [...parBatiment.keys()].sort((a, b) =>
+    a.localeCompare(b, 'fr', { numeric: true, sensitivity: 'base' }),
+  )
+  const groups: { label: string | null; zones: ZoneRow[] }[] =
+    keys.map(b => ({ label: b, zones: parBatiment.get(b)! }))
+  if (sansBatiment.length > 0) groups.push({ label: 'Sans bâtiment', zones: sansBatiment })
+  return groups
+}
+
 // POST — génère les interventions et les insère dans la table interventions
 // Body: { residenceId, contratId, dateDebut?, dateFin? }
 export async function POST(req: NextRequest) {
@@ -78,7 +117,7 @@ export async function POST(req: NextRequest) {
 
   // ── 2. Contrat explicite — plus de "guess" parties_communes le plus récent ──
   const { data: contrat } = await admin.from('contrats_residences')
-    .select('id, date_debut, date_fin, jours_obliges, jours_interdits, creneaux_acceptes, agent_prefere_id')
+    .select('id, date_debut, date_fin, jours_obliges, jours_interdits, creneaux_acceptes, agent_prefere_id, montant_mensuel, taux_horaire_facturation')
     .eq('id', contratId)
     .eq('residence_id', residenceId)
     .eq('actif', true)
@@ -117,9 +156,20 @@ export async function POST(req: NextRequest) {
   const dateDebut = bodyDebut ?? contrat.date_debut
   const dateFin   = bodyFin   ?? contrat.date_fin
 
+  // ── 2b. Volume horaire vendu — même formule que le compteur de contrôle 8b-2 ──
+  const { data: parametresSociete } = await admin
+    .from('parametres_societe')
+    .select('taux_horaire_facturation_defaut')
+    .limit(1)
+    .maybeSingle()
+
+  const tauxEffectif  = contrat.taux_horaire_facturation ?? parametresSociete?.taux_horaire_facturation_defaut ?? 25
+  const volumeHebdoMin = volumeHebdoMinutes(contrat.montant_mensuel ?? null, tauxEffectif)
+  console.log('[generer] volume hebdo vendu:', Math.round(volumeHebdoMin), 'min (taux effectif:', tauxEffectif, ')')
+
   // ── 3. Zones + tâches hebdomadaires du contrat ──────────────────────────────
   const { data: zonesContrat } = await admin.from('zones_residence')
-    .select('id').eq('contrat_id', contratId)
+    .select('id, batiment, coef_duree, duree_minutes').eq('contrat_id', contratId)
 
   const zoneIds = (zonesContrat ?? []).map((z: { id: string }) => z.id)
 
@@ -130,7 +180,7 @@ export async function POST(req: NextRequest) {
     )
 
   const { data: taches, error: tachesErr } = await admin.from('taches_template')
-    .select('id, libelle, jours_semaine, duree_minutes')
+    .select('id, libelle, zone_id, jours_semaine')
     .in('zone_id', zoneIds)
     .eq('frequence_type', 'hebdo')
 
@@ -172,14 +222,40 @@ export async function POST(req: NextRequest) {
     j => `${JOURS_FR[j] ?? j} ignoré (jour interdit par le contrat)`
   )
 
-  // Durée totale par jour (somme des duree_minutes des tâches actives ce jour)
-  const dureePourJour = new Map<string, number>()
-  for (const jour of joursActifs) {
-    const duree = taches
-      .filter(t => (t.jours_semaine ?? []).includes(jour))
-      .reduce((sum, t) => sum + (t.duree_minutes ?? 0), 0)
-    dureePourJour.set(jour, duree)
+  // ── 4b. Durée par zone (prorata pondéré, étape 8b-3 — §4) ──────────────────
+  // Même logique que le compteur de contrôle 8b-2 (TachesClient.tsx) : une
+  // zone avec duree_minutes saisie fournit sa durée hebdo explicite
+  // (durée d'UN passage × nb de passages) au prorata ; sinon repli sur le
+  // prorata pondéré (coef_duree). Remplace l'ancien calcul par somme des
+  // taches_template.duree_minutes (cassé : les templates créent les tâches
+  // à 0min, cf audit 8b-3).
+  const zoneTachesMap = new Map<string, { frequence_type: 'hebdo'; jours_semaine: string[] }[]>()
+  for (const t of taches) {
+    if (!t.zone_id) continue
+    const arr = zoneTachesMap.get(t.zone_id) ?? []
+    arr.push({ frequence_type: 'hebdo', jours_semaine: t.jours_semaine ?? [] })
+    zoneTachesMap.set(t.zone_id, arr)
   }
+
+  const prorataInputs: ProrataZoneInput[] = (zonesContrat ?? []).map(z => {
+    const zTaches     = zoneTachesMap.get(z.id) ?? []
+    const nbPassages  = nbPassagesHebdo(zTaches)
+    return {
+      id: z.id,
+      coefDuree: z.coef_duree ?? 1,
+      taches: zTaches,
+      dureeExpliciteHebdoMin: z.duree_minutes != null ? z.duree_minutes * nbPassages : null,
+    }
+  })
+  const prorataResults  = computeProrataZones(volumeHebdoMin, prorataInputs)
+  const prorataByZoneId = new Map(prorataResults.map(r => [r.zoneId, r]))
+  console.log('[generer] prorata zones:', prorataResults.map(
+    r => `${r.zoneId.slice(0, 8)}=${Math.round(r.dureePassageMin)}min×${r.nbPassages}(${r.source})`
+  ).join(', '))
+
+  // ── 4c. Regroupement par bâtiment (§5.2) — mono-bâtiment = un seul groupe ──
+  const zoneGroups = groupZonesByBatiment(zonesContrat ?? [])
+  console.log('[generer] bâtiments:', zoneGroups.map(g => g.label ?? '(mono-bâtiment)').join(', '))
 
   // ── 5. Génération des dates ──────────────────────────────────────────────────
   const start   = new Date(dateDebut + 'T00:00:00')
@@ -202,25 +278,48 @@ export async function POST(req: NextRequest) {
     const dayName = DAY_NAMES[current.getDay()]
     if (joursActifs.includes(dayName)) {
       const dateStr  = current.toISOString().split('T')[0]
-      const duree    = dureePourJour.get(dayName) ?? 0
       const creneau  = creneauPourJour(creneaux, dayName)
-      const hDebut   = creneau ? normalizeTime(creneau.heure_debut) ?? '08:00' : '08:00'
-      const hFinMax  = creneau ? normalizeTime(creneau.heure_fin)   ?? null    : null
-      const hFin     = duree > 0 ? addMinutes(hDebut, duree) : (hFinMax ?? addMinutes(hDebut, 60))
+      const hFinMax  = creneau ? normalizeTime(creneau.heure_fin) ?? null : null
 
-      if (hFinMax && hFin > hFinMax) {
-        console.warn(`[generer] ⚠️ ${dateStr} (${dayName}) : heure_fin=${hFin} > fin créneau=${hFinMax} (durée=${duree}min)`)
+      // Curseur horaire : enchaînement des bâtiments (§5.2) — le bâtiment N+1
+      // démarre à la fin du bâtiment N. Mono-bâtiment = un seul passage, curseur
+      // inchangé par rapport à avant.
+      let curseur = creneau ? normalizeTime(creneau.heure_debut) ?? '08:00' : '08:00'
+
+      for (const group of zoneGroups) {
+        const zonesActives = group.zones.filter(z =>
+          (zoneTachesMap.get(z.id) ?? []).some(t => t.jours_semaine.includes(dayName))
+        )
+        if (!zonesActives.length) continue // ce bâtiment n'a rien de planifié ce jour-là
+
+        const dureeBrute = zonesActives.reduce(
+          (sum, z) => sum + (prorataByZoneId.get(z.id)?.dureePassageMin ?? 0), 0
+        )
+        // Repli 60min si volume vendu absent (contrat sans montant) — évite une
+        // intervention de durée nulle ; n'utilise plus toute la fenêtre du
+        // créneau comme avant (incompatible avec l'enchaînement multi-bâtiment).
+        const duree  = dureeBrute > 0 ? Math.round(dureeBrute) : 60
+        const hDebut = curseur
+        const hFin   = addMinutes(hDebut, duree)
+
+        if (hFinMax && hFin > hFinMax) {
+          const label = group.label ?? 'résidence'
+          warnings.push(`${JOURS_FR[dayName] ?? dayName} — ${label} dépasse la fin du créneau (${hFin} > ${hFinMax})`)
+          console.warn(`[generer] ⚠️ ${dateStr} (${dayName}) bâtiment="${label}" : heure_fin=${hFin} > fin créneau=${hFinMax} (durée=${duree}min)`)
+        }
+
+        rows.push({
+          agent_id:           effectiveAgentId,
+          residence_id:       residenceId,
+          contrat_id:         contrat.id,
+          date_prevue:        dateStr,
+          heure_debut_prevue: hDebut,
+          heure_fin_prevue:   hFin,
+          statut:             'planifiee',
+        })
+
+        curseur = hFin // le bâtiment suivant démarre ici (trajet inter-bâtiments non modélisé, cf §5.2)
       }
-
-      rows.push({
-        agent_id:           effectiveAgentId,
-        residence_id:       residenceId,
-        contrat_id:         contrat.id,
-        date_prevue:        dateStr,
-        heure_debut_prevue: hDebut,
-        heure_fin_prevue:   hFin,
-        statut:             'planifiee',
-      })
     }
     current.setDate(current.getDate() + 1)
   }

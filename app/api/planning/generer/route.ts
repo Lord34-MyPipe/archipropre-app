@@ -284,6 +284,7 @@ export async function POST(req: NextRequest) {
     heure_debut_prevue: string
     heure_fin_prevue: string
     statut: string
+    batiment: string | null
   }
 
   const rows: InterventionRow[] = []
@@ -330,6 +331,7 @@ export async function POST(req: NextRequest) {
           heure_debut_prevue: hDebut,
           heure_fin_prevue:   hFin,
           statut:             'planifiee',
+          batiment:           group.label, // null = mono-bâtiment (étape 8b-4, §7.4)
         })
 
         curseur = hFin // le bâtiment suivant démarre ici (trajet inter-bâtiments non modélisé, cf §5.2)
@@ -390,6 +392,7 @@ export async function POST(req: NextRequest) {
     heureFin:   r.heure_fin_prevue,
     agentId:    r.agent_id,
     agentNom:   null,
+    batiment:   r.batiment,
     taches:     [],
     typePrincipal: 'hebdo',
   }))

@@ -21,6 +21,7 @@ export interface InterventionRow {
   agent_nom: string | null
   contrat_id: string | null
   contrat_libelle: string | null
+  batiment: string | null
 }
 
 export default async function PlanningPage({ params, searchParams }: Props) {
@@ -76,7 +77,7 @@ export default async function PlanningPage({ params, searchParams }: Props) {
 
   // Interventions — tous statuts pour l'agenda (pas seulement planifiée/en_cours)
   let interventionsQuery = admin.from('interventions')
-    .select('id, date_prevue, heure_debut_prevue, heure_fin_prevue, statut, agent_id, contrat_id')
+    .select('id, date_prevue, heure_debut_prevue, heure_fin_prevue, statut, agent_id, contrat_id, batiment')
     .eq('residence_id', id)
     .in('statut', ['planifiee', 'en_cours', 'terminee', 'validee', 'annulee', 'non_demarree'])
     .order('date_prevue', { ascending: true })
@@ -113,6 +114,7 @@ export default async function PlanningPage({ params, searchParams }: Props) {
     agent_nom:           agentMap.get(i.agent_id) ?? null,
     contrat_id:          i.contrat_id ?? null,
     contrat_libelle:     i.contrat_id ? (contratLabelMap.get(i.contrat_id) ?? null) : null,
+    batiment:            i.batiment ?? null,
   }))
 
   // Stats (pour l'en-tête)

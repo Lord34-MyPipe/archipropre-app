@@ -20,6 +20,7 @@ interface Intervention {
   agent_nom_str: string
   residence_nom: string
   contrat_libelle: string | null
+  batiment: string | null
 }
 
 interface AgentRow { id: string; nom: string; prenom: string; binome_agent_id?: string | null }
@@ -149,7 +150,7 @@ export default async function ManagerPlanning({ searchParams }: Props) {
     supabase.from('absences').select('agent_id,date_debut,date_fin,statut,motif')
       .in('agent_id', safeIds).lte('date_debut', finStr).gte('date_fin', debutStr),
     supabase.from('interventions')
-      .select('id,agent_id,residence_id,date_prevue,heure_debut_prevue,heure_fin_prevue,statut,residences(nom),contrats_residences(libelle)')
+      .select('id,agent_id,residence_id,date_prevue,heure_debut_prevue,heure_fin_prevue,statut,batiment,residences(nom),contrats_residences(libelle)')
       .in('agent_id', safeIds).gte('date_prevue', debutStr).lte('date_prevue', finStr)
       .neq('statut', 'annulee')
       .order('heure_debut_prevue'),
@@ -175,7 +176,7 @@ export default async function ManagerPlanning({ searchParams }: Props) {
   type IR = {
     id: string; agent_id: string; residence_id: string; date_prevue: string
     heure_debut_prevue: string | null; heure_fin_prevue: string | null
-    statut: string; residences?: { nom: string } | null
+    statut: string; batiment: string | null; residences?: { nom: string } | null
     contrats_residences?: { libelle: string | null } | null
   }
   const inters: Intervention[] = ((intersRaw as unknown as IR[]) ?? []).map(i => {
@@ -187,6 +188,7 @@ export default async function ManagerPlanning({ searchParams }: Props) {
       agent_prenom: a?.prenom ?? '?', agent_nom_str: a?.nom ?? '',
       residence_nom: i.residences?.nom ?? '—',
       contrat_libelle: i.contrats_residences?.libelle ?? null,
+      batiment: i.batiment ?? null,
     }
   })
 
@@ -465,8 +467,8 @@ function VueSemaine({ dates, inters, agents, congeKeys, congeMotifs, todayStr, h
                                   <Users className="w-2 h-2 absolute top-0.5 right-0.5 opacity-70" />
                                 )}
                                 <div className="truncate font-semibold pr-3">{i.residence_nom}</div>
-                                {i.contrat_libelle && (
-                                  <div className="truncate text-[9px] font-semibold opacity-80">{i.contrat_libelle}</div>
+                                {(i.batiment ?? i.contrat_libelle) && (
+                                  <div className="truncate text-[9px] font-semibold opacity-80">{i.batiment ?? i.contrat_libelle}</div>
                                 )}
                                 {i.heure_debut_prevue && (
                                   <div className="text-[9px] opacity-70 mt-0.5">

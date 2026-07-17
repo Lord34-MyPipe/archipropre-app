@@ -847,8 +847,8 @@ function InterventionBloc({
         <div className="font-semibold">
           {normalizeTime(inter.heure_debut_prevue)}–{normalizeTime(inter.heure_fin_prevue)}
         </div>
-        {inter.contrat_libelle && (
-          <div className="opacity-80 truncate">{inter.contrat_libelle}</div>
+        {(inter.batiment ?? inter.contrat_libelle) && (
+          <div className="opacity-80 truncate">{inter.batiment ?? inter.contrat_libelle}</div>
         )}
         <div className="opacity-70 truncate">{agentPrenom(inter.agent_nom)}</div>
       </button>

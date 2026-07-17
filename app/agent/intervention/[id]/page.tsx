@@ -25,6 +25,10 @@ export default function InterventionPage() {
   const [taches,         setTaches]         = useState<TacheIntervention[]>([])
   const [photosZone,     setPhotosZone]     = useState<Record<string, PhotoZoneItem[]>>({})
   const [loading,        setLoading]        = useState(true)
+  // Nb de bâtiments de la mission du jour (même résidence+contrat+date). >1 =
+  // cet écran fait partie d'un niveau 1 (/agent/mission/[contratId]) : la
+  // finalisation s'y trouve désormais (étape 9g), pas ici.
+  const [nbBatimentsMission, setNbBatimentsMission] = useState(1)
   const [uploadingZone,  setUploadingZone]  = useState<string | null>(null)
   const [confirming,     setConfirming]     = useState(false)
   const [finalizing,     setFinalizing]     = useState(false)
@@ -45,6 +49,24 @@ export default function InterventionPage() {
     ])
     setIntervention(inter as FullIntervention | null)
     setTaches(t ?? [])
+
+    // Combien de bâtiments (interventions) cette résidence/contrat a-t-elle
+    // aujourd'hui ? Même critère que l'écran niveau 1 (agent_id, contrat_id,
+    // date_prevue, statut != annulee) — détermine si le bouton de finalisation
+    // doit être ici (mono) ou sur /agent/mission/[contratId] (multi).
+    const interRow = inter as FullIntervention | null
+    if (interRow?.contrat_id) {
+      const { count } = await supabase
+        .from('interventions')
+        .select('id', { count: 'exact', head: true })
+        .eq('agent_id', interRow.agent_id)
+        .eq('contrat_id', interRow.contrat_id)
+        .eq('date_prevue', interRow.date_prevue)
+        .neq('statut', 'annulee')
+      setNbBatimentsMission(count ?? 1)
+    } else {
+      setNbBatimentsMission(1)
+    }
 
     const signedItems = await Promise.all(
       (pz ?? []).map(async p => {
@@ -250,7 +272,10 @@ export default function InterventionPage() {
 
   const zonesCompletes      = zones.filter(z => zoneComplete(z)).length
   const toutesZonesComplete = zones.length > 0 && zonesCompletes === zones.length
-  const peutFinaliser       = zones.length > 0 && zonesCompletes >= 1
+  // Mono-bâtiment uniquement (étape 9g) — pour une mission multi-bâtiments, la
+  // finalisation se fait depuis le niveau 1, jamais depuis un bâtiment seul.
+  const isMulti             = nbBatimentsMission > 1
+  const peutFinaliser        = !isMulti && zones.length > 0 && zonesCompletes >= 1
   const totalTaches         = taches.length
   const nbTraitees          = taches.filter(t => estTraitee(t)).length
   const progres             = totalTaches > 0 ? Math.round((nbTraitees / totalTaches) * 100) : 0

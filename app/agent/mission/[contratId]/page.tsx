@@ -24,11 +24,24 @@ interface MissionIntervention {
   residences: { nom: string } | null
 }
 
-const STATUT_CONFIG: Record<string, { label: string; bg: string; text: string; dot: string }> = {
-  planifiee: { label: 'À faire',  bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400' },
-  en_cours:  { label: 'En cours', bg: 'bg-amber-50',  text: 'text-amber-700', dot: 'bg-amber-400' },
-  terminee:  { label: 'Terminé',  bg: 'bg-green-50',  text: 'text-green-700', dot: 'bg-green-400' },
-  validee:   { label: 'Terminé',  bg: 'bg-green-50',  text: 'text-green-700', dot: 'bg-green-400' },
+// État par carte bâtiment (étape 9g) — dérivé des zones réellement validées
+// (règle zoneComplete de l'écran niveau 2), pas du seul statut brut de
+// l'intervention : tant que 9h n'existe pas, un bâtiment fini ses zones sans
+// jamais passer par statut='terminee' (le bouton de clôture a déménagé ici).
+type CardState = 'termine' | 'pret' | 'en_cours' | 'a_faire'
+
+const CARD_STATE_CONFIG: Record<CardState, { label: string; bg: string; text: string; dot: string }> = {
+  termine:  { label: 'Terminé',  bg: 'bg-green-50',  text: 'text-green-700', dot: 'bg-green-400' },
+  pret:     { label: 'Prêt',     bg: 'bg-green-50',  text: 'text-green-700', dot: 'bg-green-400' },
+  en_cours: { label: 'En cours', bg: 'bg-amber-50',  text: 'text-amber-700', dot: 'bg-amber-400' },
+  a_faire:  { label: 'À faire',  bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400' },
+}
+
+function cardState(statut: string, zonesTotal: number, zonesCompletes: number): CardState {
+  if (statut === 'terminee' || statut === 'validee') return 'termine'
+  if (zonesTotal > 0 && zonesCompletes === zonesTotal) return 'pret'
+  if (zonesCompletes > 0) return 'en_cours'
+  return 'a_faire'
 }
 
 export default async function MissionPage({ params }: Props) {
@@ -58,17 +71,44 @@ export default async function MissionPage({ params }: Props) {
   if (interventions.length === 0) redirect('/agent/dashboard')
   if (interventions.length === 1) redirect(`/agent/intervention/${interventions[0].id}`)
 
-  // Nb de zones par bâtiment — décompte simple pour l'instant (pas encore
-  // "X/N validées" : le scan n'est pas encore scopé par bâtiment, cf. audit
-  // 9c — un compteur de progression serait donc faux à ce stade. Raffiné en 9g.
-  const { data: zonesRaw } = await supabase
-    .from('zones_residence')
-    .select('batiment')
-    .eq('contrat_id', contratId)
-  const zonesParBatiment = new Map<string, number>()
-  for (const z of zonesRaw ?? []) {
-    const b = (z.batiment as string | null) ?? ''
-    zonesParBatiment.set(b, (zonesParBatiment.get(b) ?? 0) + 1)
+  // Zones réellement validées par bâtiment (étape 9g) — décompte EXACT à partir
+  // des tâches et photos de chaque intervention (chacune n'a que ses vraies
+  // zones depuis 9c), suivant la même règle zoneComplete que l'écran niveau 2 :
+  // zone complète = toutes ses tâches traitées + au moins une photo.
+  const ids = interventions.map(i => i.id)
+  const [{ data: tachesRaw }, { data: photosRaw }] = await Promise.all([
+    supabase.from('taches_intervention').select('intervention_id, zone_nom, statut_tache').in('intervention_id', ids),
+    supabase.from('photos_zone').select('intervention_id, zone_nom').in('intervention_id', ids),
+  ])
+
+  type ZoneAgg = { total: number; traitees: number; photo: boolean }
+  const zonesParIntervention = new Map<string, Map<string, ZoneAgg>>()
+  for (const t of tachesRaw ?? []) {
+    const interId = t.intervention_id as string
+    const zone = (t.zone_nom as string | null) ?? 'Général'
+    const map = zonesParIntervention.get(interId) ?? new Map<string, ZoneAgg>()
+    const agg = map.get(zone) ?? { total: 0, traitees: 0, photo: false }
+    agg.total += 1
+    if (t.statut_tache === 'realisee' || t.statut_tache === 'non_realisee') agg.traitees += 1
+    map.set(zone, agg)
+    zonesParIntervention.set(interId, map)
+  }
+  for (const p of photosRaw ?? []) {
+    const interId = p.intervention_id as string
+    const zone = (p.zone_nom as string | null) ?? 'Général'
+    const map = zonesParIntervention.get(interId)
+    const agg = map?.get(zone)
+    if (agg) agg.photo = true
+  }
+
+  function zonesStats(interId: string): { total: number; completes: number } {
+    const map = zonesParIntervention.get(interId)
+    if (!map) return { total: 0, completes: 0 }
+    let completes = 0
+    for (const agg of map.values()) {
+      if (agg.total > 0 && agg.traitees === agg.total && agg.photo) completes += 1
+    }
+    return { total: map.size, completes }
   }
 
   const residenceNom = interventions[0].residences?.nom ?? '—'
@@ -76,7 +116,17 @@ export default async function MissionPage({ params }: Props) {
   const heureScanLabel = heureScanIso
     ? new Date(heureScanIso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })
     : null
-  const tousTermines = interventions.every(i => i.statut === 'terminee' || i.statut === 'validee')
+
+  // État de chaque bâtiment + condition d'activation du CTA final (étape 9g) :
+  // actif seulement quand TOUS les bâtiments sont prêts (zones validées) ou déjà
+  // terminés.
+  const etats = interventions.map(inter => {
+    const { total, completes } = zonesStats(inter.id)
+    return { inter, total, completes, state: cardState(inter.statut, total, completes) }
+  })
+  const nbPrets    = etats.filter(e => e.state === 'pret' || e.state === 'termine').length
+  const tousPrets  = nbPrets === interventions.length
+  const tousTermines = etats.every(e => e.state === 'termine')
 
   return (
     <div className="min-h-screen bg-slate-50 pb-32">
@@ -96,9 +146,8 @@ export default async function MissionPage({ params }: Props) {
 
       {/* Cartes bâtiments */}
       <div className="px-5 py-5 space-y-3">
-        {interventions.map(inter => {
-          const statutCfg = STATUT_CONFIG[inter.statut] ?? STATUT_CONFIG.planifiee
-          const nbZones = zonesParBatiment.get(inter.batiment ?? '') ?? 0
+        {etats.map(({ inter, total, completes, state }) => {
+          const cfg = CARD_STATE_CONFIG[state]
           return (
             <Link key={inter.id} href={`/agent/intervention/${inter.id}`}>
               <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center gap-4 active:bg-slate-50 transition-colors">
@@ -108,14 +157,14 @@ export default async function MissionPage({ params }: Props) {
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-slate-800 truncate">{inter.batiment ?? 'Bâtiment'}</p>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    {nbZones} zone{nbZones > 1 ? 's' : ''}
+                    {completes}/{total} zone{total > 1 ? 's' : ''}
                     {inter.heure_debut_prevue ? ` · ${inter.heure_debut_prevue.slice(0, 5)}` : ''}
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-1.5 shrink-0">
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${statutCfg.bg} ${statutCfg.text}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${statutCfg.dot}`} />
-                    {statutCfg.label}
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${cfg.bg} ${cfg.text}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+                    {cfg.label}
                   </span>
                   <ChevronRight className="w-4 h-4 text-slate-300" />
                 </div>
@@ -125,17 +174,31 @@ export default async function MissionPage({ params }: Props) {
         })}
       </div>
 
-      {/* Bouton envoyer rapport — grisé pour l'instant (CTA final généralisé = étape 9g) */}
+      {/* Bouton envoyer rapport (étape 9g) — actif seulement quand tous les
+          bâtiments sont prêts. Route vers controle-final du 1er bâtiment pour
+          l'instant : la clôture groupée de TOUTES les interventions est 9h. */}
       <div className="fixed bottom-20 left-0 right-0 max-w-lg mx-auto px-5 z-20">
-        <button
-          disabled
-          title="Bientôt disponible"
-          className="w-full h-14 rounded-2xl text-white font-bold text-base shadow-xl flex items-center justify-center gap-2 cursor-not-allowed opacity-50"
-          style={{ background: 'linear-gradient(135deg,#059669,#10b981)' }}
-        >
-          <Send className="w-5 h-5" />
-          Envoyer le rapport
-        </button>
+        {tousPrets ? (
+          <Link href={`/agent/intervention/${interventions[0].id}/controle-final`}>
+            <button
+              className="w-full h-14 rounded-2xl text-white font-bold text-base shadow-xl flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
+              style={{ background: 'linear-gradient(135deg,#059669,#10b981)' }}
+            >
+              <Send className="w-5 h-5" />
+              Envoyer le rapport
+            </button>
+          </Link>
+        ) : (
+          <button
+            disabled
+            title="Terminez tous les bâtiments"
+            className="w-full h-14 rounded-2xl text-white font-bold text-base shadow-xl flex items-center justify-center gap-2 cursor-not-allowed opacity-50"
+            style={{ background: 'linear-gradient(135deg,#059669,#10b981)' }}
+          >
+            <Send className="w-5 h-5" />
+            {interventions.length - nbPrets} bâtiment{interventions.length - nbPrets > 1 ? 's' : ''} restant{interventions.length - nbPrets > 1 ? 's' : ''}
+          </button>
+        )}
       </div>
     </div>
   )

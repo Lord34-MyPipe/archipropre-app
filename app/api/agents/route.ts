@@ -85,19 +85,46 @@ export async function PATCH(req: NextRequest) {
   if (!manager) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
   const body = await req.json()
-  const { id, nom, prenom, telephone, adresse_domicile, vehicule, zones_geo, competences, contrat_heures_hebdo, disponibilites, actif,
+  const { id, nom, prenom, email, telephone, adresse_domicile, vehicule, zones_geo, competences, contrat_heures_hebdo, disponibilites, actif,
           mode_deplacement, secteur_libelle, seuil_cible_pct, binome_agent_id, facteur_binome, password } = body
   if (!id) return NextResponse.json({ error: 'id manquant' }, { status: 400 })
 
   const admin = await createAdminClient()
 
   // Vérifier que l'agent appartient à ce manager
-  const { data: agent } = await admin.from('profiles').select('manager_id, binome_agent_id').eq('id', id).single()
+  const { data: agent } = await admin.from('profiles').select('manager_id, binome_agent_id, email').eq('id', id).single()
   if (agent?.manager_id !== manager.id) {
     return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
   }
 
   const updates: Record<string, unknown> = {}
+
+  // Email : c'est l'identifiant de connexion (auth.users), profiles.email n'est
+  // qu'un miroir. On ne touche à auth QUE si l'email a réellement changé, et on
+  // s'arrête immédiatement en cas d'échec pour ne jamais laisser les deux
+  // diverger (pas d'écriture profiles si l'écriture auth a échoué).
+  if (email !== undefined) {
+    const newEmail = String(email).trim().toLowerCase()
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!EMAIL_RE.test(newEmail)) {
+      return NextResponse.json({ error: "Format d'email invalide" }, { status: 400 })
+    }
+    const currentEmail = (agent?.email ?? '').toLowerCase()
+    if (newEmail !== currentEmail) {
+      const { error: emailErr } = await admin.auth.admin.updateUserById(id, { email: newEmail })
+      if (emailErr) {
+        console.error('[PATCH /api/agents] updateUserById(email) error:', JSON.stringify(emailErr, null, 2))
+        const dejaPris = emailErr.code === 'email_exists'
+          || /already.*registered|already.*exists|duplicate/i.test(emailErr.message ?? '')
+        return NextResponse.json(
+          { error: dejaPris ? 'Cet email est déjà utilisé par un autre compte.' : (emailErr.message || 'Erreur mise à jour email') },
+          { status: dejaPris ? 409 : 400 }
+        )
+      }
+      updates.email = newEmail
+    }
+  }
+
   if (nom !== undefined) updates.nom = nom
   if (prenom !== undefined) updates.prenom = prenom
   if (telephone !== undefined) updates.telephone = telephone || null

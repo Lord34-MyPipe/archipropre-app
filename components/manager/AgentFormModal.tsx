@@ -141,6 +141,12 @@ export default function AgentFormModal({ agent, agents = [], onClose, onSaved }:
     e.preventDefault()
     setError('')
 
+    const emailTrim = form.email.trim()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
+      setError("Format d'email invalide")
+      return
+    }
+
     if (isEdit && form.password && form.password.length < 6) {
       setError('Le mot de passe doit faire au moins 6 caractères')
       return
@@ -230,9 +236,14 @@ export default function AgentFormModal({ agent, agents = [], onClose, onSaved }:
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">Email *</label>
             <input required type="email" value={form.email} onChange={e => set('email', e.target.value)}
-              disabled={isEdit}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0BBFBF] focus:border-transparent transition disabled:bg-slate-50 disabled:text-slate-400"
+              autoComplete="email"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0BBFBF] focus:border-transparent transition"
               placeholder="marie.dupont@email.com"/>
+            {isEdit && (
+              <p className="text-xs text-slate-400 mt-1">
+                C&apos;est l&apos;identifiant de connexion de l&apos;agent — le modifier change son login.
+              </p>
+            )}
           </div>
 
           <div>

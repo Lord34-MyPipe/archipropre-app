@@ -41,7 +41,7 @@ export async function GET(_req: NextRequest, { params }: { params: Params }) {
 
   const [{ data: contrat }, { data: societeParams }] = await Promise.all([
     admin.from('contrats_residences')
-      .select('id, libelle, type_contrat, date_debut, date_fin, montant_mensuel, nb_interventions_mois, taux_horaire_facturation, creneaux_acceptes, jours_interdits, notes_specifiques, agent_prefere_id, actif')
+      .select('id, libelle, type_contrat, date_debut, date_fin, montant_mensuel, nb_interventions_mois, taux_horaire_facturation, creneaux_acceptes, jours_interdits, notes_specifiques, agent_prefere_id, actif, jours_ramassage_containers, dispatch_semaine')
       .eq('id', contratId)
       .single(),
     admin.from('parametres_societe')

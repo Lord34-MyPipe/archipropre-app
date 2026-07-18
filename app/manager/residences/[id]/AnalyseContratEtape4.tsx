@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { IdentiteContrat, Creneau, HorsPlanningIA } from './AnalyseContratWizard'
 import type { StructureSoumission } from './AnalyseContratEtape3'
+import { ORDRE_JOURS, type DispatchJour } from '@/lib/dispatchSemaine'
 
 const JOURS_LABELS: Record<string, string> = {
   lundi: 'Lun', mardi: 'Mar', mercredi: 'Mer',
@@ -29,6 +30,8 @@ interface Props {
   structure: StructureSoumission
   horsPlanningHebdo: HorsPlanningIA[]
   alertes: string[]
+  joursRamassageContainers: string[]
+  dispatchSemaine: DispatchJour[]
   onBack: () => void
   onClose: () => void
 }
@@ -41,7 +44,7 @@ interface CreationResult {
 
 export default function AnalyseContratEtape4({
   residenceId, identite, agentId, agentNom, creneaux, minutesHebdoReelles, plafondRentable, ecartRentable,
-  structure, horsPlanningHebdo, alertes, onBack, onClose,
+  structure, horsPlanningHebdo, alertes, joursRamassageContainers, dispatchSemaine, onBack, onClose,
 }: Props) {
   const router = useRouter()
   const [creating, setCreating]   = useState(false)
@@ -83,6 +86,8 @@ export default function AnalyseContratEtape4({
           creneaux_acceptes:     creneaux,
           minutes_hebdo_reelles: minutesHebdoReelles,
           structure,
+          jours_ramassage_containers: joursRamassageContainers.length > 0 ? joursRamassageContainers : undefined,
+          dispatch_semaine:           dispatchSemaine.length > 0 ? dispatchSemaine : undefined,
         }),
       })
       const json = await res.json()
@@ -191,6 +196,21 @@ export default function AnalyseContratEtape4({
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Structure</p>
         <p className="text-sm text-slate-700">{nbBatiments} bâtiment{nbBatiments !== 1 ? 's' : ''}, {nbZones} zone{nbZones !== 1 ? 's' : ''}</p>
       </div>
+
+      {/* Répartition semaine */}
+      {dispatchSemaine.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-1.5">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Répartition de la semaine</p>
+          {[...dispatchSemaine].sort((a, b) => ORDRE_JOURS.indexOf(a.jour) - ORDRE_JOURS.indexOf(b.jour)).map(j => (
+            <p key={j.jour} className="text-sm text-slate-700">
+              <span className="font-semibold">{JOURS_LABELS[j.jour] ?? j.jour}</span> :{' '}
+              {j.batiments_complets.join(', ') || '—'}
+              {j.tournees_transverses.length > 0 && ` + ${j.tournees_transverses.map(t => t.libelle).join(', ')}`}
+              {j.containers && ` · containers ${j.containers}`}
+            </p>
+          ))}
+        </div>
+      )}
 
       {/* Hors planning hebdo */}
       {horsPlanningHebdo.length > 0 && (

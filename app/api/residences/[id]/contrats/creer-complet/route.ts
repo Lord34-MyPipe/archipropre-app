@@ -38,6 +38,17 @@ interface BatimentStructure {
 interface StructureInput {
   batiments: BatimentStructure[]
 }
+interface TourneeTransverseInput {
+  libelle: string
+  zones: string[]
+}
+interface DispatchJourInput {
+  jour: string
+  batiments_complets: string[]
+  tournees_transverses: TourneeTransverseInput[]
+  containers: 'sortie' | 'rentree' | null
+  duree_totale_estimee_minutes: number
+}
 
 // ── Auth manager + ownership résidence (même pattern que resolveAndCheck des routes contrats) ──
 
@@ -77,12 +88,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const body = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Corps de requête invalide.' }, { status: 400 })
 
-  const { identite, agent_prefere_id, creneaux_acceptes, structure } = body as {
+  const { identite, agent_prefere_id, creneaux_acceptes, structure, jours_ramassage_containers, dispatch_semaine } = body as {
     identite?: IdentiteInput
     agent_prefere_id?: string | null
     creneaux_acceptes?: Creneau[]
     minutes_hebdo_reelles?: number // reçu mais non utilisé — recalculé côté serveur ci-dessous
     structure?: StructureInput
+    jours_ramassage_containers?: string[]
+    dispatch_semaine?: DispatchJourInput[]
   }
 
   // ── Validations ──────────────────────────────────────────────────────────
@@ -181,6 +194,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (errResidence) {
       console.error('[creer-complet] Échec sync residences.agent_prefere_id:', errResidence.message)
       return NextResponse.json({ error: 'Échec sync agent résidence: ' + errResidence.message }, { status: 400 })
+    }
+  }
+
+  // ── Répartition semaine (jours_ramassage_containers + dispatch_semaine) ──
+  // Colonnes ajoutées par la migration 032, hors périmètre de la RPC 031 —
+  // écrites ici via une UPDATE de suivi, seulement si fournies par le wizard.
+  if (jours_ramassage_containers !== undefined || dispatch_semaine !== undefined) {
+    const patch: Record<string, unknown> = {}
+    if (jours_ramassage_containers !== undefined) patch.jours_ramassage_containers = jours_ramassage_containers
+    if (dispatch_semaine !== undefined)           patch.dispatch_semaine = dispatch_semaine
+    const { error: errDispatch } = await admin.from('contrats_residences')
+      .update(patch)
+      .eq('id', result.contrat_id)
+    if (errDispatch) {
+      console.error('[creer-complet] Échec écriture répartition semaine:', errDispatch.message)
+      return NextResponse.json({ error: 'Contrat créé mais échec écriture répartition semaine: ' + errDispatch.message }, { status: 400 })
     }
   }
 

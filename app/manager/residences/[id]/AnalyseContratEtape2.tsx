@@ -7,6 +7,7 @@ interface Props {
   residenceId: string
   identite: IdentiteContrat
   planningActuel: { creneaux: Creneau[]; minutesHebdoReelles: number }
+  joursRamassageContainers: string[]
   texteContrat: string
   onTexteChange: (v: string) => void
   contraintesLibres: string
@@ -15,7 +16,7 @@ interface Props {
 }
 
 export default function AnalyseContratEtape2({
-  residenceId, identite, planningActuel, texteContrat, onTexteChange, contraintesLibres, onContraintesChange, onSuccess,
+  residenceId, identite, planningActuel, joursRamassageContainers, texteContrat, onTexteChange, contraintesLibres, onContraintesChange, onSuccess,
 }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState<string | null>(null)
@@ -46,6 +47,7 @@ export default function AnalyseContratEtape2({
             creneaux:     planningActuel.creneaux,
             minutesHebdo: planningActuel.minutesHebdoReelles,
           },
+          joursRamassageContainers: joursRamassageContainers.length > 0 ? joursRamassageContainers : undefined,
           texteContrat,
           contraintesLibres: contraintesLibres.trim() || undefined,
         }),

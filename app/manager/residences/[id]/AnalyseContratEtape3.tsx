@@ -1,7 +1,8 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
-import type { AnalyseIA, AnalyseTacheIA } from './AnalyseContratWizard'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { AnalyseIA, AnalyseTacheIA, Creneau } from './AnalyseContratWizard'
+import { ORDRE_JOURS, type DispatchJour } from '@/lib/dispatchSemaine'
 
 // ── Structure soumise à /api/residences/[id]/contrats/creer-complet (item 3) ──
 // Même forme que p_structure de la RPC creer_contrat_complet (migration 031) :
@@ -76,16 +77,19 @@ interface Props {
   analyse: AnalyseIA
   volumeHebdoMin: number
   joursOrganisationActuelle: string[]  // jours de l'organisation actuelle (étape 1) — défaut des jours en mode simplifié
+  creneaux: Creneau[]                  // pour la borne créneau par jour (R5)
+  joursRamassageContainers: string[]
   minutesHebdoReelles: number
   plafondRentable: number
   ecartRentable: number
   tauxCible: number
   onBack: () => void                              // "Relancer l'analyse" → retour étape 2 (texte conservé au niveau du wizard)
-  onContinue: (structure: StructureSoumission) => void  // "Continuer → Validation" → étape 4
+  onContinue: (structure: StructureSoumission, dispatch: DispatchJour[]) => void  // "Continuer → Validation" → étape 4
 }
 
 export default function AnalyseContratEtape3({
-  analyse, volumeHebdoMin, joursOrganisationActuelle, minutesHebdoReelles, plafondRentable, ecartRentable, tauxCible,
+  analyse, volumeHebdoMin, joursOrganisationActuelle, creneaux, joursRamassageContainers,
+  minutesHebdoReelles, plafondRentable, ecartRentable, tauxCible,
   onBack, onContinue,
 }: Props) {
   const idRef = useRef(0)
@@ -263,6 +267,128 @@ export default function AnalyseContratEtape3({
   }
 
   const nbZonesSimple = useMemo(() => batimentsSimple.reduce((s, b) => s + b.zones.length, 0), [batimentsSimple])
+
+  // ── Répartition semaine (chantier "Répartition semaine", item 3) ──────────
+  // Édition via selects uniquement (pas d'usine à gaz) : une liste d'assignation
+  // bâtiment→jour, une liste de tournées transverses avec leur propre jour, et
+  // un select containers par jour. Le tableau jour par jour en bas est un
+  // récapitulatif en LECTURE SEULE dérivé de ces trois listes.
+
+  interface AssignationBatiment { nom: string; jour: string }
+  interface TourneeLocale { id: string; libelle: string; zones: string[]; jour: string }
+
+  const joursTries = useMemo(
+    () => [...joursOrganisationActuelle].sort((a, b) => ORDRE_JOURS.indexOf(a) - ORDRE_JOURS.indexOf(b)),
+    [joursOrganisationActuelle],
+  )
+
+  const nomsBatimentsStructure = useMemo(
+    () => (modeDetaille ? batiments : batimentsSimple).map(b => b.nom.trim()).filter(Boolean),
+    [modeDetaille, batiments, batimentsSimple],
+  )
+
+  const [assignations, setAssignations] = useState<AssignationBatiment[]>(() => {
+    const out: AssignationBatiment[] = []
+    for (const j of analyse.dispatch_semaine) for (const nom of j.batiments_complets) out.push({ nom, jour: j.jour })
+    for (const nom of nomsBatimentsStructure) if (!out.some(a => a.nom === nom)) out.push({ nom, jour: '' })
+    return out
+  })
+  const [tournees, setTournees] = useState<TourneeLocale[]>(() =>
+    analyse.dispatch_semaine.flatMap(j => j.tournees_transverses.map(t => ({ id: nextId(), libelle: t.libelle, zones: t.zones, jour: j.jour }))),
+  )
+  const [containersParJour, setContainersParJour] = useState<Record<string, 'sortie' | 'rentree' | ''>>(() => {
+    const out: Record<string, 'sortie' | 'rentree' | ''> = {}
+    for (const j of analyse.dispatch_semaine) if (j.containers) out[j.jour] = j.containers
+    return out
+  })
+
+  // Auto-ajoute les bâtiments créés après coup (bouton "+ bâtiment") — pas de
+  // synchro sur renommage/suppression (limitation connue, cf commentaire lot 2).
+  useEffect(() => {
+    setAssignations(prev => {
+      const existants = new Set(prev.map(a => a.nom))
+      const manquants = nomsBatimentsStructure.filter(n => !existants.has(n))
+      return manquants.length ? [...prev, ...manquants.map(n => ({ nom: n, jour: '' }))] : prev
+    })
+  }, [nomsBatimentsStructure])
+
+  function setAssignationJour(nom: string, jour: string) {
+    // Collapse toujours vers une seule entrée par nom (auto-correction d'un
+    // éventuel doublon proposé par l'IA dès que l'utilisateur touche le select).
+    setAssignations(prev => [...prev.filter(a => a.nom !== nom), { nom, jour }])
+  }
+  function setTourneeJour(id: string, jour: string) {
+    setTournees(prev => prev.map(t => t.id === id ? { ...t, jour } : t))
+  }
+  function setTourneeLibelle(id: string, libelle: string) {
+    setTournees(prev => prev.map(t => t.id === id ? { ...t, libelle } : t))
+  }
+  function deleteTournee(id: string) {
+    setTournees(prev => prev.filter(t => t.id !== id))
+  }
+  function addTournee() {
+    setTournees(prev => [...prev, { id: nextId(), libelle: '', zones: [], jour: joursTries[0] ?? '' }])
+  }
+  function setContainersJour(jour: string, val: 'sortie' | 'rentree' | '') {
+    setContainersParJour(prev => ({ ...prev, [jour]: val }))
+  }
+
+  // Durées moyennes observées dans la proposition IA (bâtiment / tournée /
+  // containers) — sert uniquement d'estimation live pour le récap, la vraie
+  // durée par zone (prorata) reste calculée à la génération du planning (item 4).
+  const { dureeMoyBatiment, dureeMoyTournee, dureeContainers } = useMemo(() => {
+    let sumBat = 0, nBat = 0, sumTour = 0, nTour = 0, sumCont = 0, nCont = 0
+    for (const j of analyse.dispatch_semaine) {
+      const nbUnites = j.batiments_complets.length + j.tournees_transverses.length + (j.containers ? 1 : 0)
+      if (nbUnites === 0) continue
+      const part = j.duree_totale_estimee_minutes / nbUnites
+      sumBat += part * j.batiments_complets.length; nBat += j.batiments_complets.length
+      sumTour += part * j.tournees_transverses.length; nTour += j.tournees_transverses.length
+      if (j.containers) { sumCont += part; nCont++ }
+    }
+    return {
+      dureeMoyBatiment: nBat > 0 ? sumBat / nBat : 20,
+      dureeMoyTournee:  nTour > 0 ? sumTour / nTour : 10,
+      dureeContainers:  nCont > 0 ? sumCont / nCont : 5,
+    }
+  }, [analyse.dispatch_semaine])
+
+  function dureeJour(jour: string): number {
+    const nbBat = assignations.filter(a => a.jour === jour).length
+    const nbTour = tournees.filter(t => t.jour === jour).length
+    const hasContainers = !!containersParJour[jour]
+    return Math.round(nbBat * dureeMoyBatiment + nbTour * dureeMoyTournee + (hasContainers ? dureeContainers : 0))
+  }
+  function creneauMaxMinutes(jour: string): number | null {
+    const c = creneaux.find(c => c.jours.includes(jour))
+    if (!c) return null
+    const [h1, m1] = c.heure_debut.split(':').map(Number)
+    const [h2, m2] = c.heure_fin.split(':').map(Number)
+    return (h2 * 60 + m2) - (h1 * 60 + m1)
+  }
+
+  // Alertes R2 (bâtiment dans 2 jours ou 0 jour)
+  const nomsUniques = useMemo(() => [...new Set(assignations.map(a => a.nom))], [assignations])
+  const joursByNom = useMemo(() => {
+    const m = new Map<string, Set<string>>()
+    for (const a of assignations) {
+      if (!m.has(a.nom)) m.set(a.nom, new Set())
+      if (a.jour) m.get(a.nom)!.add(a.jour)
+    }
+    return m
+  }, [assignations])
+
+  function buildDispatch(): DispatchJour[] {
+    return joursTries
+      .map((jour): DispatchJour | null => {
+        const bats = assignations.filter(a => a.jour === jour).map(a => a.nom)
+        const tours = tournees.filter(t => t.jour === jour).map(t => ({ libelle: t.libelle || 'Tournée transverse', zones: t.zones }))
+        const containers = containersParJour[jour] || null
+        if (bats.length === 0 && tours.length === 0 && !containers) return null
+        return { jour, batiments_complets: bats, tournees_transverses: tours, containers, duree_totale_estimee_minutes: dureeJour(jour) }
+      })
+      .filter((x): x is DispatchJour => x !== null)
+  }
 
   // ── Construction de la structure soumise, selon le mode actif ──
 
@@ -546,6 +672,126 @@ export default function AnalyseContratEtape3({
           </>
         )}
 
+        {/* ── Répartition de la semaine (chantier "Répartition semaine") ── */}
+        <div className="border border-slate-200 rounded-2xl p-4 space-y-4">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Répartition de la semaine</p>
+
+          {/* Assignation des bâtiments */}
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-slate-500">Bâtiments — un jour complet par bâtiment</p>
+            {nomsUniques.length === 0 && <p className="text-xs text-slate-400 italic">Aucun bâtiment nommé pour l&apos;instant.</p>}
+            {nomsUniques.map(nom => {
+              const joursAssignes = [...(joursByNom.get(nom) ?? [])]
+              const warn = joursAssignes.length !== 1
+              const jourActuel = assignations.find(a => a.nom === nom)?.jour ?? ''
+              return (
+                <div key={nom} className="flex items-center gap-2">
+                  {warn && <span className="shrink-0 text-red-500" title="Bâtiment absent ou dupliqué sur plusieurs jours">⚠</span>}
+                  <span className={`flex-1 min-w-0 truncate text-sm ${warn ? 'text-red-600 font-medium' : 'text-slate-700'}`}>{nom}</span>
+                  <select
+                    value={jourActuel}
+                    onChange={e => setAssignationJour(nom, e.target.value)}
+                    className={`shrink-0 px-2 py-1.5 border rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-[#0BBFBF]/40 ${warn ? 'border-red-300' : 'border-slate-200'}`}
+                  >
+                    <option value="">— non assigné —</option>
+                    {joursTries.map(j => <option key={j} value={j}>{JOURS.find(x => x.value === j)?.label ?? j}</option>)}
+                  </select>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Tournées transverses */}
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-slate-500">Tournées transverses (ex. 2e passage halls)</p>
+            {tournees.map(t => (
+              <div key={t.id} className="flex items-center gap-2">
+                <input
+                  type="text" value={t.libelle} onChange={e => setTourneeLibelle(t.id, e.target.value)}
+                  placeholder="Libellé (ex. Halls Bât 5-8, 2e passage)"
+                  className="flex-1 min-w-0 px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#0BBFBF]/40"
+                />
+                <select
+                  value={t.jour} onChange={e => setTourneeJour(t.id, e.target.value)}
+                  className="shrink-0 px-2 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-[#0BBFBF]/40"
+                >
+                  <option value="">— non assigné —</option>
+                  {joursTries.map(j => <option key={j} value={j}>{JOURS.find(x => x.value === j)?.label ?? j}</option>)}
+                </select>
+                <button type="button" onClick={() => deleteTournee(t.id)}
+                  className="shrink-0 p-1 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors" aria-label="Supprimer la tournée">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                  </svg>
+                </button>
+              </div>
+            ))}
+            <button type="button" onClick={addTournee}
+              className="text-xs font-semibold text-[#0BBFBF] hover:text-[#0BBFBF]/80 transition-colors">
+              + tournée
+            </button>
+          </div>
+
+          {/* Containers par jour */}
+          {joursRamassageContainers.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-slate-500">Containers</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                {joursTries.map(j => (
+                  <div key={j} className="flex items-center gap-2">
+                    <span className="w-16 shrink-0 text-xs text-slate-500">{JOURS.find(x => x.value === j)?.label ?? j}</span>
+                    <select
+                      value={containersParJour[j] ?? ''}
+                      onChange={e => setContainersJour(j, e.target.value as 'sortie' | 'rentree' | '')}
+                      className="flex-1 px-2 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-[#0BBFBF]/40"
+                    >
+                      <option value="">—</option>
+                      <option value="sortie">Sortie</option>
+                      <option value="rentree">Rentrée</option>
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Récap jour par jour (lecture seule) */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-slate-400 uppercase tracking-wider">
+                  <th className="py-1.5 pr-2 font-semibold">Jour</th>
+                  <th className="py-1.5 pr-2 font-semibold">Bâtiments complets</th>
+                  <th className="py-1.5 pr-2 font-semibold">Tournées</th>
+                  <th className="py-1.5 pr-2 font-semibold">Containers</th>
+                  <th className="py-1.5 pr-2 font-semibold">Durée est.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {joursTries.map(j => {
+                  const bats = assignations.filter(a => a.jour === j).map(a => a.nom)
+                  const tours = tournees.filter(t => t.jour === j)
+                  const cont = containersParJour[j]
+                  const duree = dureeJour(j)
+                  const max = creneauMaxMinutes(j)
+                  const overflow = max !== null && duree > max
+                  return (
+                    <tr key={j} className="border-t border-slate-100 align-top">
+                      <td className="py-1.5 pr-2 font-medium text-slate-700 whitespace-nowrap">{JOURS.find(x => x.value === j)?.label ?? j}</td>
+                      <td className="py-1.5 pr-2 text-slate-600">{bats.join(', ') || '—'}</td>
+                      <td className="py-1.5 pr-2 text-slate-600">{tours.map(t => t.libelle || 'Tournée').join(', ') || '—'}</td>
+                      <td className="py-1.5 pr-2 text-slate-600">{cont === 'sortie' ? 'Sortie' : cont === 'rentree' ? 'Rentrée' : '—'}</td>
+                      <td className={`py-1.5 pr-2 whitespace-nowrap ${overflow ? 'text-red-600 font-semibold' : 'text-slate-600'}`}>
+                        {duree} min{overflow && ` ⚠ > ${max} min`}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         {/* ── Hors planning hebdo ── */}
         {analyse.hors_planning_hebdo.length > 0 && (
           <div className="border border-orange-200 bg-orange-50 rounded-2xl p-4 space-y-2">
@@ -587,7 +833,7 @@ export default function AnalyseContratEtape3({
             className="flex-1 border border-slate-200 rounded-xl py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
             Relancer l&apos;analyse
           </button>
-          <button type="button" onClick={() => onContinue(buildStructure())}
+          <button type="button" onClick={() => onContinue(buildStructure(), buildDispatch())}
             className="flex-1 rounded-xl py-2.5 text-sm font-semibold text-white transition-opacity"
             style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}>
             Continuer → Validation

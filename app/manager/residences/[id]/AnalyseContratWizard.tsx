@@ -2,9 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { heuresVenduesMois, volumeHebdoMinutes } from '@/lib/prorata'
+import { type DispatchJour } from '@/lib/dispatchSemaine'
 import AnalyseContratEtape2 from './AnalyseContratEtape2'
 import AnalyseContratEtape3, { type StructureSoumission } from './AnalyseContratEtape3'
 import AnalyseContratEtape4 from './AnalyseContratEtape4'
+
+export type { DispatchJour }
 
 // ── Types partagés avec AnalyseContratEtape2/AnalyseContratEtape3 (lot 1, étape 3) ──
 
@@ -70,6 +73,7 @@ export interface AnalyseIA {
   totaux: { minutes_hebdo_estimees: number; minutes_hebdo_vendues: number; verdict: 'ok' | 'depassement' | 'marge_confortable' }
   hors_planning_hebdo: HorsPlanningIA[]
   alertes: string[]
+  dispatch_semaine: DispatchJour[]
 }
 
 interface Props {
@@ -139,6 +143,8 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
   const [newJours, setNewJours]       = useState<string[]>([])
   const [newDebut, setNewDebut]       = useState('08:00')
   const [newFin, setNewFin]           = useState('12:00')
+  // Jours de ramassage containers (agglo) — chantier "Répartition semaine", optionnel.
+  const [joursRamassageContainers, setJoursRamassageContainers] = useState<string[]>([])
 
   // État étapes 2-4, conservé au niveau du wizard pour survivre à la navigation
   // entre étapes ("Relancer l'analyse" doit garder le texte saisi).
@@ -148,6 +154,7 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
   const [volumeHebdoMin, setVolumeHebdoMin]       = useState(0)
   const [analyseVersion, setAnalyseVersion]       = useState(0) // remonte l'étape 3 à neuf à chaque nouvelle analyse
   const [structureFinale, setStructureFinale]     = useState<StructureSoumission | null>(null)
+  const [dispatchFinal, setDispatchFinal]         = useState<DispatchJour[]>([])
 
   useEffect(() => {
     fetch('/api/agents')
@@ -166,6 +173,7 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
         libelle: string | null; type_contrat: string | null; date_debut: string; date_fin: string
         montant_mensuel: number | null; taux_horaire_facturation: number | null; tauxBase: number; tauxCible: number
         agent_prefere_id: string | null; creneaux_acceptes: Creneau[] | null
+        jours_ramassage_containers: string[] | null
       }) => {
         setIdentite({
           libelle:        d.libelle ?? '',
@@ -180,6 +188,7 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
         setTauxCible(d.tauxCible ?? 30)
         setAgentId(d.agent_prefere_id ?? '')
         setCreneaux(d.creneaux_acceptes ?? [])
+        setJoursRamassageContainers(d.jours_ramassage_containers ?? [])
       })
       .catch(() => setLoadErr('Impossible de charger le contrat existant.'))
       .finally(() => setLoadingContrat(false))
@@ -211,8 +220,9 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
     advance(3)
   }
 
-  function handleStructureContinue(structure: StructureSoumission) {
+  function handleStructureContinue(structure: StructureSoumission, dispatch: DispatchJour[]) {
     setStructureFinale(structure)
+    setDispatchFinal(dispatch)
     advance(4)
   }
 
@@ -486,6 +496,24 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
                   </div>
                 </div>
               )}
+
+              {/* Jours de ramassage containers (agglo) — chantier "Répartition semaine" */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                  Jours de ramassage containers (agglo) — laisser vide si non concerné
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {JOURS.map(j => (
+                    <button key={j} type="button"
+                      onClick={() => setJoursRamassageContainers(prev => toggleItem(j, prev))}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                        joursRamassageContainers.includes(j) ? 'bg-[#0A2E5A] text-white border-[#0A2E5A]' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                      }`}>
+                      {JOURS_LABELS[j]}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             {/* Actions */}
@@ -506,6 +534,7 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
             residenceId={residenceId}
             identite={identite}
             planningActuel={{ creneaux, minutesHebdoReelles }}
+            joursRamassageContainers={joursRamassageContainers}
             texteContrat={texteContrat}
             onTexteChange={setTexteContrat}
             contraintesLibres={contraintesLibres}
@@ -518,6 +547,8 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
             analyse={analyse}
             volumeHebdoMin={volumeHebdoMin}
             joursOrganisationActuelle={[...new Set(creneaux.flatMap(c => c.jours))]}
+            creneaux={creneaux}
+            joursRamassageContainers={joursRamassageContainers}
             minutesHebdoReelles={minutesHebdoReelles}
             plafondRentable={plafondRentable}
             ecartRentable={ecartRentable}
@@ -532,10 +563,12 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
             agentId={agentId}
             agentNom={(() => { const a = agents.find(a => a.id === agentId); return a ? `${a.prenom} ${a.nom}` : '' })()}
             creneaux={creneaux}
+            joursRamassageContainers={joursRamassageContainers}
             minutesHebdoReelles={minutesHebdoReelles}
             plafondRentable={plafondRentable}
             ecartRentable={ecartRentable}
             structure={structureFinale}
+            dispatchSemaine={dispatchFinal}
             horsPlanningHebdo={analyse?.hors_planning_hebdo ?? []}
             alertes={analyse?.alertes ?? []}
             onBack={() => advance(3)}

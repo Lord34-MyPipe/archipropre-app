@@ -152,4 +152,10 @@ BEGIN
 END;
 $function$;
 
+-- PostgreSQL accorde EXECUTE à PUBLIC par défaut à la création d'une fonction
+-- (donc à anon/authenticated via héritage) — inacceptable pour une fonction
+-- SECURITY DEFINER qui écrit sans vérification d'ownership interne (celle-ci
+-- est assurée côté route Next.js, pas ici). REVOKE explicite avant le GRANT
+-- ciblé, pour que service_role reste seul appelant possible.
+REVOKE EXECUTE ON FUNCTION public.creer_contrat_complet(uuid, jsonb, jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.creer_contrat_complet(uuid, jsonb, jsonb) TO service_role;

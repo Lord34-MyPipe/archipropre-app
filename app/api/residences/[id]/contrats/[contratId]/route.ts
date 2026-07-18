@@ -75,6 +75,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
     agent_prefere_id, taux_horaire_facturation,
     creneaux_acceptes, jours_interdits, notes_specifiques,
     actif,
+    jours_ramassage_containers, dispatch_semaine,
   } = body
 
   // Validations
@@ -110,6 +111,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
   if (jours_interdits !== undefined)          patch.jours_interdits = jours_interdits
   if (notes_specifiques !== undefined)        patch.notes_specifiques = notes_specifiques
   if (actif !== undefined)                    patch.actif = actif
+  // Répartition semaine (chantier "Répartition semaine", item 5) — édition
+  // légère sur un contrat existant, sans toucher zones/tâches.
+  if (jours_ramassage_containers !== undefined) patch.jours_ramassage_containers = jours_ramassage_containers
+  if (dispatch_semaine !== undefined)           patch.dispatch_semaine = dispatch_semaine
 
   // ── Activation automatique à la COMPLÉTION initiale d'un placeholder ──────────
   // Si le contrat était un placeholder INACTIF et INCOMPLET (jamais mis en service :

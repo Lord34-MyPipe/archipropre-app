@@ -34,9 +34,23 @@ export default async function ContratDetailPage({ params }: Props) {
 
   // Le contrat appartient bien à cette résidence
   const { data: c } = await admin.from('contrats_residences')
-    .select('id, libelle, type_contrat, date_debut, date_fin, montant_mensuel, nb_interventions_mois, taux_horaire_facturation, creneaux_acceptes, agent_prefere_id, actif')
+    .select('id, libelle, type_contrat, date_debut, date_fin, montant_mensuel, nb_interventions_mois, taux_horaire_facturation, creneaux_acceptes, agent_prefere_id, actif, jours_ramassage_containers, dispatch_semaine')
     .eq('id', contratId).eq('residence_id', id).single()
   if (!c) redirect(`/manager/residences/${id}`)
+
+  // Bâtiments/zones existants (lecture seule) — pour le panneau "Répartition semaine" (item 5)
+  const { data: zonesContrat } = await admin.from('zones_residence')
+    .select('nom, batiment').eq('contrat_id', contratId)
+  const parBatiment = new Map<string, string[]>()
+  for (const z of zonesContrat ?? []) {
+    const nomBatiment = z.batiment?.trim() || '(mono-bâtiment)'
+    const arr = parBatiment.get(nomBatiment) ?? []
+    if (z.nom?.trim()) arr.push(z.nom.trim())
+    parBatiment.set(nomBatiment, arr)
+  }
+  const batimentsContrat = [...parBatiment.entries()]
+    .sort(([a], [b]) => a.localeCompare(b, 'fr', { numeric: true, sensitivity: 'base' }))
+    .map(([nom, zones]) => ({ nom, zones }))
 
   const todayStr = new Intl.DateTimeFormat('fr-CA', {
     timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -81,6 +95,10 @@ export default async function ContratDetailPage({ params }: Props) {
         tauxHoraire={c.taux_horaire_facturation}
         nbCreneaux={creneaux.length}
         agentNom={agentNom}
+        creneaux={creneaux}
+        joursRamassageContainers={c.jours_ramassage_containers ?? []}
+        dispatchSemaine={c.dispatch_semaine ?? []}
+        batimentsContrat={batimentsContrat}
       />
     </div>
   )

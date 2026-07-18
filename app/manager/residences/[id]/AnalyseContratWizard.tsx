@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { heuresVenduesMois, volumeHebdoMinutes } from '@/lib/prorata'
+import AnalyseContratEtape2 from './AnalyseContratEtape2'
+import AnalyseContratEtape3 from './AnalyseContratEtape3'
 
 // ── Types partagés avec AnalyseContratEtape2/AnalyseContratEtape3 (lot 1, étape 3) ──
 
@@ -94,6 +96,14 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
   const [loadErr, setLoadErr]               = useState<string | null>(null)
   const [identite, setIdentite]             = useState<IdentiteContrat>(defaultIdentite())
 
+  // État étapes 2-3, conservé au niveau du wizard pour survivre à la navigation
+  // entre étapes ("Relancer l'analyse" doit garder le texte saisi).
+  const [texteContrat, setTexteContrat]           = useState('')
+  const [contraintesLibres, setContraintesLibres] = useState('')
+  const [analyse, setAnalyse]                     = useState<AnalyseIA | null>(null)
+  const [volumeHebdoMin, setVolumeHebdoMin]       = useState(0)
+  const [analyseVersion, setAnalyseVersion]       = useState(0) // remonte l'étape 3 à neuf à chaque nouvelle analyse
+
   // Pré-remplissage lecture seule depuis un contrat existant (entrée "Analyser / restructurer").
   // Réutilise la route GET existante (GestionContratModal) — aucune nouvelle route de lecture.
   useEffect(() => {
@@ -126,6 +136,13 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
   function advance(n: Step) {
     setStep(n)
     setMaxStepReached(m => (n > m ? n : m))
+  }
+
+  function handleAnalyseSuccess(result: AnalyseIA, volume: number) {
+    setAnalyse(result)
+    setVolumeHebdoMin(volume)
+    setAnalyseVersion(v => v + 1)
+    advance(3)
   }
 
   // ── Calcul enveloppe live (étape 1) — mêmes formules que lib/prorata (charge + planning) ──
@@ -299,14 +316,24 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
             </div>
           </div>
         ) : step === 2 ? (
-          <div className="max-w-2xl mx-auto p-4 md:p-8">
-            <p className="text-sm text-slate-400 italic">Étape 2 (analyse IA) — à venir dans ce même lot.</p>
-          </div>
-        ) : step === 3 ? (
-          <div className="max-w-2xl mx-auto p-4 md:p-8">
-            <p className="text-sm text-slate-400 italic">Étape 3 (proposition éditable) — à venir dans ce même lot.</p>
-          </div>
-        ) : (
+          <AnalyseContratEtape2
+            residenceId={residenceId}
+            identite={identite}
+            texteContrat={texteContrat}
+            onTexteChange={setTexteContrat}
+            contraintesLibres={contraintesLibres}
+            onContraintesChange={setContraintesLibres}
+            onSuccess={handleAnalyseSuccess}
+          />
+        ) : step === 3 && analyse ? (
+          <AnalyseContratEtape3
+            key={analyseVersion}
+            analyse={analyse}
+            volumeHebdoMin={volumeHebdoMin}
+            onBack={() => advance(2)}
+            onContinue={() => advance(4)}
+          />
+        ) : step === 4 ? (
           <div className="max-w-lg mx-auto p-8 text-center space-y-4">
             <h3 className="text-lg font-bold text-slate-800">Validation</h3>
             <p className="text-sm text-slate-500">Bientôt disponible — lot 2.</p>
@@ -315,7 +342,7 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
               Créer le contrat
             </button>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   )

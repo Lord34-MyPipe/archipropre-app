@@ -95,6 +95,9 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
   const [loadingContrat, setLoadingContrat] = useState(!!contratId)
   const [loadErr, setLoadErr]               = useState<string | null>(null)
   const [identite, setIdentite]             = useState<IdentiteContrat>(defaultIdentite())
+  // Taux commercial cible (item 3 — indicateur d'écart) : jamais utilisé pour la facturation
+  // ni pour le calcul de l'enveloppe transmise à l'analyse IA.
+  const [tauxCible, setTauxCible]           = useState<number>(30)
 
   // État étapes 2-3, conservé au niveau du wizard pour survivre à la navigation
   // entre étapes ("Relancer l'analyse" doit garder le texte saisi).
@@ -105,14 +108,14 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
   const [analyseVersion, setAnalyseVersion]       = useState(0) // remonte l'étape 3 à neuf à chaque nouvelle analyse
 
   // Pré-remplissage lecture seule depuis un contrat existant (entrée "Analyser / restructurer").
-  // Réutilise la route GET existante (GestionContratModal) — aucune nouvelle route de lecture.
+  // Réutilise la route GET existante (GestionContratModal), qui renvoie aussi tauxCible (item 3).
   useEffect(() => {
     if (!contratId) { setLoadingContrat(false); return }
     fetch(`/api/residences/${residenceId}/contrats/${contratId}`)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then((d: {
         libelle: string | null; type_contrat: string | null; date_debut: string; date_fin: string
-        montant_mensuel: number | null; taux_horaire_facturation: number | null; tauxBase: number
+        montant_mensuel: number | null; taux_horaire_facturation: number | null; tauxBase: number; tauxCible: number
       }) => {
         setIdentite({
           libelle:        d.libelle ?? '',
@@ -124,10 +127,21 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
           tauxSpecifique: d.taux_horaire_facturation != null ? String(d.taux_horaire_facturation) : '',
           tauxBase:       d.tauxBase ?? 25,
         })
+        setTauxCible(d.tauxCible ?? 30)
       })
       .catch(() => setLoadErr('Impossible de charger le contrat existant.'))
       .finally(() => setLoadingContrat(false))
   }, [contratId, residenceId])
+
+  // Nouveau contrat (pas de contratId) : le taux cible vient quand même de
+  // parametres_societe, via la route manager dédiée (item 3).
+  useEffect(() => {
+    if (contratId) return
+    fetch('/api/parametres-societe')
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then((d: { tauxBase: number; tauxCible: number }) => setTauxCible(d.tauxCible ?? 30))
+      .catch(() => {/* repli sur le défaut 30 déjà en state */})
+  }, [contratId])
 
   function goTo(n: Step) {
     if (n > maxStepReached) return
@@ -152,6 +166,11 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
   const tauxEffectif  = identite.tauxMode === 'base' ? identite.tauxBase : (parseFloat(identite.tauxSpecifique) || 0)
   const heuresMois    = heuresVenduesMois(montantNum, tauxEffectif)
   const minutesHebdo  = volumeHebdoMinutes(montantNum, tauxEffectif)
+
+  // ── Indicateur d'écart au taux cible (item 3 — n'affecte ni l'enveloppe transmise à l'IA ni la facturation) ──
+  const heuresCible  = montantNum > 0 && tauxCible > 0 ? montantNum / tauxCible : null
+  const ecartHeures  = montantSaisi && heuresCible !== null ? heuresMois - heuresCible : null
+  const ecartOk      = tauxEffectif >= tauxCible
 
   const peutContinuerEtape1 = identite.libelle.trim().length > 0 && !loadingContrat
 
@@ -299,6 +318,12 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
                   <span className="text-xl font-bold text-blue-700">{Math.round(minutesHebdo)} min</span>
                   <span className="text-sm text-blue-500">/ semaine</span>
                 </div>
+                {heuresCible !== null && ecartHeures !== null && (
+                  <p className={`text-xs mt-1.5 pt-1.5 border-t ${ecartOk ? 'text-green-600 border-green-100' : 'text-amber-600 border-amber-100'}`}>
+                    Au taux cible ({tauxCible} €/h) : <span className="font-semibold">{heuresCible.toFixed(1)} h</span>/mois
+                    {' '}(écart {ecartHeures >= 0 ? '+' : ''}{ecartHeures.toFixed(1)})
+                  </p>
+                )}
               </div>
             ) : null}
 

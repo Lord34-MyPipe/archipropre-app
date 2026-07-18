@@ -45,7 +45,7 @@ export async function GET(_req: NextRequest, { params }: { params: Params }) {
       .eq('id', contratId)
       .single(),
     admin.from('parametres_societe')
-      .select('taux_horaire_facturation_defaut')
+      .select('taux_horaire_facturation_defaut, taux_horaire_cible')
       .limit(1)
       .maybeSingle(),
   ])
@@ -54,7 +54,9 @@ export async function GET(_req: NextRequest, { params }: { params: Params }) {
 
   return NextResponse.json({
     ...contrat,
-    tauxBase: societeParams?.taux_horaire_facturation_defaut ?? 25,
+    tauxBase:  societeParams?.taux_horaire_facturation_defaut ?? 25,
+    // Taux commercial cible (item 3 — indicateur d'écart) : jamais utilisé pour la facturation.
+    tauxCible: societeParams?.taux_horaire_cible ?? 30,
   })
 }
 

@@ -31,6 +31,7 @@ interface ContratDetail {
   agent_prefere_id: string | null
   actif: boolean
   tauxBase: number
+  tauxCible: number
 }
 
 interface Creneau {
@@ -97,6 +98,7 @@ export default function GestionContratModal({ residenceId, contrat, onClose, onS
   const [tauxMode,             setTauxMode]            = useState<'base' | 'specifique'>('base')
   const [tauxSpecifique,       setTauxSpecifique]      = useState('')
   const [tauxBase,             setTauxBase]            = useState<number>(25)
+  const [tauxCible,            setTauxCible]           = useState<number>(30)
   const [creneaux,             setCreneaux]            = useState<Creneau[]>([])
   const [joursInterdits,       setJoursInterdits]      = useState<string[]>([])
   const [notes,                setNotes]               = useState('')
@@ -139,6 +141,7 @@ export default function GestionContratModal({ residenceId, contrat, onClose, onS
       setJoursInterdits(d.jours_interdits ?? [])
       setNotes(d.notes_specifiques ?? '')
       setTauxBase(d.tauxBase)
+      setTauxCible(d.tauxCible)
       if (d.taux_horaire_facturation != null) {
         setTauxMode('specifique')
         setTauxSpecifique(String(d.taux_horaire_facturation))
@@ -157,6 +160,11 @@ export default function GestionContratModal({ residenceId, contrat, onClose, onS
   const heuresPassage = heuresMois !== null && nbInterventions > 0
     ? Math.round((heuresMois / nbInterventions) * 10) / 10
     : null
+
+  // ── Indicateur d'écart au taux cible (item 3 — n'affecte ni facturation ni rentabilité) ──
+  const heuresCible = montantNum > 0 && tauxCible > 0 ? montantNum / tauxCible : null
+  const ecartHeures = heuresMois !== null && heuresCible !== null ? heuresMois - heuresCible : null
+  const ecartOk     = tauxEffectif >= tauxCible
 
   // ── Actions créneaux ────────────────────────────────────────────────────────
 
@@ -412,6 +420,12 @@ export default function GestionContratModal({ residenceId, contrat, onClose, onS
                     <p className="text-xs text-blue-500 mt-0.5">
                       soit <span className="font-semibold">{heuresPassage} h</span> par passage
                       {' '}({nbInterventions} interv. × {tauxEffectif} €/h)
+                    </p>
+                  )}
+                  {heuresCible !== null && ecartHeures !== null && (
+                    <p className={`text-xs mt-1.5 pt-1.5 border-t ${ecartOk ? 'text-green-600 border-green-100' : 'text-amber-600 border-amber-100'}`}>
+                      Au taux cible ({tauxCible} €/h) : <span className="font-semibold">{heuresCible.toFixed(1)} h</span>/mois
+                      {' '}(écart {ecartHeures >= 0 ? '+' : ''}{ecartHeures.toFixed(1)})
                     </p>
                   )}
                 </div>

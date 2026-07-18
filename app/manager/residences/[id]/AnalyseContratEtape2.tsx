@@ -1,11 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import type { IdentiteContrat, AnalyseIA } from './AnalyseContratWizard'
+import type { IdentiteContrat, AnalyseIA, Creneau } from './AnalyseContratWizard'
 
 interface Props {
   residenceId: string
   identite: IdentiteContrat
+  planningActuel: { creneaux: Creneau[]; minutesHebdoReelles: number }
   texteContrat: string
   onTexteChange: (v: string) => void
   contraintesLibres: string
@@ -14,7 +15,7 @@ interface Props {
 }
 
 export default function AnalyseContratEtape2({
-  residenceId, identite, texteContrat, onTexteChange, contraintesLibres, onContraintesChange, onSuccess,
+  residenceId, identite, planningActuel, texteContrat, onTexteChange, contraintesLibres, onContraintesChange, onSuccess,
 }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState<string | null>(null)
@@ -39,6 +40,11 @@ export default function AnalyseContratEtape2({
             taux_mode:       identite.tauxMode,
             taux_specifique: identite.tauxSpecifique ? parseFloat(identite.tauxSpecifique) : null,
             taux_base:       identite.tauxBase,
+          },
+          planningActuel: {
+            jours:        [...new Set(planningActuel.creneaux.flatMap(c => c.jours))],
+            creneaux:     planningActuel.creneaux,
+            minutesHebdo: planningActuel.minutesHebdoReelles,
           },
           texteContrat,
           contraintesLibres: contraintesLibres.trim() || undefined,

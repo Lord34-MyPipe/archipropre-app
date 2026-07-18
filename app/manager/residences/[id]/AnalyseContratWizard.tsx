@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import { heuresVenduesMois, volumeHebdoMinutes } from '@/lib/prorata'
 import AnalyseContratEtape2 from './AnalyseContratEtape2'
-import AnalyseContratEtape3 from './AnalyseContratEtape3'
+import AnalyseContratEtape3, { type StructureSoumission } from './AnalyseContratEtape3'
+import AnalyseContratEtape4 from './AnalyseContratEtape4'
 
 // ── Types partagés avec AnalyseContratEtape2/AnalyseContratEtape3 (lot 1, étape 3) ──
 
@@ -16,6 +17,19 @@ export interface IdentiteContrat {
   tauxMode: 'base' | 'specifique'
   tauxSpecifique: string
   tauxBase: number
+}
+
+// ── Organisation actuelle (lot 2, principe 1) — devient creneaux_acceptes ──
+
+export interface Creneau {
+  jours: string[]
+  heure_debut: string
+  heure_fin: string
+}
+export interface Agent {
+  id: string
+  prenom: string
+  nom: string
 }
 
 export interface AnalyseTacheIA {
@@ -72,6 +86,24 @@ const VALID_TYPES = [
   { value: 'espaces_verts',    label: 'Espaces verts' },
 ]
 
+const JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'] as const
+const JOURS_LABELS: Record<string, string> = {
+  lundi: 'Lun', mardi: 'Mar', mercredi: 'Mer',
+  jeudi: 'Jeu', vendredi: 'Ven', samedi: 'Sam', dimanche: 'Dim',
+}
+
+function toggleItem(item: string, list: string[]): string[] {
+  return list.includes(item) ? list.filter(j => j !== item) : [...list, item]
+}
+function formatCreneau(c: Creneau): string {
+  return `${c.jours.map(j => JOURS_LABELS[j] ?? j).join(', ')} · ${c.heure_debut} – ${c.heure_fin}`
+}
+function dureeCreneauMinutes(c: Creneau): number {
+  const [h1, m1] = c.heure_debut.split(':').map(Number)
+  const [h2, m2] = c.heure_fin.split(':').map(Number)
+  return Math.max(0, (h2 * 60 + m2) - (h1 * 60 + m1))
+}
+
 const STEPS: { n: Step; label: string }[] = [
   { n: 1, label: 'Identité' },
   { n: 2, label: 'Analyse' },
@@ -99,13 +131,30 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
   // ni pour le calcul de l'enveloppe transmise à l'analyse IA.
   const [tauxCible, setTauxCible]           = useState<number>(30)
 
-  // État étapes 2-3, conservé au niveau du wizard pour survivre à la navigation
+  // Organisation actuelle (lot 2, principe 1) — devient creneaux_acceptes.
+  const [agents, setAgents]           = useState<Agent[]>([])
+  const [agentId, setAgentId]         = useState('')
+  const [creneaux, setCreneaux]       = useState<Creneau[]>([])
+  const [showAddCreneau, setShowAddCreneau] = useState(false)
+  const [newJours, setNewJours]       = useState<string[]>([])
+  const [newDebut, setNewDebut]       = useState('08:00')
+  const [newFin, setNewFin]           = useState('12:00')
+
+  // État étapes 2-4, conservé au niveau du wizard pour survivre à la navigation
   // entre étapes ("Relancer l'analyse" doit garder le texte saisi).
   const [texteContrat, setTexteContrat]           = useState('')
   const [contraintesLibres, setContraintesLibres] = useState('')
   const [analyse, setAnalyse]                     = useState<AnalyseIA | null>(null)
   const [volumeHebdoMin, setVolumeHebdoMin]       = useState(0)
   const [analyseVersion, setAnalyseVersion]       = useState(0) // remonte l'étape 3 à neuf à chaque nouvelle analyse
+  const [structureFinale, setStructureFinale]     = useState<StructureSoumission | null>(null)
+
+  useEffect(() => {
+    fetch('/api/agents')
+      .then(r => r.json())
+      .then(d => setAgents(d.agents ?? []))
+      .catch(() => {/* liste vide si échec */})
+  }, [])
 
   // Pré-remplissage lecture seule depuis un contrat existant (entrée "Analyser / restructurer").
   // Réutilise la route GET existante (GestionContratModal), qui renvoie aussi tauxCible (item 3).
@@ -116,6 +165,7 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
       .then((d: {
         libelle: string | null; type_contrat: string | null; date_debut: string; date_fin: string
         montant_mensuel: number | null; taux_horaire_facturation: number | null; tauxBase: number; tauxCible: number
+        agent_prefere_id: string | null; creneaux_acceptes: Creneau[] | null
       }) => {
         setIdentite({
           libelle:        d.libelle ?? '',
@@ -128,6 +178,8 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
           tauxBase:       d.tauxBase ?? 25,
         })
         setTauxCible(d.tauxCible ?? 30)
+        setAgentId(d.agent_prefere_id ?? '')
+        setCreneaux(d.creneaux_acceptes ?? [])
       })
       .catch(() => setLoadErr('Impossible de charger le contrat existant.'))
       .finally(() => setLoadingContrat(false))
@@ -159,6 +211,23 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
     advance(3)
   }
 
+  function handleStructureContinue(structure: StructureSoumission) {
+    setStructureFinale(structure)
+    advance(4)
+  }
+
+  function addCreneau() {
+    if (newJours.length === 0) return
+    setCreneaux(prev => [...prev, { jours: [...newJours], heure_debut: newDebut, heure_fin: newFin }])
+    setNewJours([])
+    setNewDebut('08:00')
+    setNewFin('12:00')
+    setShowAddCreneau(false)
+  }
+  function removeCreneau(i: number) {
+    setCreneaux(prev => prev.filter((_, idx) => idx !== i))
+  }
+
   // ── Calcul enveloppe live (étape 1) — mêmes formules que lib/prorata (charge + planning) ──
   const montantNum    = parseFloat(identite.montant) || 0
   const montantSaisi  = identite.montant.trim() !== ''
@@ -167,12 +236,15 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
   const heuresMois    = heuresVenduesMois(montantNum, tauxEffectif)
   const minutesHebdo  = volumeHebdoMinutes(montantNum, tauxEffectif)
 
-  // ── Indicateur d'écart au taux cible (item 3 — n'affecte ni l'enveloppe transmise à l'IA ni la facturation) ──
-  const heuresCible  = montantNum > 0 && tauxCible > 0 ? montantNum / tauxCible : null
-  const ecartHeures  = montantSaisi && heuresCible !== null ? heuresMois - heuresCible : null
-  const ecartOk      = tauxEffectif >= tauxCible
+  // ── Organisation actuelle : minutes hebdo réelles + plafond rentable (item 2, principe 1+2) ──
+  // Le plafond utilise TOUJOURS le taux cible (jamais le taux effectif du contrat) : c'est un
+  // repère de rentabilité, indépendant du prix facturé.
+  const minutesHebdoReelles = creneaux.reduce((sum, c) => sum + dureeCreneauMinutes(c) * c.jours.length, 0)
+  const plafondRentable     = volumeHebdoMinutes(montantNum, tauxCible)
+  const ecartRentable       = minutesHebdoReelles - plafondRentable
+  const ecartRentableOk     = ecartRentable <= 0
 
-  const peutContinuerEtape1 = identite.libelle.trim().length > 0 && !loadingContrat
+  const peutContinuerEtape1 = identite.libelle.trim().length > 0 && agentId !== '' && creneaux.length > 0 && !loadingContrat
 
   return (
     <div className="fixed inset-0 z-50 bg-white flex flex-col">
@@ -318,14 +390,103 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
                   <span className="text-xl font-bold text-blue-700">{Math.round(minutesHebdo)} min</span>
                   <span className="text-sm text-blue-500">/ semaine</span>
                 </div>
-                {heuresCible !== null && ecartHeures !== null && (
-                  <p className={`text-xs mt-1.5 pt-1.5 border-t ${ecartOk ? 'text-green-600 border-green-100' : 'text-amber-600 border-amber-100'}`}>
-                    Au taux cible ({tauxCible} €/h) : <span className="font-semibold">{heuresCible.toFixed(1)} h</span>/mois
-                    {' '}(écart {ecartHeures >= 0 ? '+' : ''}{ecartHeures.toFixed(1)})
-                  </p>
-                )}
               </div>
             ) : null}
+
+            {/* ── Organisation actuelle (principe 1) — devient creneaux_acceptes ── */}
+            <div className="pt-2 border-t border-slate-100 space-y-4">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Organisation actuelle</h3>
+
+              {/* Agent attitré */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Agent attitré <span className="text-red-400">*</span>
+                </label>
+                <select value={agentId} onChange={e => setAgentId(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#0BBFBF]/40">
+                  <option value="">— Choisir un agent —</option>
+                  {agents.map(a => <option key={a.id} value={a.id}>{a.prenom} {a.nom}</option>)}
+                </select>
+              </div>
+
+              {/* Créneaux de passage actuels */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                  Jours et horaires de passage actuels <span className="text-red-400">*</span>
+                </label>
+                {creneaux.length > 0 && (
+                  <div className="space-y-1.5 mb-2">
+                    {creneaux.map((c, i) => (
+                      <div key={i} className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2">
+                        <span className="text-xs text-slate-700">{formatCreneau(c)}</span>
+                        <button type="button" onClick={() => removeCreneau(i)}
+                          className="text-slate-400 hover:text-red-500 transition-colors ml-2">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {!showAddCreneau ? (
+                  <button type="button" onClick={() => setShowAddCreneau(true)}
+                    className="w-full border border-dashed border-slate-300 rounded-xl py-2 text-xs text-slate-500 hover:text-[#1A5FA8] hover:border-[#1A5FA8] transition-colors">
+                    + Ajouter un créneau {creneaux.length > 0 ? '(si jours différents)' : ''}
+                  </button>
+                ) : (
+                  <div className="border border-slate-200 rounded-xl p-3 space-y-3">
+                    <div>
+                      <p className="text-xs text-slate-500 mb-1.5">Jours</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {JOURS.map(j => (
+                          <button key={j} type="button" onClick={() => setNewJours(prev => toggleItem(j, prev))}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                              newJours.includes(j) ? 'bg-[#1A5FA8] text-white border-[#1A5FA8]' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                            }`}>
+                            {JOURS_LABELS[j]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <p className="text-xs text-slate-500 mb-1">Début</p>
+                        <input type="time" value={newDebut} onChange={e => setNewDebut(e.target.value)}
+                          className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#0BBFBF]/40"/>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500 mb-1">Fin</p>
+                        <input type="time" value={newFin} onChange={e => setNewFin(e.target.value)}
+                          className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#0BBFBF]/40"/>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setShowAddCreneau(false)}
+                        className="flex-1 border border-slate-200 rounded-xl py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors">
+                        Annuler
+                      </button>
+                      <button type="button" onClick={addCreneau} disabled={newJours.length === 0}
+                        className="flex-1 bg-[#1A5FA8] text-white rounded-xl py-1.5 text-xs font-semibold hover:bg-[#0A4A8A] transition-colors disabled:opacity-40">
+                        Ajouter
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Bloc indicateur permanent — plafond rentable (principe 2) */}
+              {creneaux.length > 0 && (
+                <div className={`rounded-xl px-4 py-3 border ${ecartRentableOk ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+                  <div className={`text-sm font-medium ${ecartRentableOk ? 'text-green-800' : 'text-amber-800'}`}>
+                    Actuel <span className="font-bold">{Math.round(minutesHebdoReelles)} min/sem</span>
+                    {' '}({(minutesHebdoReelles / 60).toFixed(1)} h/sem)
+                    {' '}— Plafond rentable ({tauxCible} €/h) <span className="font-bold">{Math.round(plafondRentable)} min/sem</span>
+                    {' '}— Écart {ecartRentable >= 0 ? '+' : ''}{Math.round(ecartRentable)} min
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Actions */}
             <div className="flex gap-3 pt-2">
@@ -344,6 +505,7 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
           <AnalyseContratEtape2
             residenceId={residenceId}
             identite={identite}
+            planningActuel={{ creneaux, minutesHebdoReelles }}
             texteContrat={texteContrat}
             onTexteChange={setTexteContrat}
             contraintesLibres={contraintesLibres}
@@ -355,13 +517,34 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
             key={analyseVersion}
             analyse={analyse}
             volumeHebdoMin={volumeHebdoMin}
+            joursOrganisationActuelle={[...new Set(creneaux.flatMap(c => c.jours))]}
+            minutesHebdoReelles={minutesHebdoReelles}
+            plafondRentable={plafondRentable}
+            ecartRentable={ecartRentable}
+            tauxCible={tauxCible}
             onBack={() => advance(2)}
-            onContinue={() => advance(4)}
+            onContinue={handleStructureContinue}
+          />
+        ) : step === 4 && !contratId && structureFinale ? (
+          <AnalyseContratEtape4
+            residenceId={residenceId}
+            identite={identite}
+            agentId={agentId}
+            agentNom={(() => { const a = agents.find(a => a.id === agentId); return a ? `${a.prenom} ${a.nom}` : '' })()}
+            creneaux={creneaux}
+            minutesHebdoReelles={minutesHebdoReelles}
+            plafondRentable={plafondRentable}
+            ecartRentable={ecartRentable}
+            structure={structureFinale}
+            horsPlanningHebdo={analyse?.hors_planning_hebdo ?? []}
+            alertes={analyse?.alertes ?? []}
+            onBack={() => advance(3)}
+            onClose={onClose}
           />
         ) : step === 4 ? (
           <div className="max-w-lg mx-auto p-8 text-center space-y-4">
             <h3 className="text-lg font-bold text-slate-800">Validation</h3>
-            <p className="text-sm text-slate-500">Bientôt disponible — lot 2.</p>
+            <p className="text-sm text-slate-500">Bientôt disponible — lot 3 (restructuration d&apos;un contrat existant).</p>
             <button disabled className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white opacity-40 cursor-not-allowed"
               style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}>
               Créer le contrat

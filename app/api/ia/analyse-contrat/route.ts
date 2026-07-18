@@ -64,6 +64,15 @@ interface IdentiteInput {
   taux_base: number
 }
 
+// Organisation actuelle (lot 2, principe 1) — jours/horaires RÉELS de l'agent,
+// saisis à l'étape 1. L'IA structure le contenu mais ne décide jamais des
+// jours/horaires : elle les reçoit en entrée et doit les respecter.
+interface PlanningActuelInput {
+  jours: string[]
+  creneaux: { jours: string[]; heure_debut: string; heure_fin: string }[]
+  minutesHebdo: number
+}
+
 // ── Auth manager + ownership résidence (même esprit que resolveAndCheck des routes contrats) ──
 
 async function resolveAndCheck(residenceId: string) {
@@ -113,7 +122,8 @@ RÈGLES MÉTIER :
 - Protocole des « 5 doigts » : dans chaque zone, ordonne les tâches du haut vers le bas et du propre vers le sale. Référence usuelle pour une zone de parties communes (à adapter, ne recopie que ce qui est pertinent au texte) : toiles d'araignées, dépoussiérage, vitres/traces, poubelle/prospectus, sol.
 - L'arbre "batiments → zones → taches" ne contient QUE des tâches HEBDOMADAIRES : frequence="hebdo" ET au moins un jour dans jours_proposes. Toute tâche dont la fréquence réelle n'est pas hebdomadaire (mensuelle, trimestrielle, semestrielle, annuelle, ou sur passage externe) NE DOIT JAMAIS apparaître dans cet arbre ni être convertie en hebdomadaire pour "rentrer dans les clous" : elle va UNIQUEMENT dans hors_planning_hebdo, avec sa fréquence réelle et une note expliquant comment la traiter (ex. "à planifier en ponctuel").
 - N'invente JAMAIS de bâtiment, de zone ou de tâche non mentionné(e) ou non raisonnablement déductible du texte. Si le texte est pauvre ou vague sur un point, produis une structure minimale plausible et explique ce choix dans alertes.
-- creneaux_proposes reflète les horaires/jours mentionnés ou raisonnablement déduits du texte. Si rien n'est précisé, propose une fenêtre large (ex. 08:00-18:00) les jours concernés.
+- JOURS IMPOSÉS (règle absolue, principe 1) : tu reçois ci-dessous le PLANNING ACTUEL réel de l'agent (jours et créneaux horaires déjà décidés par le manager, pas par toi). Tu NE DÉCIDES JAMAIS des jours ou horaires : pour CHAQUE tâche hebdomadaire, jours_proposes DOIT être un sous-ensemble strict des jours du planning actuel — jamais un jour hors de cette liste. Si une prestation mentionnée dans le texte ne peut raisonnablement être casée dans les créneaux actuels (volume trop important, jour incompatible explicitement mentionné dans le texte comme le dimanche pour des containers, etc.), NE l'ajoute PAS dans l'arbre hebdo : place-la dans hors_planning_hebdo ET ajoute une alerte explicite le signalant.
+- creneaux_proposes : recopie simplement les créneaux du planning actuel fourni (champ informatif, non décisionnel — les horaires viennent de l'utilisateur, pas de toi).
 - jours_interdits_detectes liste les jours que le texte exclut explicitement (ex. "jamais le mercredi").
 - repartition_hebdo : un objet par jour de la semaine réellement actif, avec la somme des durées des tâches hebdo ce jour-là, les bâtiments concernés, et un court résumé.
 - totaux.minutes_hebdo_estimees et totaux.verdict seront recalculés et corrigés côté serveur à partir de ton propre arbre — indique tout de même ta meilleure estimation, cohérente avec la somme des tâches.
@@ -128,13 +138,18 @@ function buildUserMessage(params: {
   identite: IdentiteInput
   tauxEffectif: number
   volumeHebdoMin: number
+  planningActuel: PlanningActuelInput
   texteContrat: string
   contraintesLibres?: string
 }): string {
-  const { identite, tauxEffectif, volumeHebdoMin, texteContrat, contraintesLibres } = params
+  const { identite, tauxEffectif, volumeHebdoMin, planningActuel, texteContrat, contraintesLibres } = params
   const envelopeStr = volumeHebdoMin > 0
     ? `${Math.round(volumeHebdoMin)} min/semaine (≈ ${(volumeHebdoMin / 60).toFixed(1)} h/semaine, ≈ ${Math.round(volumeHebdoMin * 4.33 / 60)} h/mois)`
     : 'AUCUNE (contrat offert — montant nul ou taux nul). Calcule la charge proposée et signale la perte cachée dans alertes.'
+
+  const creneauxStr = planningActuel.creneaux
+    .map(c => `${c.jours.join(', ')} de ${c.heure_debut} à ${c.heure_fin}`)
+    .join(' ; ')
 
   return `IDENTITÉ DU CONTRAT
 Libellé : ${identite.libelle || '(non précisé)'}
@@ -145,6 +160,11 @@ Taux horaire effectif : ${tauxEffectif} €/h
 
 ENVELOPPE DE TEMPS VENDUE
 ${envelopeStr}
+
+PLANNING ACTUEL DE L'AGENT (imposé — jamais un jour hors de cette liste)
+Jours de passage : ${planningActuel.jours.join(', ') || '(aucun)'}
+Créneaux : ${creneauxStr || '(aucun)'}
+Temps hebdomadaire réel de cette organisation : ${Math.round(planningActuel.minutesHebdo)} min/semaine
 
 TEXTE DU CONTRAT / DESCRIPTION DE LA PRESTATION
 """
@@ -273,9 +293,10 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Corps de requête invalide.' }, { status: 400 })
 
-  const { residenceId, identite, texteContrat, contraintesLibres } = body as {
+  const { residenceId, identite, planningActuel, texteContrat, contraintesLibres } = body as {
     residenceId?: string
     identite?: IdentiteInput
+    planningActuel?: PlanningActuelInput
     texteContrat?: string
     contraintesLibres?: string
   }
@@ -288,6 +309,9 @@ export async function POST(req: NextRequest) {
   if (!identite || !identite.libelle || !identite.date_debut || !identite.date_fin)
     return NextResponse.json({ error: 'Identité du contrat incomplète (libellé et dates obligatoires).' }, { status: 400 })
 
+  if (!planningActuel || !Array.isArray(planningActuel.jours) || planningActuel.jours.length === 0)
+    return NextResponse.json({ error: "L'organisation actuelle (jours et créneaux de passage) est obligatoire." }, { status: 400 })
+
   if (!texteContrat || !texteContrat.trim())
     return NextResponse.json({ error: 'Le texte du contrat est obligatoire.' }, { status: 400 })
 
@@ -298,7 +322,7 @@ export async function POST(req: NextRequest) {
   const volumeHebdoMin = volumeHebdoMinutes(identite.montant_mensuel ?? null, tauxEffectif)
 
   const systemPrompt = buildSystemPrompt()
-  const userMessage   = buildUserMessage({ identite, tauxEffectif, volumeHebdoMin, texteContrat, contraintesLibres })
+  const userMessage   = buildUserMessage({ identite, tauxEffectif, volumeHebdoMin, planningActuel, texteContrat, contraintesLibres })
 
   let rawText: string
   try {

@@ -328,11 +328,20 @@ export async function POST(req: NextRequest) {
   try {
     const response = await anthropic.messages.create({
       model:       MODEL,
-      max_tokens:  8192,
+      // Résidences multi-bâtiments (ex. 9 bâtiments × ~6 zones × 5 tâches ≈ 270
+      // tâches) génèrent un JSON volumineux — 8192 tokens tronquait la réponse
+      // en plein milieu (JSON invalide, 422 systématique). Constaté sur PRIEURE.
+      max_tokens:  16000,
       temperature: 0.3,
       system:      systemPrompt,
       messages:    [{ role: 'user', content: userMessage }],
     })
+    if (response.stop_reason === 'max_tokens') {
+      console.error('[analyse-contrat] Réponse tronquée (max_tokens atteint) — texte trop volumineux pour une seule analyse.')
+      return NextResponse.json({
+        error: 'Le contrat est trop volumineux pour être analysé en une fois. Essayez de le scinder (ex. par groupe de bâtiments) ou reformulez plus succinctement.',
+      }, { status: 422 })
+    }
     rawText = response.content.filter(b => b.type === 'text').map(b => b.type === 'text' ? b.text : '').join('')
   } catch (e) {
     console.error('[analyse-contrat] Appel Anthropic échoué:', e)

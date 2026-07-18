@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase-server'
 import Anthropic from '@anthropic-ai/sdk'
 import { volumeHebdoMinutes } from '@/lib/prorata'
+import { type DispatchJour, reglesDispatchPrompt, sanitiserDispatch } from '@/lib/dispatchSemaine'
 
 export const dynamic = 'force-dynamic'
 
@@ -51,6 +52,7 @@ interface AnalyseIA {
   totaux: { minutes_hebdo_estimees: number; minutes_hebdo_vendues: number; verdict: 'ok' | 'depassement' | 'marge_confortable' }
   hors_planning_hebdo: HorsPlanning[]
   alertes: string[]
+  dispatch_semaine: DispatchJour[]
 }
 
 interface IdentiteInput {
@@ -115,8 +117,11 @@ RÈGLES DE SORTIE — ABSOLUES :
   "repartition_hebdo": [ { "jour": "jeudi", "duree_totale_minutes": 33, "batiments": ["Bât A"], "resume": "Hall + containers" } ],
   "totaux": { "minutes_hebdo_estimees": 33, "minutes_hebdo_vendues": 33, "verdict": "ok" },
   "hors_planning_hebdo": [ { "libelle": "Lessivage complet cage escalier", "frequence": "trimestriel", "note": "à planifier en ponctuel" } ],
-  "alertes": [ "Le contrat mentionne une sortie containers le dimanche soir — hors créneaux proposés" ]
+  "alertes": [ "Le contrat mentionne une sortie containers le dimanche soir — hors créneaux proposés" ],
+  "dispatch_semaine": [ { "jour": "lundi", "batiments_complets": ["Bât A"], "tournees_transverses": [], "containers": null, "duree_totale_estimee_minutes": 33 } ]
 }
+
+${reglesDispatchPrompt()}
 
 RÈGLES MÉTIER :
 - Protocole des « 5 doigts » : dans chaque zone, ordonne les tâches du haut vers le bas et du propre vers le sale. Référence usuelle pour une zone de parties communes (à adapter, ne recopie que ce qui est pertinent au texte) : toiles d'araignées, dépoussiérage, vitres/traces, poubelle/prospectus, sol.
@@ -139,10 +144,11 @@ function buildUserMessage(params: {
   tauxEffectif: number
   volumeHebdoMin: number
   planningActuel: PlanningActuelInput
+  joursRamassageContainers?: string[]
   texteContrat: string
   contraintesLibres?: string
 }): string {
-  const { identite, tauxEffectif, volumeHebdoMin, planningActuel, texteContrat, contraintesLibres } = params
+  const { identite, tauxEffectif, volumeHebdoMin, planningActuel, joursRamassageContainers, texteContrat, contraintesLibres } = params
   const envelopeStr = volumeHebdoMin > 0
     ? `${Math.round(volumeHebdoMin)} min/semaine (≈ ${(volumeHebdoMin / 60).toFixed(1)} h/semaine, ≈ ${Math.round(volumeHebdoMin * 4.33 / 60)} h/mois)`
     : 'AUCUNE (contrat offert — montant nul ou taux nul). Calcule la charge proposée et signale la perte cachée dans alertes.'
@@ -150,6 +156,10 @@ function buildUserMessage(params: {
   const creneauxStr = planningActuel.creneaux
     .map(c => `${c.jours.join(', ')} de ${c.heure_debut} à ${c.heure_fin}`)
     .join(' ; ')
+
+  const ramassageStr = joursRamassageContainers && joursRamassageContainers.length > 0
+    ? joursRamassageContainers.join(', ')
+    : 'non concerné — ne produis aucune entrée containers dans dispatch_semaine'
 
   return `IDENTITÉ DU CONTRAT
 Libellé : ${identite.libelle || '(non précisé)'}
@@ -165,6 +175,9 @@ PLANNING ACTUEL DE L'AGENT (imposé — jamais un jour hors de cette liste)
 Jours de passage : ${planningActuel.jours.join(', ') || '(aucun)'}
 Créneaux : ${creneauxStr || '(aucun)'}
 Temps hebdomadaire réel de cette organisation : ${Math.round(planningActuel.minutesHebdo)} min/semaine
+
+JOURS DE RAMASSAGE CONTAINERS (agglo)
+${ramassageStr}
 
 TEXTE DU CONTRAT / DESCRIPTION DE LA PRESTATION
 """
@@ -282,6 +295,7 @@ function sanitiserAnalyse(raw: any): AnalyseIA {
     totaux: { minutes_hebdo_estimees: 0, minutes_hebdo_vendues: 0, verdict: 'ok' }, // recalculé juste après (sommeMinutesHebdo)
     hors_planning_hebdo: horsPlanning,
     alertes,
+    dispatch_semaine: sanitiserDispatch(raw?.dispatch_semaine),
   }
 }
 
@@ -293,10 +307,11 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Corps de requête invalide.' }, { status: 400 })
 
-  const { residenceId, identite, planningActuel, texteContrat, contraintesLibres } = body as {
+  const { residenceId, identite, planningActuel, joursRamassageContainers, texteContrat, contraintesLibres } = body as {
     residenceId?: string
     identite?: IdentiteInput
     planningActuel?: PlanningActuelInput
+    joursRamassageContainers?: string[]
     texteContrat?: string
     contraintesLibres?: string
   }
@@ -322,7 +337,7 @@ export async function POST(req: NextRequest) {
   const volumeHebdoMin = volumeHebdoMinutes(identite.montant_mensuel ?? null, tauxEffectif)
 
   const systemPrompt = buildSystemPrompt()
-  const userMessage   = buildUserMessage({ identite, tauxEffectif, volumeHebdoMin, planningActuel, texteContrat, contraintesLibres })
+  const userMessage   = buildUserMessage({ identite, tauxEffectif, volumeHebdoMin, planningActuel, joursRamassageContainers, texteContrat, contraintesLibres })
 
   let rawText: string
   try {

@@ -168,6 +168,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const result = rpcResult as { contrat_id: string; nb_zones: number; nb_taches: number }
 
+  // ── Double-écriture agent (règle P2-11) ──────────────────────────────────
+  // residences.agent_prefere_id est un miroir synchronisé de
+  // contrats_residences.agent_prefere_id pour le contrat parties_communes
+  // (même pattern que /api/residences/affecter). Sans cette synchro,
+  // v_etat_residence (qui lit residences.agent_prefere_id) reste bloquée sur
+  // a_configurer/a_agent=false même quand le contrat a bien un agent.
+  if (p_contrat.agent_prefere_id && identite.type_contrat === 'parties_communes') {
+    const { error: errResidence } = await admin.from('residences')
+      .update({ agent_prefere_id: p_contrat.agent_prefere_id })
+      .eq('id', residenceId)
+    if (errResidence) {
+      console.error('[creer-complet] Échec sync residences.agent_prefere_id:', errResidence.message)
+      return NextResponse.json({ error: 'Échec sync agent résidence: ' + errResidence.message }, { status: 400 })
+    }
+  }
+
   return NextResponse.json({
     contrat_id: result.contrat_id,
     nb_zones:   result.nb_zones,

@@ -27,11 +27,12 @@
 --    p_contrat (jsonb) — clés attendues :
 --      libelle, type_contrat, date_debut, date_fin, montant_mensuel,
 --      taux_horaire_facturation (nullable), agent_prefere_id (nullable),
---      creneaux_acceptes (jsonb, tel quel), jours_interdits (array texte,
---      optionnel), notes_specifiques (nullable),
---      minutes_hebdo_reelles, ecart_rentable_minutes (déjà calculés par
---      l'appelant — la route revalide ecart_rentable_minutes côté serveur
---      avant l'appel, cf item 3).
+--      nb_interventions_mois (nullable — aligné avec les modals existants,
+--      non lu par la génération de planning, cf audit lot 0), creneaux_acceptes
+--      (jsonb, tel quel), jours_interdits (array texte, optionnel),
+--      notes_specifiques (nullable), minutes_hebdo_reelles,
+--      ecart_rentable_minutes (déjà calculés par l'appelant — la route
+--      revalide ecart_rentable_minutes côté serveur avant l'appel, cf item 3).
 --
 --    p_structure (jsonb) — arbre bâtiments → zones → tâches, même forme que
 --    AnalyseIA (lot 1) : { "batiments": [ { "nom", "zones": [ { "nom",
@@ -67,6 +68,7 @@ CREATE OR REPLACE FUNCTION public.creer_contrat_complet(
 ) RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $function$
 DECLARE
   v_contrat_id uuid;
@@ -80,7 +82,7 @@ BEGIN
   -- 1. Contrat
   INSERT INTO contrats_residences (
     residence_id, libelle, type_contrat, date_debut, date_fin,
-    montant_mensuel, taux_horaire_facturation, agent_prefere_id,
+    montant_mensuel, nb_interventions_mois, taux_horaire_facturation, agent_prefere_id,
     creneaux_acceptes, jours_interdits, notes_specifiques,
     minutes_hebdo_reelles, ecart_rentable_minutes, actif
   ) VALUES (
@@ -90,6 +92,7 @@ BEGIN
     (p_contrat->>'date_debut')::date,
     (p_contrat->>'date_fin')::date,
     (p_contrat->>'montant_mensuel')::numeric,
+    NULLIF(p_contrat->>'nb_interventions_mois', '')::integer,
     NULLIF(p_contrat->>'taux_horaire_facturation', '')::numeric,
     NULLIF(p_contrat->>'agent_prefere_id', '')::uuid,
     COALESCE(p_contrat->'creneaux_acceptes', '[]'::jsonb),

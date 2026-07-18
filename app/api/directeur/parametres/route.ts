@@ -22,17 +22,20 @@ export async function POST(req: NextRequest) {
   const directeurId = await getDirecteurId()
   if (!directeurId) return NextResponse.json({ error: 'Non autorisé' }, { status: 401 })
 
-  const { tauxHoraireAgent, coutKm, fraisGenerauxMois } = await req.json()
+  const { tauxHoraireAgent, coutKm, fraisGenerauxMois, tauxHoraireFacturationDefaut, tauxHoraireCible } = await req.json()
   const admin = await createAdminClient()
 
   const { data: existing } = await admin.from('parametres_societe').select('id').limit(1).maybeSingle()
 
   const payload = {
-    taux_horaire_agent:  tauxHoraireAgent  ?? 23,
-    cout_km:             coutKm            ?? 0.45,
-    frais_generaux_mois: fraisGenerauxMois ?? 0,
-    updated_at:          new Date().toISOString(),
-    updated_by:          directeurId,
+    taux_horaire_agent:              tauxHoraireAgent              ?? 23,
+    cout_km:                         coutKm                        ?? 0.45,
+    frais_generaux_mois:             fraisGenerauxMois             ?? 0,
+    taux_horaire_facturation_defaut: tauxHoraireFacturationDefaut  ?? 25,
+    // Taux commercial cible (item 3 — indicateur d'écart) : jamais utilisé pour la facturation.
+    taux_horaire_cible:              tauxHoraireCible              ?? 30,
+    updated_at:                      new Date().toISOString(),
+    updated_by:                      directeurId,
   }
 
   if (existing) {

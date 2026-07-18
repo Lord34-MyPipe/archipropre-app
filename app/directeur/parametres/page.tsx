@@ -3,9 +3,11 @@
 import { useState, useEffect } from 'react'
 
 export default function DirecteurParametres() {
-  const [taux,   setTaux]   = useState('22')
-  const [km,     setKm]     = useState('0.45')
-  const [frais,  setFrais]  = useState('0')
+  const [taux,        setTaux]        = useState('22')
+  const [km,          setKm]          = useState('0.45')
+  const [frais,       setFrais]       = useState('0')
+  const [tauxFactDefaut, setTauxFactDefaut] = useState('25')
+  const [tauxCible,   setTauxCible]   = useState('30')
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
   const [error,  setError]  = useState('')
@@ -18,6 +20,8 @@ export default function DirecteurParametres() {
           setTaux(String(data.taux_horaire_agent ?? 22))
           setKm(String(data.cout_km ?? 0.45))
           setFrais(String(data.frais_generaux_mois ?? 0))
+          setTauxFactDefaut(String(data.taux_horaire_facturation_defaut ?? 25))
+          setTauxCible(String(data.taux_horaire_cible ?? 30))
         }
       })
   }, [])
@@ -28,9 +32,11 @@ export default function DirecteurParametres() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        tauxHoraireAgent:  parseFloat(taux)  || 22,
-        coutKm:            parseFloat(km)    || 0.45,
-        fraisGenerauxMois: parseFloat(frais) || 0,
+        tauxHoraireAgent:             parseFloat(taux)           || 22,
+        coutKm:                       parseFloat(km)             || 0.45,
+        fraisGenerauxMois:            parseFloat(frais)          || 0,
+        tauxHoraireFacturationDefaut: parseFloat(tauxFactDefaut) || 25,
+        tauxHoraireCible:             parseFloat(tauxCible)      || 30,
       }),
     })
     setSaving(false)
@@ -78,6 +84,19 @@ export default function DirecteurParametres() {
         <Field
           label="Quote-part frais généraux (bureaux, admin, logiciels...)"
           value={frais} onChange={setFrais} unit="€/mois"
+        />
+
+        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider pt-2">Facturation</h2>
+
+        <Field
+          label="Taux horaire facturation défaut (€/HT/h)"
+          value={tauxFactDefaut} onChange={setTauxFactDefaut} unit="€/h"
+          help="Taux appliqué aux contrats sans taux spécifique — sert au calcul des heures vendues et de la rentabilité."
+        />
+        <Field
+          label="Taux horaire cible (€/HT/h)"
+          value={tauxCible} onChange={setTauxCible} unit="€/h"
+          help="Taux commercial de référence — utilisé pour les indicateurs d'écart, jamais pour la facturation"
         />
 
         {error && (

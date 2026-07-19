@@ -34,7 +34,7 @@ function ScanPageInner() {
     // 1. Token → contrat (contrats_residences.qr_code_token)
     const { data: contrat } = await supabase
       .from('contrats_residences')
-      .select('id, libelle, residence_id')
+      .select('id, libelle, residence_id, dispatch_semaine')
       .eq('qr_code_token', token)
       .maybeSingle()
 
@@ -228,21 +228,71 @@ function ScanPageInner() {
       timeZone: 'Europe/Paris', weekday: 'long',
     }).format(new Date())
 
+    // Tournées transverses du jour (correctif "halls bi-hebdo") — une
+    // intervention de tournée porte un batiment SYNTHÉTIQUE (ex. "Halls Bât
+    // 7-8 (2e passage)") qui ne correspond à AUCUNE zones_residence.batiment
+    // réelle : le filtre .eq('batiment', ...) ci-dessous renvoie alors 0 zone,
+    // taches_intervention reste vide, et l'écran mission ne peut jamais passer
+    // "Prêt" pour cette carte (cardState exige zonesTotal > 0). On résout donc
+    // en repli, pour CE jour de la semaine uniquement, via dispatch_semaine.tournees_transverses
+    // (zones au format "Bâtiment/Zone", même convention que generer/route.ts).
+    type DispatchJourLite = { jour: string; tournees_transverses: { libelle: string; zones: string[] }[] }
+    const dispatchAujourdhui = ((contrat.dispatch_semaine as DispatchJourLite[] | null) ?? [])
+      .find(d => d.jour === jourCourant)
+    const tourneeParLibelle = new Map<string, string[]>()
+    for (const t of dispatchAujourdhui?.tournees_transverses ?? []) {
+      tourneeParLibelle.set(t.libelle, t.zones)
+    }
+
     for (const jourInter of (intersJour ?? [])) {
       // Zones de CE bâtiment — évite que les tâches de tous les bâtiments
       // atterrissent sur la même intervention et que les noms de zone
       // homonymes fusionnent (zone_nom redevient unique par intervention).
-      let zonesQuery = supabase.from('zones_residence').select('id, nom').eq('contrat_id', contrat.id)
+      let zonesQuery = supabase.from('zones_residence').select('id, nom, batiment').eq('contrat_id', contrat.id)
       if (jourInter.batiment) zonesQuery = zonesQuery.eq('batiment', jourInter.batiment)
-      const { data: zones } = await zonesQuery
+      const { data: zonesInitiales } = await zonesQuery
+
+      // Repli tournée transverse : le batiment ne matche aucune zone réelle,
+      // mais correspond exactement au libellé d'une tournée du jour → on
+      // résout les zones précises qu'elle vise (ex. les 2 halls concernés),
+      // au lieu de laisser l'intervention sans aucune zone à traiter.
+      let zones = zonesInitiales ?? []
+      let estTournee = false
+      if (zones.length === 0 && jourInter.batiment && tourneeParLibelle.has(jourInter.batiment)) {
+        estTournee = true
+        const { data: toutesZones } = await supabase
+          .from('zones_residence').select('id, nom, batiment').eq('contrat_id', contrat.id)
+        const cibles = new Set(
+          (tourneeParLibelle.get(jourInter.batiment) ?? []).map(z => z.trim().toLowerCase())
+        )
+        zones = (toutesZones ?? []).filter(z => {
+          const cle = z.batiment?.trim() ? `${z.batiment.trim()}/${z.nom.trim()}` : z.nom.trim()
+          return cibles.has(cle.toLowerCase()) || cibles.has(z.nom.trim().toLowerCase())
+        })
+      }
+
+      // Désambiguïsation nom de zone (repli tournée) : une tournée transverse
+      // (ex. "Halls Bât 7-8") regroupe volontairement des zones de PLUSIEURS
+      // bâtiments dans UNE seule intervention — leurs noms de zone sont
+      // souvent identiques ("Hall d'entrée" partout). taches_intervention/
+      // photos_zone/zones_intervention sont keyés par zone_nom SEUL : sans
+      // préfixe, les deux halls fusionneraient en un seul groupe et une
+      // photo sur l'un validerait l'autre à tort. Préfixe par le bâtiment
+      // UNIQUEMENT quand un nom est dupliqué dans cette intervention précise
+      // (bâtiment complet : 4 zones déjà toutes distinctes, aucun impact).
+      const nomCounts = new Map<string, number>()
+      for (const z of zones ?? []) nomCounts.set(z.nom, (nomCounts.get(z.nom) ?? 0) + 1)
 
       const zoneMap: Record<string, string> = {}
       const zoneIds: string[] = []
       const zoneNoms = new Set<string>()
       for (const z of zones ?? []) {
-        zoneMap[z.id] = z.nom
+        const nomAffiche = (nomCounts.get(z.nom) ?? 0) > 1 && z.batiment
+          ? `${z.batiment} — ${z.nom}`
+          : z.nom
+        zoneMap[z.id] = nomAffiche
         zoneIds.push(z.id)
-        zoneNoms.add(z.nom)
+        zoneNoms.add(nomAffiche)
       }
 
       // Détecter taches stale : zone_nom présente dans taches_intervention
@@ -259,17 +309,25 @@ function ScanPageInner() {
       }
 
       if (shouldRebuildTaches) {
-        type TacheRaw = { id: string; libelle: string; jours_semaine: string[]; zone_id: string | null }
+        type TacheRaw = { id: string; libelle: string; jours_semaine: string[]; zone_id: string | null; tache_liee_id: string | null }
         let tachesDuJour: TacheRaw[] = []
         if (zoneIds.length > 0) {
           const { data: taches } = await supabase
             .from('taches_template')
-            .select('id, libelle, jours_semaine, zone_id')
+            .select('id, libelle, jours_semaine, zone_id, tache_liee_id')
             .in('zone_id', zoneIds)
             .order('ordre')
-          tachesDuJour = (taches as TacheRaw[] ?? []).filter(t =>
-            !t.jours_semaine?.length || t.jours_semaine.includes(jourCourant)
-          )
+          // tache_liee_id marque une tâche de "2e passage" (correctif halls
+          // bi-hebdo) : elle appartient à la tournée transverse, jamais au
+          // passage complet du bâtiment, même quand la zone est partagée par
+          // les deux interventions. Une intervention tournée (estTournee) ne
+          // garde QUE ces tâches liées ; une intervention bâtiment complet les
+          // exclut (sinon la tournée serait doublée sur les deux visites).
+          tachesDuJour = (taches as TacheRaw[] ?? []).filter(t => {
+            if (estTournee) return t.tache_liee_id != null
+            if (t.tache_liee_id != null) return false
+            return !t.jours_semaine?.length || t.jours_semaine.includes(jourCourant)
+          })
         }
 
         await supabase.from('taches_intervention').delete().eq('intervention_id', jourInter.id)

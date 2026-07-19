@@ -40,6 +40,13 @@ const CARD_STATE_CONFIG: Record<CardState, { label: string; bg: string; text: st
 function cardState(statut: string, zonesTotal: number, zonesCompletes: number): CardState {
   if (statut === 'terminee' || statut === 'validee') return 'termine'
   if (zonesTotal > 0 && zonesCompletes === zonesTotal) return 'pret'
+  // Intervention sans AUCUNE zone rattachable (ex. "Containers — sortie/
+  // rentrée" du dispatch : pas de zones_residence dédiée, cf correctif halls
+  // bi-hebdo) — zonesTotal restera structurellement à 0 pour toujours,
+  // bloquant sinon "Envoyer le rapport" en permanence pour ce bâtiment. Une
+  // fois l'intervention démarrée (statut !== 'planifiee', donc scannée), on
+  // la considère prête d'office plutôt que de bloquer le reste de la mission.
+  if (zonesTotal === 0 && statut !== 'planifiee') return 'pret'
   if (zonesCompletes > 0) return 'en_cours'
   return 'a_faire'
 }

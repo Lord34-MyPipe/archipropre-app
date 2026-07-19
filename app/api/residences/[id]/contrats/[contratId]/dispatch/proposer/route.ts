@@ -63,8 +63,9 @@ function buildUserMessage(params: {
   joursPassage: string[]
   creneaux: Creneau[]
   joursRamassageContainers: string[]
+  enveloppeMinutesHebdo?: number
 }): string {
-  const { batiments, joursPassage, creneaux, joursRamassageContainers } = params
+  const { batiments, joursPassage, creneaux, joursRamassageContainers, enveloppeMinutesHebdo } = params
   const batimentsStr = batiments
     .map(b => `- ${b.nom} : ${b.zones.join(', ') || '(aucune zone nommée)'}`)
     .join('\n')
@@ -75,6 +76,16 @@ function buildUserMessage(params: {
     ? joursRamassageContainers.join(', ')
     : 'non concerné — ne produis aucune entrée containers dans dispatch_semaine'
 
+  // Enveloppe simulée (item 2, chantier "simulation taux rentable") : remplace
+  // toute notion de temps réel actuel — n'est utilisée QUE si explicitement fournie
+  // (rétrocompatibilité stricte du mode par défaut).
+  const enveloppeStr = enveloppeMinutesHebdo != null
+    ? `
+
+ENVELOPPE DE TEMPS DISPONIBLE (simulation — remplace le temps réel actuel)
+${Math.round(enveloppeMinutesHebdo)} min/semaine au total. Cette enveloppe remplace toute estimation du temps actuellement passé : vise à répartir les bâtiments et tournées de façon à ce que la SOMME de duree_totale_estimee_minutes sur toute la semaine se rapproche le plus possible de cette enveloppe, sans la dépasser significativement. Pour t'en approcher, tu peux réduire le nombre de jours de passage effectivement utilisés (parmi les jours de passage listés ci-dessus) en regroupant plusieurs bâtiments sur un même jour — tout en respectant strictement R1 (bâtiment entier, jamais réparti), R2 (répartition équitable sur les jours RETENUS), R3 et R4. N'invente, ne modifie et ne supprime AUCUN bâtiment ni AUCUNE zone réel(le) : tous doivent rester couverts sur la semaine, même si tu resserres le nombre de jours utilisés.`
+    : ''
+
   return `BÂTIMENTS ET ZONES DE LA RÉSIDENCE (structure existante, ne pas modifier)
 ${batimentsStr || '(aucun bâtiment)'}
 
@@ -83,7 +94,7 @@ Jours de passage : ${joursPassage.join(', ') || '(aucun)'}
 Créneaux : ${creneauxStr || '(aucun)'}
 
 JOURS DE RAMASSAGE CONTAINERS (agglo)
-${ramassageStr}
+${ramassageStr}${enveloppeStr}
 
 Produis dispatch_semaine en respectant R1-R5.`
 }
@@ -97,6 +108,11 @@ export async function POST(req: NextRequest, { params }: { params: Params }) {
   const joursRamassageContainers: string[] = Array.isArray(body?.joursRamassageContainers)
     ? body.joursRamassageContainers
     : (contrat.jours_ramassage_containers ?? [])
+  // Simulation "au taux rentable" (item 2) — optionnel, absent = comportement inchangé.
+  const enveloppeMinutesHebdo: number | undefined =
+    typeof body?.enveloppeMinutesHebdo === 'number' && Number.isFinite(body.enveloppeMinutesHebdo) && body.enveloppeMinutesHebdo > 0
+      ? body.enveloppeMinutesHebdo
+      : undefined
 
   const creneaux: Creneau[] = Array.isArray(contrat.creneaux_acceptes) ? contrat.creneaux_acceptes : []
   const joursPassage = [...new Set(creneaux.flatMap(c => c.jours ?? []))]
@@ -124,7 +140,7 @@ export async function POST(req: NextRequest, { params }: { params: Params }) {
     .map(([nom, zonesNoms]) => ({ nom, zones: zonesNoms }))
 
   const systemPrompt = buildSystemPrompt()
-  const userMessage   = buildUserMessage({ batiments, joursPassage, creneaux, joursRamassageContainers })
+  const userMessage   = buildUserMessage({ batiments, joursPassage, creneaux, joursRamassageContainers, enveloppeMinutesHebdo })
 
   let rawText: string
   try {
@@ -172,5 +188,5 @@ export async function POST(req: NextRequest, { params }: { params: Params }) {
     ? (parsedRaw.alertes as unknown[]).filter((a): a is string => typeof a === 'string')
     : []
 
-  return NextResponse.json({ dispatch_semaine: dispatch, alertes, joursRamassageContainers })
+  return NextResponse.json({ dispatch_semaine: dispatch, alertes, joursRamassageContainers, enveloppeMinutesHebdo })
 }

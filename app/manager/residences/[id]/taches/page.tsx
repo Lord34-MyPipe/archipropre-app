@@ -15,6 +15,7 @@ export interface ParametresSociete {
   cout_km: number
   frais_generaux_mois: number
   taux_horaire_facturation_defaut?: number | null
+  taux_horaire_cible?: number | null
 }
 export interface StatsReel {
   totalMin: number

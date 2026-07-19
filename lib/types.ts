@@ -1,3 +1,5 @@
+import { type DispatchJour } from '@/lib/dispatchSemaine'
+
 export type Role = 'agent' | 'manager' | 'directeur'
 export type InterventionStatut = 'planifiee' | 'en_cours' | 'terminee' | 'non_demarree' | 'disponible'
 export type FrequenceType = 'hebdo' | 'jours_specifiques' | 'mensuel' | 'trimestriel' | 'semestriel' | 'annuel' | 'sur_passage' | 'contrainte_horaire'
@@ -95,6 +97,9 @@ export interface ContratResidence {
   notes_specifiques: string | null
   actif: boolean
   created_at: string
+  creneaux_acceptes?: { jours: string[]; heure_debut: string; heure_fin: string }[] | null
+  jours_ramassage_containers?: string[] | null
+  dispatch_semaine?: DispatchJour[] | null
 }
 
 export interface Planning {

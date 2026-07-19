@@ -10,6 +10,7 @@ import JoursBulkModal, { type JoursMode } from './JoursBulkModal'
 import type { ParametresSociete, StatsReel } from './page'
 import { ClipboardList, CalendarX, Building2, ChevronRight } from 'lucide-react'
 import { computeProrataZones, volumeHebdoMinutes, nbPassagesHebdo, type ProrataZoneInput, type ProrataZoneResult } from '@/lib/prorata'
+import SimulationTauxRentablePanel from './SimulationTauxRentablePanel'
 
 /* ── Constantes ──────────────────────────────── */
 
@@ -153,6 +154,7 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
   const [joursBulkBusy, setJoursBulkBusy] = useState(false)
   const [toast, setToast]         = useState<{ message: string; type: 'success'|'error' } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'zone'|'tache'; id: string; label: string } | null>(null)
+  const [showSimulation, setShowSimulation] = useState(false)
 
   const showToast = useCallback((message: string, type: 'success'|'error' = 'success') => {
     setToast({ message, type })
@@ -507,6 +509,15 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
   const compteurCouleur: 'gray' | 'green' | 'orange' | 'red' =
     compteurPct === null ? 'gray' : compteurPct <= 100 ? 'green' : compteurPct <= 115 ? 'orange' : 'red'
 
+  // ── Plafond rentable (taux cible société) — même formule que le wizard
+  // "Analyse contrat" (AnalyseContratWizard.tsx : plafondRentable/ecartRentable),
+  // via volumeHebdoMinutes (lib/prorata.ts) : ne duplique pas la formule.
+  const tauxCible       = parametres?.taux_horaire_cible ?? 30
+  const plafondRentable = useMemo(
+    () => volumeHebdoMinutes(contrat?.montant_mensuel ?? null, tauxCible),
+    [contrat?.montant_mensuel, tauxCible],
+  )
+
   /* ── Render ── */
 
   return (
@@ -583,6 +594,9 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
           pct={compteurPct}
           couleur={compteurCouleur}
           parJour={repartiParJour}
+          tauxCible={tauxCible}
+          plafondRentable={plafondRentable}
+          onSimuler={contratId ? () => setShowSimulation(true) : undefined}
         />
 
         {/* ── Vue par zone ── */}
@@ -939,6 +953,20 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
 
       {/* Toast */}
       {toast && <Toast message={toast.message} type={toast.type} onDone={() => setToast(null)}/>}
+
+      {/* Simulation "au taux rentable" — comparaison dispatch actuel vs proposé */}
+      {showSimulation && contratId && (
+        <SimulationTauxRentablePanel
+          open={showSimulation}
+          onClose={() => setShowSimulation(false)}
+          residenceId={residence.id}
+          contratId={contratId}
+          currentDispatch={contrat?.dispatch_semaine ?? []}
+          joursRamassageContainers={contrat?.jours_ramassage_containers ?? []}
+          plafondRentableMin={plafondRentable}
+          tauxCible={tauxCible}
+        />
+      )}
     </div>
   )
 }
@@ -1099,15 +1127,20 @@ const COULEUR_STYLES: Record<'gray'|'green'|'orange'|'red', { bar: string; text:
 }
 
 function CompteurRepartition({
-  volumeHebdoMin, totalReparti, pct, couleur, parJour,
+  volumeHebdoMin, totalReparti, pct, couleur, parJour, tauxCible, plafondRentable, onSimuler,
 }: {
   volumeHebdoMin: number
   totalReparti: number
   pct: number | null
   couleur: 'gray' | 'green' | 'orange' | 'red'
   parJour: Map<string, number>
+  tauxCible: number
+  plafondRentable: number
+  onSimuler?: () => void
 }) {
   const style = COULEUR_STYLES[couleur]
+  const ecartRentableMin = totalReparti - plafondRentable
+  const auTauxCibleOk    = ecartRentableMin <= 0
 
   return (
     <div className={`rounded-2xl border border-slate-100 p-4 md:p-5 ${style.bg}`}>
@@ -1136,6 +1169,21 @@ function CompteurRepartition({
               ⚠ Dépassement de {formatDuree(Math.round(totalReparti - volumeHebdoMin))}
             </p>
           )}
+
+          {/* Au taux cible société (item 1, chantier "simulation taux rentable") */}
+          <div className="flex items-center justify-between gap-3 flex-wrap mt-2.5 pt-2.5 border-t border-white/60">
+            <p className={`text-xs font-medium ${auTauxCibleOk ? 'text-teal-700' : 'text-amber-600'}`}>
+              Au taux cible ({tauxCible} €/h) : <span className="font-semibold">{(plafondRentable / 60).toFixed(1)} h</span>/semaine
+              {' '}— écart {ecartRentableMin >= 0 ? '+' : ''}{Math.round(ecartRentableMin)} min
+            </p>
+            {onSimuler && (
+              <button type="button" onClick={onSimuler}
+                className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/80 text-[#0A2E5A] hover:bg-white transition-colors border border-slate-200">
+                Simuler au taux rentable
+              </button>
+            )}
+          </div>
+
           <div className="flex items-center gap-2 mt-3 flex-wrap">
             {JOURS_ALL.map(j => {
               const min = parJour.get(j) ?? 0

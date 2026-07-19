@@ -282,56 +282,22 @@ export async function POST(req: NextRequest) {
   const zoneGroups = groupZonesByBatiment(zonesContrat ?? [])
   console.log('[generer] bâtiments:', zoneGroups.map(g => g.label ?? '(mono-bâtiment)').join(', '))
 
-  // ── 4d. Prorata dérivé du dispatch (item 4) ─────────────────────────────────
-  // En mode dispatch, le nb de passages/semaine d'une zone n'est PAS celui de
-  // taches_template.jours_semaine (hérité de l'ancien "tous les jours actifs" —
-  // c'est exactement le bug d'origine) mais le nb de fois où la zone apparaît
-  // réellement dans dispatch_semaine (1× via son bâtiment complet, +1× si en
-  // plus visée par une tournée transverse). Synthétise une "tâche" avec autant
-  // de jours fictifs distincts que de passages, pour réutiliser tel quel
-  // nbPassagesHebdo/computeProrataZones (Set.size, peu importe les libellés).
-  let prorataByZoneIdDispatch = new Map<string, ReturnType<typeof computeProrataZones>[number]>()
-  let zoneParNomComplet = new Map<string, ZoneRow>()
+  // ── 4d. Résolution des noms de zones (item 4 + correctif durée dispatch) ───
+  // En mode dispatch, la durée par bâtiment/tournée n'est PLUS un prorata sur
+  // le volume vendu de TOUT le contrat (c'était le bug : chaque bâtiment
+  // recevait systématiquement volumeHebdoMin/9, peu importe le jour ou le
+  // nombre de bâtiments partageant ce jour — cf diagnostic). Elle est
+  // maintenant dérivée du créneau RÉEL du jour, réparti entre les unités
+  // (bâtiments complets + tournées) effectivement prévues CE jour-là — voir
+  // §5 plus bas. zoneParNomComplet reste nécessaire pour résoudre les noms de
+  // zones des tournées transverses ("Bâtiment/Zone").
+  const zoneParNomComplet = new Map<string, ZoneRow>()
   if (dispatchActive) {
     for (const z of (zonesContrat ?? []) as ZoneRow[]) {
       const cle = z.batiment?.trim() ? `${z.batiment.trim()}/${z.nom.trim()}` : z.nom.trim()
       zoneParNomComplet.set(cle.toLowerCase(), z)
       zoneParNomComplet.set(z.nom.trim().toLowerCase(), z) // repli nom seul (collision = dernier gagne, acceptable)
     }
-
-    const zonePassagesDispatch = new Map<string, number>()
-    const incr = (zoneId: string) => zonePassagesDispatch.set(zoneId, (zonePassagesDispatch.get(zoneId) ?? 0) + 1)
-    for (const d of dispatchSemaine) {
-      for (const nom of d.batiments_complets) {
-        const group = zoneGroups.find(g => g.label === nom)
-        if (!group) continue
-        for (const z of group.zones) incr(z.id)
-      }
-      for (const t of d.tournees_transverses) {
-        for (const zoneName of t.zones) {
-          const z = zoneParNomComplet.get(zoneName.trim().toLowerCase())
-          if (z) incr(z.id)
-        }
-      }
-    }
-
-    const prorataInputsDispatch: ProrataZoneInput[] = (zonesContrat ?? []).map(z => {
-      const nbPassages = zonePassagesDispatch.get(z.id) ?? 0
-      const tachesSynthetiques = nbPassages > 0
-        ? [{ frequence_type: 'hebdo' as const, jours_semaine: Array.from({ length: nbPassages }, (_, i) => `passage${i}`) }]
-        : []
-      return {
-        id: z.id,
-        coefDuree: z.coef_duree ?? 1,
-        taches: tachesSynthetiques,
-        dureeExpliciteHebdoMin: z.duree_minutes != null ? z.duree_minutes * nbPassages : null,
-      }
-    })
-    const prorataResultsDispatch = computeProrataZones(volumeHebdoMin, prorataInputsDispatch)
-    prorataByZoneIdDispatch = new Map(prorataResultsDispatch.map(r => [r.zoneId, r]))
-    console.log('[generer] prorata zones (dispatch):', prorataResultsDispatch.map(
-      r => `${r.zoneId.slice(0, 8)}=${Math.round(r.dureePassageMin)}min×${r.nbPassages}(${r.source})`
-    ).join(', '))
   }
 
   const dispatchByJour = new Map(dispatchSemaine.map(d => [d.jour, d]))
@@ -365,10 +331,11 @@ export async function POST(req: NextRequest) {
       // ── Mode dispatch (item 4) : exactement ce que le jour prévoit, rien de plus ──
       const dEntry = dispatchByJour.get(dayName)
       if (dEntry) {
-        const dateStr  = dateParisISO(current)
-        const creneau  = creneauPourJour(creneaux, dayName)
-        const hFinMax  = creneau ? normalizeTime(creneau.heure_fin) ?? null : null
-        let curseur    = creneau ? normalizeTime(creneau.heure_debut) ?? '08:00' : '08:00'
+        const dateStr    = dateParisISO(current)
+        const creneau    = creneauPourJour(creneaux, dayName)
+        const hDebutJour = creneau ? normalizeTime(creneau.heure_debut) ?? '08:00' : '08:00'
+        const hFinMax    = creneau ? normalizeTime(creneau.heure_fin) ?? null : null
+        let curseur      = hDebutJour
 
         const pousserLigne = (label: string, duree: number) => {
           const hDebut = curseur
@@ -388,6 +355,9 @@ export async function POST(req: NextRequest) {
         // R1 : bâtiments complets — TOUTES les zones du groupe, sans filtre par jour
         // (c'est précisément ce qui cassait avant : un filtre par jour dupliquait
         // le bâtiment sur chaque jour actif au lieu d'un seul passage/semaine).
+        // Résolution AVANT calcul de durée : seuls les bâtiments trouvés consomment
+        // du temps du créneau (un bâtiment introuvable est juste ignoré, en warning).
+        const batimentsResolus: { nom: string }[] = []
         for (const nom of dEntry.batiments_complets) {
           const group = zoneGroups.find(g => g.label === nom)
           if (!group) {
@@ -395,32 +365,60 @@ export async function POST(req: NextRequest) {
             console.warn(`[generer] ⚠️ dispatch "${nom}" sans zoneGroup correspondant (résidence=${residenceId})`)
             continue
           }
-          const dureeBrute = group.zones.reduce(
-            (sum, z) => sum + (prorataByZoneIdDispatch.get(z.id)?.dureePassageMin ?? 0), 0
-          )
-          pousserLigne(nom, dureeBrute > 0 ? Math.round(dureeBrute) : 60)
+          batimentsResolus.push({ nom })
         }
 
         // R3 : tournées transverses — zones identifiées par "Bâtiment/Zone" (ou nom seul)
-        for (const t of dEntry.tournees_transverses) {
+        const tourneesResolues: { libelle: string }[] = dEntry.tournees_transverses.map(t => {
           const zonesMatchees = [...new Set(
             t.zones.map(nz => zoneParNomComplet.get(nz.trim().toLowerCase())).filter((z): z is ZoneRow => !!z)
           )]
-          let duree: number
-          if (zonesMatchees.length > 0) {
-            duree = Math.round(zonesMatchees.reduce(
-              (sum, z) => sum + (prorataByZoneIdDispatch.get(z.id)?.dureePassageMin ?? 0), 0
-            ))
-          } else {
-            duree = 20 // repli forfaitaire — zones du dispatch non reconnues dans zones_residence
-            warnings.push(`${JOURS_FR[dayName] ?? dayName} — tournée "${t.libelle}" : zones non reconnues (${t.zones.join(', ') || 'aucune'}), durée forfaitaire appliquée`)
+          if (zonesMatchees.length === 0) {
+            warnings.push(`${JOURS_FR[dayName] ?? dayName} — tournée "${t.libelle}" : zones non reconnues (${t.zones.join(', ') || 'aucune'})`)
           }
-          pousserLigne(t.libelle || 'Tournée transverse', duree)
+          return { libelle: t.libelle || 'Tournée transverse' }
+        })
+
+        // ── Correctif durée dispatch : le créneau du JOUR (moins containers
+        // éventuels) est réparti entre les unités (bâtiments complets +
+        // tournées) réellement prévues ce jour-là — jamais une moyenne globale
+        // sur les 9 bâtiments du contrat entier (bug d'origine). Répartition en
+        // Math.floor + reste distribué aux N premières unités : la somme des
+        // durées arrondies vaut EXACTEMENT le budget disponible, donc jamais de
+        // dépassement de créneau introduit par l'arrondi lui-même.
+        const dureeCreneauJour = hFinMax != null ? (() => {
+          const [h1, m1] = hDebutJour.split(':').map(Number)
+          const [h2, m2] = hFinMax.split(':').map(Number)
+          return Math.max(0, (h2 * 60 + m2) - (h1 * 60 + m1))
+        })() : null
+        const dureeContainers  = dEntry.containers ? DUREE_CONTAINERS_MIN : 0
+        const nbUnitesJour     = batimentsResolus.length + tourneesResolues.length
+
+        let dureeParUnite = 0
+        let uniteBonus    = 0
+        if (nbUnitesJour > 0) {
+          if (dureeCreneauJour != null) {
+            const budgetDisponible = Math.max(0, dureeCreneauJour - dureeContainers)
+            dureeParUnite = Math.floor(budgetDisponible / nbUnitesJour)
+            uniteBonus    = budgetDisponible - dureeParUnite * nbUnitesJour
+          } else {
+            dureeParUnite = 60 // repli si aucun créneau connu ce jour (cf ancien comportement)
+          }
+        }
+
+        let uniteIndex = 0
+        for (const { nom } of batimentsResolus) {
+          pousserLigne(nom, dureeParUnite + (uniteIndex < uniteBonus ? 1 : 0))
+          uniteIndex++
+        }
+        for (const { libelle } of tourneesResolues) {
+          pousserLigne(libelle, dureeParUnite + (uniteIndex < uniteBonus ? 1 : 0))
+          uniteIndex++
         }
 
         // R4 : containers — pas de zone dédiée, estimation forfaitaire
         if (dEntry.containers) {
-          pousserLigne(dEntry.containers === 'sortie' ? 'Containers — sortie' : 'Containers — rentrée', DUREE_CONTAINERS_MIN)
+          pousserLigne(dEntry.containers === 'sortie' ? 'Containers — sortie' : 'Containers — rentrée', dureeContainers)
         }
       }
     } else if (joursActifs.includes(dayName)) {

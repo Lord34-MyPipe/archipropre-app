@@ -102,18 +102,65 @@ function ScanPageInner() {
 
     const today = new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' })
 
+    // ── Mode test "scan hors-jour" (réversible, explicite, test terrain) ──────
+    // Activé UNIQUEMENT par ?test=1 dans l'URL — JAMAIS par défaut. En prod
+    // normale (paramètre absent), dateResolue === today et tout le reste de
+    // cette fonction est rigoureusement identique à avant ce lot (une seule
+    // requête sur `today`, comme aujourd'hui).
+    // En mode test : élargit la résolution de "l'intervention du jour" à une
+    // fenêtre J-3..J+3 et retient la date la plus proche d'aujourd'hui ayant
+    // réellement une intervention planifiee/en_cours pour cet agent+ce
+    // contrat (today lui-même gagne en cas d'égalité, cf tri stable + arrivée
+    // en tête de liste). Ne touche à AUCUNE autre logique (zones, tâches,
+    // rapport) : seule la date utilisée pour retrouver "l'intervention du
+    // jour" change, tout le reste de la fonction consomme dateResolue/
+    // jourCourant exactement comme il consommait today/new Date() avant.
+    // DÉSACTIVATION : ne plus ajouter ?test=1 à l'URL/au lien envoyé à
+    // l'agent — rien d'autre à faire, ce mode ne persiste aucun état nulle
+    // part (ni en base, ni en cookie/localStorage), il ne vaut que pour CET
+    // appel de processToken.
+    const testMode = params.get('test') === '1'
+    let dateResolue = today
+    if (testMode) {
+      const fmtParis = (d: Date) => d.toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' })
+      const centre  = new Date(today + 'T12:00:00')
+      const jMoins3 = new Date(centre); jMoins3.setDate(jMoins3.getDate() - 3)
+      const jPlus3  = new Date(centre); jPlus3.setDate(jPlus3.getDate() + 3)
+
+      const { data: candidats } = await supabase
+        .from('interventions')
+        .select('date_prevue')
+        .eq('agent_id', user.id)
+        .eq('contrat_id', contrat.id)
+        .gte('date_prevue', fmtParis(jMoins3))
+        .lte('date_prevue', fmtParis(jPlus3))
+        .in('statut', ['planifiee', 'en_cours'])
+
+      const dates = [...new Set((candidats ?? []).map(c => c.date_prevue as string))]
+      if (dates.length > 0) {
+        dates.sort((a, b) =>
+          Math.abs(new Date(a + 'T12:00:00').getTime() - centre.getTime()) -
+          Math.abs(new Date(b + 'T12:00:00').getTime() - centre.getTime())
+        )
+        dateResolue = dates[0]
+      }
+      // eslint-disable-next-line no-console
+      console.warn(`[SCAN TEST MODE ?test=1] fenêtre ${fmtParis(jMoins3)}..${fmtParis(jPlus3)} → date résolue: ${dateResolue}`)
+    }
+
     setMessage('Recherche de l\'intervention…')
 
-    // 5. TOUTES les interventions de CE CONTRAT pour aujourd'hui (binôme : agent_id
-    // = user.id). Depuis le chantier bâtiments, un jour multi-bâtiments = plusieurs
-    // interventions distinctes (une par bâtiment, enchaînées) — on travaille
-    // désormais sur la liste complète, jamais sur un id fixe (étape 9, §7.3).
+    // 5. TOUTES les interventions de CE CONTRAT pour la date résolue (binôme :
+    // agent_id = user.id). Depuis le chantier bâtiments, un jour multi-bâtiments
+    // = plusieurs interventions distinctes (une par bâtiment, enchaînées) — on
+    // travaille désormais sur la liste complète, jamais sur un id fixe (étape 9,
+    // §7.3). dateResolue === today hors mode test (comportement inchangé).
     const { data: intersJour } = await supabase
       .from('interventions')
       .select('id, statut, batiment')
       .eq('agent_id', user.id)
       .eq('contrat_id', contrat.id)
-      .eq('date_prevue', today)
+      .eq('date_prevue', dateResolue)
       .in('statut', ['planifiee', 'en_cours'])
       .order('heure_debut_prevue')
 
@@ -129,7 +176,7 @@ function ScanPageInner() {
         .select('id')
         .eq('agent_id', user.id)
         .eq('contrat_id', contrat.id)
-        .eq('date_prevue', today)
+        .eq('date_prevue', dateResolue)
         .in('statut', ['terminee', 'validee'])
         .limit(1)
         .maybeSingle()
@@ -147,7 +194,7 @@ function ScanPageInner() {
         const heureFR = now.toLocaleTimeString('fr-FR', {
           hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris',
         })
-        const dateFR = new Date(today + 'T12:00:00').toLocaleDateString('fr-FR', {
+        const dateFR = new Date(dateResolue + 'T12:00:00').toLocaleDateString('fr-FR', {
           day: '2-digit', month: '2-digit', timeZone: 'Europe/Paris',
         })
 
@@ -160,7 +207,7 @@ function ScanPageInner() {
           .eq('lue', false)
           .filter('metadata->>agent_id', 'eq', user.id)
           .filter('metadata->>contrat_id', 'eq', contrat.id)
-          .filter('metadata->>date', 'eq', today)
+          .filter('metadata->>date', 'eq', dateResolue)
           .limit(1)
           .maybeSingle()
 
@@ -179,7 +226,7 @@ function ScanPageInner() {
               contrat_libelle: contratLibelle,
               residence_id:    contrat.residence_id,
               residence_nom:   residenceNom,
-              date:            today,
+              date:            dateResolue,
               heure:           now.toISOString(),
             },
           })
@@ -188,7 +235,9 @@ function ScanPageInner() {
 
       setStatus('error')
       setMessage(
-        `Aucune intervention prévue aujourd'hui pour ce contrat` +
+        (testMode
+          ? `Aucune intervention prévue dans les jours proches pour ce contrat`
+          : `Aucune intervention prévue aujourd'hui pour ce contrat`) +
         `${contrat.libelle ? ` (${contrat.libelle})` : ''}.` +
         ` Votre manager a été informé.`
       )
@@ -224,9 +273,13 @@ function ScanPageInner() {
     // liste. jourInter.batiment = null (mono-bâtiment) → aucun filtre, toutes
     // les zones du contrat comme avant. Mono-bâtiment : la liste ne contient
     // qu'1 élément → 1 seule itération, comportement identique à avant.
+    // jourCourant = jour de semaine de dateResolue (PAS forcément "aujourd'hui"
+    // en mode test) : pilote le filtre jours_semaine des tâches et la
+    // recherche dans dispatch_semaine juste en dessous — doit rester cohérent
+    // avec la date des interventions réellement traitées ci-dessus.
     const jourCourant = new Intl.DateTimeFormat('fr-FR', {
       timeZone: 'Europe/Paris', weekday: 'long',
-    }).format(new Date())
+    }).format(new Date(dateResolue + 'T12:00:00'))
 
     // Tournées transverses du jour (correctif "halls bi-hebdo") — une
     // intervention de tournée porte un batiment SYNTHÉTIQUE (ex. "Halls Bât
@@ -352,7 +405,7 @@ function ScanPageInner() {
       const heureFR = nowHorsZone.toLocaleTimeString('fr-FR', {
         hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris',
       }).replace(':', 'h')
-      const dateFR = new Date(today + 'T12:00:00').toLocaleDateString('fr-FR', {
+      const dateFR = new Date(dateResolue + 'T12:00:00').toLocaleDateString('fr-FR', {
         day: '2-digit', month: '2-digit', timeZone: 'Europe/Paris',
       })
 
@@ -367,7 +420,7 @@ function ScanPageInner() {
           residence_id:  residence.id,
           residence_nom: residence.nom,
           distance_m:    distanceM,
-          date:          today,
+          date:          dateResolue,
           heure:         nowHorsZone.toISOString(),
         },
       })
@@ -467,6 +520,7 @@ function ScanPageInner() {
   }
 
   const tokenInUrl = !!params.get('token')
+  const testModeUrl = params.get('test') === '1'
 
   // ── Rendu ─────────────────────────────────────────────────────────────────
   return (
@@ -481,6 +535,14 @@ function ScanPageInner() {
         </button>
         <h1 className="text-white font-bold text-xl">Scanner un chantier</h1>
       </div>
+
+      {/* Bandeau mode test — visible tant que ?test=1 est dans l'URL, pour
+          qu'il n'y ait jamais de doute sur le mode actif pendant le test terrain */}
+      {testModeUrl && (
+        <div className="mx-6 mb-2 px-3 py-2 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-200 text-xs font-semibold text-center">
+          MODE TEST — fenêtre élargie J-3/J+3 (retirez ?test=1 de l&apos;URL pour repasser en mode normal)
+        </div>
+      )}
 
       {/* Zone caméra ou état */}
       <div className="relative flex-1 flex items-center justify-center px-6 py-4">

@@ -1,6 +1,55 @@
-# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 17 juillet 2026 — chantier "niveau bâtiment" terminé fonctionnellement)
+# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 19 juillet 2026 — chantier "Analyse contrat" complet)
 
-**CHANTIER "NIVEAU BÂTIMENT" TERMINÉ (fonctionnellement).** Modèle final :
+**CHANTIER "ANALYSE CONTRAT" COMPLET et fonctionnel** : wizard 4 étapes
+(Identité / Analyse / Répartition / Validation), analyse IA (bâtiments→zones→
+tâches), taux horaire cible, dispatch semaine (répartition jour par jour),
+simulation au taux rentable — tout testé en conditions réelles sur PRIEURE.
+Objectif : configurer les ~130 résidences restantes en 3-5 minutes chacune
+via ce wizard. Détail complet (audit, 8 sous-chantiers, commits, tests) :
+voir section « CHANTIER ANALYSE CONTRAT — LIVRÉ COMPLET (19 juillet 2026) »
+plus bas.
+
+**PRIEURE = résidence de référence à nouveau opérationnelle** (reset complet
+le 19/07, repartie de zéro pour ce chantier) : contrat réel (2327,59€/mois,
+taux 30€/h), agent André Sabatier, dispatch 9 bâtiments sur 5 jours +
+containers mardi/vendredi (collecte nocturne), 676 interventions planifiées.
+**NE PAS SUPPRIMER**, config réelle définitive à nouveau.
+
+**DETTE ACTÉE (décision Julien, non bloquante) :** le mode simplifié du
+wizard (1 tâche synthétique par zone) ne distingue pas les fréquences
+bi-hebdo par type de zone — les halls « 2×/semaine » du contrat PRIEURE ne
+sont en pratique faits qu'1×/semaine (le jour du bâtiment). La règle R3
+(tournées transverses) existe dans le moteur mais n'est jamais déclenchée
+car l'IA ne détecte pas de bi-hebdo distinct en mode simplifié sur cette
+résidence. À corriger dans un lot dédié post-lancement, PAS avant le test
+terrain de cette semaine.
+
+**DETTE MINEURE :** 3 jours du dispatch PRIEURE dépassent le créneau
+08:00-12:00 de 3 minutes (243 vs 240, forfait containers en bord de créneau)
+— warning R5 remonté correctement, non bloquant.
+
+**DETTE FUTURE (non urgente) :** ajouter un champ « mode collecte (jour/nuit) »
+au wizard pour formaliser R4 par résidence plutôt que la règle universelle
+actuelle (qui suppose collecte nocturne partout — vrai chez Archipropre à ce
+jour, mais fige une hypothèse).
+
+**RESTE À FAIRE EN PRIORITÉ (reprise de session) :**
+1. Contrôle visuel manager : fiche PRIEURE = badge « Planning actif »,
+   planning affiche les interventions d'André.
+2. **TEST TERRAIN RÉEL (priorité absolue de la semaine)** : sur prod
+   (archipropre-app.vercel.app, Safari normal PUIS PWA), André scanne le QR
+   code du NOUVEAU contrat PRIEURE (l'ancien QR est mort depuis le reset —
+   réimprimer depuis la fiche contrat), vérifie planning J→J+7, photo par
+   zone, clôture, rapport reçu côté manager avec heure de début.
+3. Identifier les 3 agents pilotes (pas encore déterminés) + lister leur
+   périmètre exact de résidences à configurer via le wizard.
+4. Test lien syndic en conditions réelles sur prod (en attente depuis avant
+   cette session — nécessite du contenu réel généré par André sur PRIEURE,
+   donc à refaire après le test terrain du point 2).
+5. Lot 3 futur (non urgent) : mode « restructurer » un contrat existant écrit
+   réellement (aujourd'hui lecture seule / dispatch-only).
+
+Avant (17 juillet 2026) : **CHANTIER "NIVEAU BÂTIMENT" TERMINÉ (fonctionnellement).** Modèle final :
 Résidence → Contrat → [Bâtiment = étiquette texte sur zone] → Zone → Tâche.
 Spec de référence : `docs/CONCEPTION_BATIMENTS.md` (déposé dans le repo).
 **PRIEURE = résidence de référence multi-bâtiments** (9 bâtiments, 54 zones,
@@ -1837,6 +1886,210 @@ commercial face à Organilogue.
     aléatoire inexistant → même message générique (pas de faille
     d'énumération).
 
+## CHANTIER ANALYSE CONTRAT — LIVRÉ COMPLET (19 juillet 2026)
+
+Chantier majeur en 8 sous-parties, session du 19 juillet 2026. Objectif final :
+configurer les ~130 résidences restantes en 3-5 minutes chacune via un wizard
+assisté IA, au lieu de la saisie manuelle bâtiment→zone→tâche.
+
+### 1. Audit parcours création contrat (lecture seule, préalable)
+
+A révélé trois angles morts avant tout développement :
+- La durée par tâche n'est **jamais lue** par `/api/planning/generer`.
+- Les jours d'intervention se saisissent à **4 endroits redondants**, avec un
+  **fallback silencieux à 08:00** en cas de mismatch jour/créneau.
+- Seules les tâches `frequence_type='hebdo'` sont prises en compte par la
+  génération — mensuel/trimestriel/etc. sont saisissables mais **ignorés**.
+
+### 2. Lot 1 — Wizard + IA (lecture seule)
+
+- `AnalyseContratWizard.tsx` : 4 étapes (Identité / Analyse / Répartition /
+  Validation), accessible via bouton « Nouveau contrat (assisté IA) » sur
+  fiche résidence + « Analyser/restructurer » par carte contrat existant.
+- Route `POST /api/ia/analyse-contrat` : appel `claude-sonnet-4-6`, prend
+  texte contrat + contraintes libres, retourne JSON structuré
+  (bâtiments→zones→tâches, créneaux proposés, `hors_planning_hebdo` pour
+  fréquences non-hebdo, alertes).
+- Étape 3 : proposition éditable en direct (accordéon bâtiment→zone→tâche,
+  récap minutes estimées vs vendues recalculé à chaque édition).
+- Commits : `bc10825` (squelette), `ca93c49` (route IA), `bddf0db` (étapes 2-3).
+- Testé à blanc sur cas MACJ (355€, taux 25) : dépassement détecté (320 vs
+  197 min), containers isolés en `hors_planning`, contradiction interne du
+  contrat détectée par l'IA elle-même.
+
+### 3. Mini-lot « taux horaire cible »
+
+- Migration 030 : `parametres_societe.taux_horaire_cible NUMERIC(6,2) DEFAULT
+  30` — taux commercial de référence, **JAMAIS utilisé pour la facturation**,
+  uniquement pour les indicateurs d'écart.
+- Directeur → Paramètres : taux cible éditable à côté du taux facturation
+  défaut (rendu éditable au passage, ne l'était nulle part avant).
+- Indicateur d'écart dans `GestionContratModal` + wizard étape 1 : « Au taux
+  cible (X€/h) : Y h/mois (écart ±Z) », vert/orange.
+- Commits : `e1ce771` (migration), `6a78b6f` (paramètres), `a1218c0` (indicateur).
+- Testé sur PRIEURE avant reset : 77,6h/mois au taux cible confirmé exact.
+
+### 4. Reset complet résidence PRIEURE
+
+Résidence `f355b660-32d9-45dd-bd7a-3c1bcd6056c9` **CONSERVÉE**, contenu
+supprimé — objectif : repartir de zéro pour tester le wizard en conditions
+réelles.
+- Exécuté par Claude Code via MCP Supabase direct (inventaire chiffré
+  `COUNT(*)` précis avant suppression, pas les estimations de catalogue
+  `list_tables`).
+- Supprimé : 1 contrat, 54 zones, 300 tâches template, 432 interventions,
+  70 `taches_intervention`, 13 `zones_intervention`, 14 `photos_zone` (+ purge
+  Storage bucket `photos-interventions`), 2 alertes, 1 ligne
+  `journees_agent` (André Sabatier 2026-07-17, seule ligne 100% PRIEURE
+  parmi 3 candidates).
+- Résidence elle-même intacte (nom/adresse/GPS/`manager_id`),
+  `agent_prefere_id` et `agent_secondaire_id` remis à NULL, `actif=true`.
+
+### 5. Lot 2 révisé — écriture réelle, mode simplifié (priorité changée)
+
+Changement de cap acté : livraison app à 3 agents pilotes sous 1 semaine.
+Priorité = boucle terrain (scan QR → photos zones → rapport) déjà
+fonctionnelle, pas la finesse du détail des tâches. Deux principes actés :
+- Le **planning ACTUEL de l'agent** (jours + horaires réels) devient la base
+  opérationnelle saisie dans le wizard — l'IA structure le CONTENU
+  (bâtiments/zones) mais ne décide **jamais** des jours/horaires, elle les
+  reçoit en entrée.
+- Le **plafond rentable** (montant ÷ `taux_horaire_cible`) devient un
+  indicateur permanent affiché à côté de l'organisation réelle, **stocké sur
+  le contrat** (pas juste calculé à la volée) pour une future vue globale des
+  contrats en dépassement.
+
+Technique :
+- Migration 031 : `contrats_residences` + `minutes_hebdo_reelles` (integer),
+  + `ecart_rentable_minutes` (integer, positif = dépassement).
+- RPC `creer_contrat_complet(p_residence_id, p_contrat, p_structure)`
+  `SECURITY DEFINER` : insère contrat+zones+tâches en transaction atomique,
+  retourne `{contrat_id, nb_zones, nb_taches}`.
+- ⚠️ **CORRECTIF SÉCURITÉ appliqué en cours de route** : `GRANT EXECUTE`
+  avait laissé l'accès `PUBLIC` implicite (`authenticated` + `anon` en plus de
+  `service_role`) sur cette RPC `SECURITY DEFINER` sans vérification
+  d'ownership interne — `REVOKE FROM PUBLIC` appliqué, reporté au fichier de
+  migration versionné. **RÉFLEXE À GÉNÉRALISER : toujours vérifier `pg_proc`
+  après un `GRANT` sur une fonction `SECURITY DEFINER`.**
+- Wizard étape 1 : section « Organisation actuelle » (agent, jours, horaires,
+  calcul live `minutes_hebdo_reelles` + indicateur écart vs plafond).
+- Wizard étape 3 : mode SIMPLIFIÉ par défaut (1 tâche synthétique par zone au
+  lieu de l'arbre détaillé 5-doigts), toggle « Structure détaillée » conservé
+  pour plus tard.
+- Route `POST /api/residences/[id]/contrats/creer-complet` : validation
+  `jours_semaine ⊆ creneaux_acceptes` (400 explicite si jours orphelins —
+  élimine le fallback 08:00 silencieux pour ce nouveau parcours), calcule
+  `ecart_rentable_minutes` côté serveur.
+- Commits : `7d1f8f6`→`4a61ee0` (migration+RPC+correctif sécu)→`da5807a`,
+  `c956630` (wizard), `f3a2a5e` (route), `27d5257` (fix `max_tokens`
+  8192→16000, insuffisant pour 9 bâtiments, trouvé pendant test).
+- Double-écriture `agent_prefere_id` oubliée puis corrigée (commit
+  `280dbf5`) : la route `creer-complet` doit répliquer sur
+  `residences.agent_prefere_id` quand `type_contrat=parties_communes` (même
+  pattern que `/api/residences/affecter`) — sinon `v_etat_residence` reste
+  « à configurer » malgré contrat actif.
+
+**Test réel PRIEURE** (écriture réelle, PAS un test à blanc — c'est la vraie
+config de PRIEURE désormais) : contrat « Contrat principal », 2327,59€, taux
+spécifique 30€/h, agent André Sabatier (`b37ff7d1-f95b-4e1c-8c6f-ae6f385404a5`),
+organisation actuelle lun-ven 08:00-12:00. L'IA a produit 9 bâtiments
+identiques × 4 zones (Hall entrée / Paliers RDC-4e / Local poubelles /
+Extérieurs-tour de propreté) + 1 zone « Résidence (commun tous bâtiments) »
+pour containers = 37 zones, 37 tâches. `minutes_hebdo_reelles=1200`,
+`ecart_rentable_minutes=+126` (attendu +125, arrondi négligeable). Génération
+initiale : 2600 interventions (bug de duplication tous-les-jours, voir
+chantier suivant).
+
+### 6. Chantier « Répartition semaine » (fix bug « tous les bâtiments tous les jours »)
+
+Problème identifié par Julien : un agent finit un bâtiment avant de passer au
+suivant — la génération dupliquait chaque bâtiment sur chaque jour du
+créneau au lieu de dispatcher.
+
+Règles métier universelles actées (**R1-R5**, codées dans
+`lib/dispatchSemaine.ts`, fonction `reglesDispatchPrompt()` — SEUL point de
+définition partagé par `/api/ia/analyse-contrat` ET `dispatch/proposer`) :
+- **R1** : un bâtiment commencé est terminé dans la même intervention.
+- **R2** : bâtiments identiques répartis équitablement sur les jours (9
+  bâtiments/5 jours → 2-2-2-2-1).
+- **R3** : prestations bi-hebdo par bâtiment (ex. halls 2×/sem) → 1er passage
+  le jour du bâtiment, 2e passage en tournée transverse un autre jour espacé
+  ≥2 jours.
+- **R4** : containers = zone commune résidence, `jours_ramassage_containers`
+  pilote sortie/rentrée — **corrigée le 19/07** (voir point 8 ci-dessous).
+- **R5** : somme des durées d'un jour doit tenir dans le créneau, sinon
+  alerte explicite.
+
+Technique :
+- Migration 032 : `contrats_residences` + `jours_ramassage_containers`
+  (`text[]`), + `dispatch_semaine` (`jsonb`, NULL = comportement legacy
+  inchangé pour rétrocompatibilité stricte).
+- Wizard étape 1 : champ « Jours de ramassage containers » (toggles lun-dim).
+- Wizard étape 3 : nouveau bloc « Répartition de la semaine » (tableau jour
+  par jour éditable : bâtiments complets / tournées transverses / containers
+  / durée estimée).
+- `/api/planning/generer` : branche dispatch-aware si `dispatch_semaine`
+  non-null (génère PAR JOUR selon le dispatch), sinon comportement actuel
+  inchangé (contrats existants non affectés).
+- Nouvelle route légère `dispatch/proposer` sur contrat EXISTANT (le mode
+  « Analyser/restructurer » du wizard n'écrit pas encore — lot 3 futur) +
+  bouton « Répartition semaine » sur `ContratParametresPanel`.
+- Commits : `c81ee80` (migration 032), `199a918` (règles+prompt IA),
+  `b150d57` (wizard UI), `805b691` (génération dispatch-aware), `bfeaa39`
+  (route+UI dispatch proposer).
+
+**Test réel PRIEURE** : dispatch appliqué (lundi Bât1-2, mardi Bât3-4,
+mercredi Bât5-6, jeudi Bât7-8, vendredi Bât9 + containers), régénération →
+676 interventions (au lieu de 2600), chaque bâtiment 1×/semaine en entier
+confirmé par SQL, 0 intervention week-end.
+
+⚠️ **Incident diagnostic** (résolu par élimination, cause non confirmée à
+100%) : le premier test post-déploiement a donné 2600 interventions au lieu
+de 676 attendu. Diagnostic Claude Code (lecture seule : RPC relue =
+pass-through propre sans logique cachée, `dispatch_semaine` intact en base,
+code `origin/main` correct) a conclu par élimination à un déploiement Vercel
+non à jour au moment du test (dette connue « Deploying outputs bloqué »).
+Refaire le test après re-déploiement confirmé a donné 676 — comportement
+correct confirmé. **RÉFLEXE À RETENIR : après toute régénération donnant un
+résultat surprenant, vérifier le déploiement Vercel actif (dashboard, statut
+« Ready » + hash attendu) AVANT de chercher un bug de code.**
+
+### 7. Chantier « Simulation taux rentable »
+
+- Page Tâches (`TachesClient.tsx`/`CompteurRepartition`) : nouvel indicateur
+  sous le bandeau « Réparti X sur Y vendues/semaine » → « Au taux cible
+  (Z€/h) : W h/semaine — écart ±V » (réutilise le calcul existant de
+  `GestionContratModal`, vert/orange).
+- Route `dispatch/proposer` étendue : paramètre optionnel
+  `enveloppeMinutesHebdo` (si fourni, l'IA dispatche sur cette enveloppe
+  réduite au lieu du temps réel actuel ; absent = comportement inchangé).
+- Bouton « Simuler au taux rentable » → panneau comparatif 2 colonnes
+  (Organisation actuelle vs Proposition simulée), AUCUNE écriture tant que
+  le bouton « Appliquer cette proposition » séparé n'est pas cliqué
+  explicitement.
+- Commits : `4094cad` (route), `2caa15d` (UI indicateur+panneau — groupés,
+  déviation notée du 1-commit-par-item car composant partagé).
+- Testé sur PRIEURE (lecture seule) : enveloppe 1074 min/sem, simulation a
+  gardé 2 bâtiments/jour mais réorganisé les containers (mercredi devient
+  jour de rentrée), écart final +3 min. `dispatch_semaine` réel de PRIEURE
+  vérifié inchangé après test.
+
+### 8. Correction règle R4 — collecte containers nocturne (règle universelle)
+
+Julien a précisé : le camion de collecte passe **TOUJOURS** de nuit → la
+rentrée doit être **LE JOUR MÊME** du ramassage (jamais le lendemain comme
+codé initialement). Cette règle vaut pour **TOUTES** les résidences, pas
+seulement PRIEURE.
+- Correction dans `lib/dispatchSemaine.ts::reglesDispatchPrompt()` (unique
+  point de définition de R4 dans toute la base de code, vérifié par grep
+  exhaustif sur `lib/` et `app/`).
+- R4 corrigée : sortie = veille du ramassage, rentrée = jour même (élimine
+  le faux conflit « rentrée samedi » rencontré 2 fois avant cette correction).
+- Commit `0ee1f7b`.
+- Retest simulation PRIEURE (ramassage mar+ven) : sortie lundi/jeudi,
+  rentrée mardi/vendredi, 0 conflit — comportement qui avait été appliqué
+  manuellement au chantier 6 est maintenant natif.
+
 ## Ordre de configuration (session Ana)
 
 Séquence obligatoire (l'étape ③ du wizard résidence dépend des agents existants) :
@@ -1968,6 +2221,45 @@ connexion) + **Item 6** (masqué de la liste agents). Suffisant — pas de suppr
   - Le message d'erreur d'un lookup par token doit être IDENTIQUE dans tous
     les cas d'échec (révoqué / inexistant / malformé) — ne jamais laisser une
     différence de message devenir un oracle d'énumération.
+
+### Chantier Analyse contrat (19 juillet 2026)
+
+- **`GRANT EXECUTE` sur une RPC `SECURITY DEFINER` laisse `PUBLIC` implicite**
+  (`authenticated` + `anon` en plus de `service_role`) si on ne
+  `REVOKE...FROM PUBLIC` pas explicitement. Trouvé sur `creer_contrat_complet`
+  (aucune vérification d'ownership interne à la fonction, l'auth est censée
+  se faire dans la route appelante). **Réflexe à généraliser : après tout
+  `GRANT` sur une fonction `SECURITY DEFINER`, vérifier `pg_proc`/`aclexplode`
+  pour confirmer qu'aucun rôle non voulu n'a hérité de l'exécution.**
+- **Une régénération qui donne un résultat radicalement différent de ce qui a
+  été testé peut être un déploiement Vercel pas encore à jour**, pas un bug
+  de code. Diagnostic par élimination (RPC relue = propre, données en base
+  correctes, `origin/main` correct) → conclusion la plus probable = version
+  déployée en retard. **Réflexe : vérifier le dashboard Vercel (statut
+  « Ready » + hash du commit attendu) AVANT de chercher un bug de code
+  quand un comportement fraîchement corrigé semble avoir régressé sans
+  raison dans le code.**
+- **Une règle métier universelle (R1-R5) codée UNE SEULE FOIS dans un module
+  partagé (`lib/dispatchSemaine.ts`) plutôt que dupliquée dans chaque route
+  IA** évite exactement le risque de divergence qu'on a ailleurs dans le
+  projet (ex. calculs de rentabilité dupliqués) — corriger R4 à un seul
+  endroit a suffi à corriger tous les appelants (`analyse-contrat` ET
+  `dispatch/proposer`), vérifié par grep exhaustif avant de conclure qu'il
+  n'y avait qu'une seule occurrence.
+- **Toujours reformuler une hypothèse métier avant de l'encoder dans un
+  prompt IA** : la R4 initiale (« rentrée = lendemain ») semblait raisonnable
+  mais supposait implicitement une collecte diurne. Le symptôme (« conflit
+  rentrée samedi ») est apparu deux fois avant que la vraie contrainte
+  métier (collecte nocturne, donc rentrée possible le jour même) soit
+  précisée — un signal répété qui ne se résout pas par une rustine locale
+  mérite de remonter à la règle censée le prévenir.
+- **Tester une simulation IA sans toucher la donnée réelle** : le pattern
+  utilisé pour PRIEURE (script `tsx` autonome, service-role, important le
+  VRAI module de règles partagé `lib/dispatchSemaine.ts` pour ne jamais
+  diverger du code réellement déployé, aucune écriture) permet de valider un
+  comportement IA en conditions quasi réelles sans session manager
+  authentifiée ni risque sur les données de production — réutilisable pour
+  de futurs tests similaires.
 
 ## À faire Phase 3
 

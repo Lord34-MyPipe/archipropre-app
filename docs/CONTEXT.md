@@ -1,4 +1,4 @@
-# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 20 juillet 2026 — 1er test terrain réel réussi + polish containers + simplification 3 chemins création contrat)
+# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 21 juillet 2026 — 1er test terrain réel réussi + polish containers + simplification 3 chemins création contrat + bug binôme corrigé sur 3 endroits)
 
 **PREMIER TEST TERRAIN RÉEL RÉUSSI le 20/07/2026** — Julien a scanné une
 mission PRIEURE neuve (5 éléments : Bât 1, Bât 2, 2 tournées Halls, 1
@@ -68,7 +68,40 @@ distincts** sur la même fiche résidence (wizard IA, `AjoutContratModal`,
 `GestionContratModal`), un seul corrigé au premier passage. Les 2 autres
 alignés par cohérence (commit `45558f9`). **NOUVELLE DETTE ARCHITECTURE
 actée** (décision de consolidation non prise) : voir items 14-16 + section
-dédiée, « CHANTIER ANALYSE CONTRAT ».
+dédiée, « CHANTIER ANALYSE CONTRAT ». **Rien de nouveau sur ce sujet depuis —
+toujours 3 chemins, toujours non consolidés, aucune décision prise.**
+
+**Petit polish (20/07, commit `a3c7d0f`) :** `GestionContratModal` affiche
+désormais un bandeau informatif non bloquant (« Ajoutez un montant et au
+moins un créneau pour activer ce contrat ») quand un placeholder est
+enregistré sans montant ni créneau — évite qu'une sauvegarde silencieuse
+réussie ressemble à un bug.
+
+**BUG MAJEUR TRANSVERSAL CORRIGÉ (21 juillet 2026) — angle mort binôme dans
+TOUS les calculs de temps de travail vs plafond/enveloppe.** Découvert lors de
+la config du contrat GMCO (agent Edgard Rakotondrasoa, réellement en binôme
+avec Marie Razafindrakoto, `profiles.binome_agent_id` vérifié en base dans les
+deux sens). **Règle métier confirmée et gravée : l'enveloppe vendue / plafond
+rentable (montant ÷ taux horaire cible) représente des minutes de MAIN
+D'ŒUVRE PAYÉE (heures-personne), jamais des minutes de présence sur site — un
+binôme = 2 agents payés simultanément = 2× la main d'œuvre pour le même
+créneau de présence.** Trois endroits comparaient un temps « actuel » à un
+plafond SANS jamais vérifier le binôme, sous-estimant la main d'œuvre réelle
+de moitié à chaque fois — corrigés un par un, trouvés un par un (pas tous
+d'un coup) :
+1. `AnalyseContratWizard.tsx` (`minutesHebdoReelles`, étape 1) — commit
+   `8a099dd`.
+2. `lib/dispatchDuree.ts` (`recalculerDureesDispatch`, « Simuler au taux
+   rentable ») — même commit `8a099dd`. Même bug que le fix « durée dispatch »
+   du 19/07 (540→1200 min, item 12) n'avait PAS couvert : jamais testé sur un
+   cas binôme.
+3. `lib/dispatchVerification.ts::verifierEnveloppe()` (garde-fou créé le
+   19/07, commit `fb360c6`) — commit `6cc956d`. Sans le fix, ce garde-fou
+   pouvait se tromper DANS LES DEUX SENS (fausse alerte de sous-dimensionnement
+   OU fausse validation d'un vrai dépassement), pas seulement rater un cas.
+
+Détail complet (formules, preuves par script, vérifié non concerné :
+`/api/planning/generer`) : voir item 17, section « CHANTIER ANALYSE CONTRAT ».
 
 **PRIEURE = résidence de référence à nouveau opérationnelle**, dispatch
 durci : 9 bâtiments sur 5 jours (2-2-2-2-1), 9 halls bi-hebdo (écarts ≥2
@@ -2610,6 +2643,118 @@ contrat DÉJÀ pleinement configuré (son usage principal actuel côté
 `ContratParametresPanel`) — l'option (a) n'éliminerait que son rôle de
 « création via placeholder ».
 
+### 17. BUG MAJEUR TRANSVERSAL — angle mort binôme dans les calculs de temps/enveloppe (21 juillet 2026)
+
+Découvert lors de la config du contrat GMCO : agent attitré Edgard
+Rakotondrasoa, créneaux réels Mar 18:30-19:30 (60 min) + Ven 18:30-20:00
+(90 min) = 150 min/sem. Vérifié en base : Edgard est réellement en binôme
+avec Marie Razafindrakoto (`profiles.binome_agent_id` renseigné dans les deux
+sens, relation réciproque confirmée).
+
+**Règle métier confirmée par Julien, à graver pour ne plus la requestionner :
+l'enveloppe vendue / plafond rentable (`montant ÷ taux_horaire_cible`)
+représente des minutes de MAIN D'ŒUVRE PAYÉE (heures-personne), jamais des
+minutes de présence sur site.** Un `taux_horaire` est un prix par PERSONNE et
+par HEURE (convention universelle du métier du nettoyage) — si 2 agents
+travaillent simultanément 60 min, cela consomme 2 heures-personne de main
+d'œuvre payée, même si le site n'a été occupé que 60 min. Cette lecture est
+cohérente avec un mécanisme déjà existant et fonctionnel dans l'app :
+`/api/planning/generer` mirrore déjà CHAQUE intervention générée pour l'agent
+binôme (`facteur_binome`, lignes 489-503), preuve que le système sait déjà,
+structurellement, qu'un binôme = 2 lignes de main d'œuvre pour un même
+créneau de présence — les 3 calculs ci-dessous ne l'appliquaient simplement
+pas à leurs propres totaux.
+
+**Trois endroits comparaient un temps « actuel » à un plafond/enveloppe SANS
+jamais vérifier `profiles.binome_agent_id`**, sous-estimant la main d'œuvre
+réelle de moitié à chaque fois — trouvés et corrigés UN PAR UN, pas tous
+d'un coup (audits successifs demandés par Julien) :
+
+1. **`AnalyseContratWizard.tsx`** (`minutesHebdoReelles`, étape 1 Identité) —
+   commit `8a099dd`. Avant : simple somme `durée créneau × jours`, aucune
+   référence à `binome_agent_id` dans tout le fichier (grep exhaustif à
+   l'audit). Fix : `GET /api/agents` renvoie maintenant `binome_agent_id` ;
+   si l'agent choisi (`agentId`) en a un non nul, `minutesHebdoReelles` est
+   doublé. **Pas de doublement silencieux** : un encart dédié affiche le
+   détail, ex. « 150 min/sem (créneau) × 2 agents (binôme) = 300 min/sem de
+   main d'œuvre ». `plafondRentable` (montant÷tauxCible) reste inchangé — il
+   ne dépend pas du staffing. Cette valeur corrigée alimente automatiquement
+   `minutesHebdo` envoyé à l'IA (étape 2) sans plomberie supplémentaire (le
+   prop `planningActuel` est lu en direct au clic, pas de state figé).
+2. **`lib/dispatchDuree.ts`** (`recalculerDureesDispatch`, alimente le
+   panneau « Simuler au taux rentable ») — même commit `8a099dd`. Même angle
+   mort : `dureeCreneauJour` (durée du créneau, wall-clock) jamais multiplié
+   par le nombre d'agents, alors que ce total est affiché comme « Organisation
+   actuelle » face à `plafondRentableMin` (main d'œuvre) dans
+   `SimulationTauxRentablePanel`. **Ce même fix « durée dispatch » du 19/07
+   (item 9, 540→1200 min) n'avait PAS couvert ce cas — jamais testé sur un
+   contrat en binôme**, alors même qu'il touchait exactement le même calcul.
+   Fix : nouveau paramètre `estBinome` (défaut `false`), double le total
+   uniformément (tous les cas, y compris jour containers-seul — cohérent avec
+   le mirroring binôme de `generer/route.ts`, appliqué sans exception à
+   toute intervention). `dispatch/proposer/route.ts` calcule `estBinome`
+   depuis `contrat.agent_prefere_id` → `profiles.binome_agent_id` et le
+   transmet. Vérifié par script pur (aucune résidence réelle en base n'a
+   actuellement de contrat actif avec agent binôme, cf ci-dessous) : créneaux
+   réels GMCO → 150 min sans binôme, **300 min avec, doublement exact
+   confirmé**.
+3. **`lib/dispatchVerification.ts::verifierEnveloppe()`** (garde-fou
+   déterministe créé le 19/07 dans le même chantier, commit `fb360c6`,
+   item 12) — commit `6cc956d`. Compare la somme des
+   `duree_totale_estimee_minutes` **proposés par l'IA** à
+   `enveloppeMinutesHebdo` — or l'IA ne reçoit JAMAIS d'info binôme
+   (`PlanningActuelInput` envoyé à `/api/ia/analyse-contrat` ne contient que
+   jours/créneaux/minutes, confirmé par audit ; le prompt système ne
+   mentionne « binôme » nulle part). **Sans le fix, ce garde-fou pouvait se
+   tromper DANS LES DEUX SENS** : soit lever une fausse alerte de
+   sous-dimensionnement (l'IA propose 150 min de présence face à une
+   enveloppe main-d'œuvre de 261 min → écart -111 signalé à tort comme trop
+   faible), soit au contraire valider silencieusement une proposition qui, en
+   vrai, dépasse le plafond une fois la main d'œuvre correctement comptée —
+   plus grave qu'un simple angle mort qui « raterait » un cas, car il peut
+   activement **valider à tort**. Fix : nouveau paramètre `estBinome` sur
+   `verifierPropositionDispatch()` et `verifierEnveloppe()`, double la somme
+   avant comparaison si vrai ; `dispatch/proposer/route.ts` transmet
+   l'`estBinome` déjà calculé au fix précédent. **R1 (écart tournées), R2,
+   R4 (containers), R5 (créneau journalier) non touchés** — non concernés par
+   le binôme, comme demandé.
+
+**Vérifié par script** (`verifierPropositionDispatch` isolé, créneaux réels
+GMCO, enveloppe reconstruite à 261 min depuis l'audit précédent) : sans
+binôme → écart 111 min détecté, tolérance 39 min, violation levée (comportement
+identique à avant le fix, **aucune régression confirmée** sur les résidences
+mono-agent) ; avec binôme → 300 vs 261, écart 39 min, tolérance 39,15 min →
+**aucune violation** (le doublement fait tomber l'écart tout juste dans la
+tolérance de 15% — résultat différent de l'hypothèse initiale d'un
+dépassement net, mais mathématiquement correct : avant le fix le garde-fou
+aurait signalé à tort un manque de 111 min, ce qui était complètement faux).
+Un cas amplifié (même binôme, enveloppe resserrée à 200 min) confirme que la
+détection fonctionne bien quand l'écart réel dépasse la tolérance : violation
+correctement levée avec le détail « 300 min/semaine (150 min de présence × 2
+agents binôme) ».
+
+**Vérifié NON concerné (aucune modification)** : `/api/planning/generer` — audit
+exhaustif (`grep` sur `enveloppe|plafond|ecart|dépassement|warning`) confirme
+qu'aucune comparaison « temps hebdo total vs enveloppe/plafond » n'existe dans
+cette route. Le volume vendu (`volumeHebdoMin`, ligne 180) y sert uniquement
+de budget à répartir proportionnellement entre zones (branche legacy
+`computeProrataZones`, pour assigner une durée synthétique aux tâches) — pas
+de mesure de temps réel comparée à un plafond. Le mirroring binôme y existe
+déjà et fonctionne (lignes 489-503, confirmé par lecture), mais agit sur les
+interventions individuelles, jamais sur un total agrégé face à un plafond. Les
+seuls écrivains de `ecart_rentable_minutes`/`minutes_hebdo_reelles` sont
+`creer-complet/route.ts` (création, alimenté par le wizard déjà corrigé) et
+`AnalyseContratEtape4.tsx` (affichage) — `generer/route.ts` ne les touche
+jamais.
+
+**Note DB** : aucune résidence en base (active ou non, au 21/07) n'a
+actuellement de contrat avec un `agent_prefere_id` pointant vers un agent en
+binôme — GMCO est le seul cas en cours (wizard non encore validé côté
+manager, pas de ligne DB persistée). Toutes les vérifications ci-dessus ont
+donc été faites par script pur (fonctions isolées, données réelles GMCO en
+entrée, aucune écriture) plutôt que par comparaison avant/après sur une
+résidence de production existante.
+
 ## Ordre de configuration (session Ana)
 
 Séquence obligatoire (l'étape ③ du wizard résidence dépend des agents existants) :
@@ -2862,6 +3007,34 @@ connexion) + **Item 6** (masqué de la liste agents). Suffisant — pas de suppr
   découvrir que le clic passait par `GestionContratModal` — même leçon que
   l'audit « bâtiments renommés » du chantier dispatch_semaine (item
   ci-dessus), généralisée à un autre type d'écran.
+
+### Angle mort binôme — 3 endroits corrigés (21 juillet 2026)
+
+- **RÈGLE GÉNÉRALE : tout calcul de temps de travail comparé à un
+  budget/plafond/enveloppe doit vérifier le binôme de l'agent concerné, sous
+  peine de sous-estimer la main d'œuvre réelle de moitié.** Cette règle
+  rejoint la règle « grouper par mission » du chantier bâtiments (item
+  ci-dessus, « PIÈGE multi-bâtiments ») — deux facettes du même piège : un
+  total calculé à partir d'un SEUL signal (créneau, ou intervention) peut
+  être silencieusement faux si un deuxième facteur (nombre d'agents présents
+  sur ce créneau, nombre de bâtiments d'une même mission) n'est pas pris en
+  compte dans le calcul.
+- **Corriger UN endroit qui présente ce type de bug ne suffit jamais :
+  toujours chercher activement les AUTRES endroits qui font un calcul
+  similaire dans l'app avant de considérer le sujet clos.** Vécu 3 fois dans
+  la même journée : wizard, `dispatchDuree.ts`, `dispatchVerification.ts` —
+  trouvés un par un, sur demande explicite de Julien à chaque fois
+  (« vérification croisée obligatoire »), jamais tous d'un coup au premier
+  passage. Un grep sur « binôme » dans tout `lib/`+`app/` en début d'audit
+  aurait pu accélérer la découverte des 2 derniers dès le premier passage.
+- **Un garde-fou automatique peut lui-même avoir un angle mort : ne pas
+  supposer qu'un garde-fou récemment créé est fiable sur tous les cas tant
+  qu'il n'a pas été testé sur le cas limite pertinent.** Le garde-fou
+  `verifierEnveloppe()` (créé le jour même du chantier initial, commit
+  `fb360c6`, pensé pour ne « jamais faire confiance au texte de l'IA ») avait
+  lui-même le même angle mort binôme que ce qu'il était censé vérifier — un
+  garde-fou déterministe n'est déterministement correct que sur les entrées
+  qu'il sait effectivement modéliser.
 
 ## À faire Phase 3
 

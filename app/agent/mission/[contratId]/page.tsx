@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Building2, Clock, ChevronRight, Send } from 'lucide-react'
+import { Building2, Clock, ChevronRight, Send, Trash2 } from 'lucide-react'
 
 // Écran niveau 1 (étape 9b, §7.3) — liste des bâtiments à faire aujourd'hui sur
 // cette résidence. N'existe QUE pour les résidences multi-bâtiments : le scan
@@ -35,6 +35,17 @@ const CARD_STATE_CONFIG: Record<CardState, { label: string; bg: string; text: st
   pret:     { label: 'Prêt',     bg: 'bg-green-50',  text: 'text-green-700', dot: 'bg-green-400' },
   en_cours: { label: 'En cours', bg: 'bg-amber-50',  text: 'text-amber-700', dot: 'bg-amber-400' },
   a_faire:  { label: 'À faire',  bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400' },
+}
+
+// Interventions "mouvement containers" (dispatch_semaine.containers, cf
+// generer/route.ts) — labels synthétiques, AUCUNE zones_residence dédiée,
+// donc AUCUNE tâche/photo à cocher (décision de conception assumée, commit
+// e386354) : le compteur "X/Y zone" n'a pas de sens ici et donne l'impression
+// d'un bug ("0/0 zone") — remplacé par un libellé + icône dédiés. Pas de champ
+// dédié en base pour distinguer ce type d'intervention : le préfixe du label
+// est le seul signal existant, déjà utilisé de façon identique côté génération.
+function estContainers(batiment: string | null): boolean {
+  return !!batiment && batiment.startsWith('Containers')
 }
 
 function cardState(statut: string, zonesTotal: number, zonesCompletes: number): CardState {
@@ -155,16 +166,21 @@ export default async function MissionPage({ params }: Props) {
       <div className="px-5 py-5 space-y-3">
         {etats.map(({ inter, total, completes, state }) => {
           const cfg = CARD_STATE_CONFIG[state]
+          const containers = estContainers(inter.batiment)
           return (
             <Link key={inter.id} href={`/agent/intervention/${inter.id}`}>
               <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center gap-4 active:bg-slate-50 transition-colors">
                 <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ background: '#EFF6FF' }}>
-                  <Building2 className="w-6 h-6 text-[#1A5FA8]" />
+                  {containers
+                    ? <Trash2 className="w-6 h-6 text-[#1A5FA8]" />
+                    : <Building2 className="w-6 h-6 text-[#1A5FA8]" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-slate-800 truncate">{inter.batiment ?? 'Bâtiment'}</p>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    {completes}/{total} zone{total > 1 ? 's' : ''}
+                    {containers
+                      ? 'Action simple'
+                      : `${completes}/${total} zone${total > 1 ? 's' : ''}`}
                     {inter.heure_debut_prevue ? ` · ${inter.heure_debut_prevue.slice(0, 5)}` : ''}
                   </p>
                 </div>

@@ -1,4 +1,4 @@
-# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 20 juillet 2026 — 1er test terrain réel réussi + polish containers)
+# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 20 juillet 2026 — 1er test terrain réel réussi + polish containers + simplification 3 chemins création contrat)
 
 **PREMIER TEST TERRAIN RÉEL RÉUSSI le 20/07/2026** — Julien a scanné une
 mission PRIEURE neuve (5 éléments : Bât 1, Bât 2, 2 tournées Halls, 1
@@ -53,6 +53,23 @@ Détail complet des 8 sous-chantiers initiaux : voir section « CHANTIER ANALYSE
 CONTRAT — LIVRÉ COMPLET (19 juillet 2026) », items 9 à 12 pour les 4 points
 ci-dessus.
 
+**SIMPLIFICATION DES CHEMINS DE CRÉATION DE CONTRAT (20 juillet 2026, suite du
+jour) :** audit du wizard « Nouveau contrat — assisté IA » a d'abord confirmé
+(**CONFIRMÉ VOULU par Julien, pas un bug**) que le calcul de rentabilité/perte
+cachée est universel et **ne lit pas `type_contrat`** — seul le temps réel
+total passé par l'agent (tout confondu) compte face à montant÷taux cible
+(détail : item 15, section « CHANTIER ANALYSE CONTRAT »). Le wizard a donc été
+simplifié sans risque sur ce calcul (commit `b6548c0`) : Libellé et Type de
+contrat retirés de l'étape 1 (défauts silencieux "Contrat principal" /
+`parties_communes`), Agent attitré rendu optionnel. Julien a ensuite repéré
+que le bouton "Créer" de la checklist résidence ouvrait ENCORE un formulaire
+bloquant sur Libellé/Type — audit a révélé **3 chemins de création de contrat
+distincts** sur la même fiche résidence (wizard IA, `AjoutContratModal`,
+`GestionContratModal`), un seul corrigé au premier passage. Les 2 autres
+alignés par cohérence (commit `45558f9`). **NOUVELLE DETTE ARCHITECTURE
+actée** (décision de consolidation non prise) : voir items 14-16 + section
+dédiée, « CHANTIER ANALYSE CONTRAT ».
+
 **PRIEURE = résidence de référence à nouveau opérationnelle**, dispatch
 durci : 9 bâtiments sur 5 jours (2-2-2-2-1), 9 halls bi-hebdo (écarts ≥2
 jours vérifiés bâtiment par bâtiment), containers mardi/vendredi (collecte
@@ -81,6 +98,18 @@ quel que soit le dispatch réel. Ne pas s'y fier comme preuve que l'organisation
 tient dans l'enveloppe vendue. À clarifier ou retirer, hors périmètre traité
 à ce jour.
 
+**NOUVELLE DETTE ARCHITECTURE (identifiée par audit, non traitée) :** 3
+mécanismes de création de contrat parallèles coexistent sur la fiche
+résidence (wizard IA → RPC `creer_contrat_complet` ; `AjoutContratModal` →
+`POST /contrats` simple ; `GestionContratModal` → `PATCH /contrats/
+[contratId]`), chacun avec sa propre route API et sa propre validation.
+Risque déjà vécu le 20/07 : une règle de saisie (libellé/type/agent
+optionnels) a dû être appliquée 3 fois séparément, un seul chemin corrigé au
+premier passage. Décision de consolidation (rediriger vers un seul chemin vs
+garder les 3) **non prise**, voir section « DETTE ARCHITECTURE — 3
+mécanismes de création de contrat parallèles » dans le chantier « CHANTIER
+ANALYSE CONTRAT ».
+
 **TEST TERRAIN RÉEL — FAIT (20/07/2026), voir ci-dessus.** ~~Test terrain avec
 André/Julien~~ → réussi via `?test=1`, modèle dispatch_semaine/tournées
 validé en conditions réelles. Reste : refaire un test similaire directement
@@ -98,6 +127,9 @@ pilote effectif.
    réellement (aujourd'hui lecture seule / dispatch-only).
 5. Clarifier/retirer le bandeau "Réparti 100%" trompeur (nouvelle dette
    ci-dessus).
+6. Décider de la consolidation des 3 chemins de création de contrat (nouvelle
+   dette architecture ci-dessus) — rediriger les 2 chemins manuels vers le
+   wizard IA, ou documenter/garder les 3 en connaissance de cause.
 
 Avant (19 juillet 2026, matin) : **CHANTIER "ANALYSE CONTRAT" COMPLET et
 fonctionnel** : wizard 4 étapes (Identité / Analyse / Répartition /
@@ -2393,6 +2425,191 @@ tournées à vraies zones, mono-bâtiment) n'est affectée, vérifié par requê
 SQL sur la mission réelle du 20/07 : seule "Containers — sortie" est détectée
 `containers=true`, les 4 autres restent `false`.
 
+### 14. Wizard « Nouveau contrat — assisté IA » — documentation de référence (20 juillet 2026)
+
+Documenté ici pour la première fois de façon consolidée (le fonctionnement
+avait été décrit au fil des sous-chantiers 2, 3 et 5 ci-dessus, jamais résumé
+comme référence autonome).
+
+**Objectif du wizard, jamais explicité formellement jusqu'ici : MIGRER un
+client EXISTANT vers l'app — pas vendre/simuler un contrat hypothétique.**
+Toute l'étape 1 (« Organisation actuelle ») part de ce principe : les champs
+demandés décrivent la réalité déjà pratiquée sur le terrain (agent réel,
+jours/horaires réels déjà en place), que l'IA vient ensuite STRUCTURER
+(bâtiments→zones→tâches) sans jamais la réinventer. Voir item 5 : « l'IA
+structure le CONTENU… mais ne décide jamais des jours/horaires, elle les
+reçoit en entrée. »
+
+Fonctionnement des 4 étapes (état actuel post-simplification, commit
+`b6548c0`) :
+
+1. **Identité** (`AnalyseContratWizard.tsx`, step 1) — dates début/fin,
+   montant mensuel HT, taux horaire (Base société ou Spécifique), jours de
+   passage réels (créneaux), jours de ramassage containers. Depuis
+   `b6548c0` : Libellé et Type de contrat ne sont plus demandés (défauts
+   silencieux, détail item 16) ; Agent attitré optionnel (affectable plus
+   tard). La section « Organisation actuelle » est la réalité déjà pratiquée
+   par l'agent, saisie brute — pas un objectif à atteindre.
+   - Indicateur « Enveloppe temps vendue » (live) : heures/mois + min/semaine
+     dérivées de `montant ÷ taux effectif` (le taux RÉELLEMENT facturé, base
+     ou spécifique) — c'est `volumeHebdoMin`, envoyé à l'IA à l'étape 2 comme
+     budget de structuration.
+   - Indicateur « plafond rentable » (item 3 du chantier initial) :
+     `montant ÷ taux_horaire_cible` (30 €/h par défaut, PARAMÈTRE COMMERCIAL,
+     jamais le taux réellement facturé) — repère d'écart uniquement,
+     n'influence JAMAIS la facturation ni le volume envoyé à l'IA. **Même
+     calcul, même principe que « Simuler au taux rentable »** (items 7 et 12) :
+     toujours comparer au taux CIBLE, jamais au taux facturé, pour mesurer si
+     un contrat est structurellement sous-staffé/sur-staffé indépendamment de
+     son prix de vente réel.
+2. **Analyse** (`AnalyseContratEtape2.tsx`) — texte contrat libre +
+   contraintes, envoyés à `POST /api/ia/analyse-contrat` avec les données
+   structurées de l'étape 1 (organisation actuelle). L'IA retourne
+   bâtiments→zones→tâches, créneaux proposés, alertes.
+3. **Répartition** (`AnalyseContratEtape3.tsx`) — proposition éditable en
+   direct (accordéon), + bloc « Répartition de la semaine »
+   (`dispatch_semaine`, voir chantier item 6) si applicable. `agent_prefere_id`
+   n'a AUCUNE dépendance fonctionnelle ici (confirmé par audit avant
+   simplification `b6548c0`, grep exhaustif) — l'étape fonctionne
+   identiquement avec ou sans agent choisi.
+4. **Validation** (`AnalyseContratEtape4.tsx`) — récap final, POST
+   `/api/residences/[id]/contrats/creer-complet` → RPC
+   `creer_contrat_complet` (contrat + zones + tâches en transaction
+   atomique). Affiche `agentNom || '—'` si aucun agent choisi.
+
+Deux entrées vers le même composant : `contratId=null` = « Nouveau contrat
+(assisté IA) » (création, décrit ci-dessus) ; `contratId=<id>` = « Analyser/
+restructurer » (aujourd'hui lecture seule côté création — seul le dispatch
+peut être réécrit via `dispatch/proposer`, item 6 ; une vraie réécriture reste
+lot 3 futur, voir RESTE À FAIRE en haut de fichier).
+
+### 15. Décision actée — `type_contrat` non lu par le calcul de rentabilité (CONFIRMÉ VOULU — ne pas requestionner)
+
+Audit préalable à la simplification du wizard (20 juillet 2026) : `type_contrat`
+choisi à l'étape 1 n'est lu **nulle part** dans le calcul de coût réel / perte
+cachée (`lib/rentabilite.ts`, `app/api/residences/[id]/rentabilite/route.ts`,
+`app/manager/residences/[id]/page.tsx`) — le coût est calculé **identiquement**
+quel que soit le type. Cet écart avait été repéré comme suspect face à une
+lecture possible de ce fichier qui semblait sous-entendre une distinction par
+type.
+
+**CONFIRMÉ par Julien : comportement VOULU, pas un bug.** Le calcul de
+rentabilité/perte cachée est **universel, sans distinction de `type_contrat`** :
+ce qui compte, c'est le **temps réel total** passé par l'agent (tout confondu —
+parties communes, containers, espaces verts) comparé au **montant du contrat ÷
+taux rentable visé** (`taux_horaire_cible`). `type_contrat` reste un champ
+purement descriptif/organisationnel (affichage, filtre), sans aucun rôle dans
+le calcul financier. **Ne pas tenter de « corriger » ce comportement dans un
+futur chantier — il a été audité et confirmé intentionnel.**
+
+Conséquence directe sur la simplification du wizard (item 16 ci-dessous) :
+retirer le champ « Type de contrat » de la saisie (toujours
+`parties_communes` par défaut, silencieusement) était donc sans risque sur le
+calcul de rentabilité, puisque ce calcul ignore déjà ce champ.
+
+### 16. Simplification des 3 chemins de création de contrat (commits `b6548c0` + `45558f9`, 20 juillet 2026)
+
+Objectif : retirer les frictions de saisie non indispensables (Libellé, Type
+de contrat, Agent) identifiées dans le wizard IA, puis étendues par cohérence
+aux 2 autres chemins de création de contrat découverts par audit (voir
+« DETTE ARCHITECTURE » ci-dessous — 3 boutons « créer un contrat » sur la
+fiche résidence, menant à 3 composants et 3 routes API différentes).
+
+**Étape 1 — wizard IA (`b6548c0`)** — `AnalyseContratWizard.tsx` :
+- Libellé : champ retiré de l'étape 1, défaut auto `'Contrat principal'`
+  (`defaultIdentite()`), éditable ensuite via `GestionContratModal`.
+- Type de contrat : champ retiré, toujours `type_contrat='parties_communes'`
+  silencieusement (constante `VALID_TYPES` de ce fichier supprimée, devenue
+  morte).
+- Agent attitré : rendu optionnel — `peutContinuerEtape1` ne bloque plus sur
+  `agentId !== ''` (confirmé sans dépendance fonctionnelle en étape 3 par
+  audit préalable, grep exhaustif).
+- Aucun changement backend nécessaire : `agent_prefere_id`/`libelle`/
+  `type_contrat` déjà nullable/safe à toutes les couches sous le wizard
+  (`contrats_residences` nullable en DB, RPC `creer_contrat_complet` avec
+  `NULLIF(...,'')::uuid`, route `creer-complet` avec `|| null`).
+
+**Étape 2 — les 2 autres chemins (`45558f9`)**, après audit ayant révélé
+qu'ils bloquent ENCORE côté client ET serveur :
+- **`AjoutContratModal.tsx`** (boutons « + Ajouter un contrat » et « Créer »
+  de la checklist quand la résidence n'a AUCUN contrat) →
+  `POST /api/residences/[id]/contrats`. Libellé/Type retirés de l'UI
+  (constantes fixes, mêmes défauts que le wizard) ; Agent déjà optionnel
+  avant ce chantier (vérifié : pas de `required`, option « — Aucun agent
+  attitré — »). Serveur : ne rejette plus (400) si libellé/type absents —
+  défaut silencieux ; la validation de type ne bloque QUE si une valeur
+  explicitement incohérente est envoyée (hors `VALID_TYPES`), jamais sur une
+  simple absence.
+- **`GestionContratModal.tsx`** (bouton « Créer »/« Modifier » de la
+  checklist quand un contrat existe déjà ; pastille « Modifier » sur
+  `ContratParametresPanel`) → `PATCH /api/residences/[id]/contrats/
+  [contratId]`. Ce modal sert à la fois à finaliser un placeholder JAMAIS
+  configuré et à éditer un VRAI contrat déjà nommé — donc pas de suppression
+  du champ, mais une distinction côté serveur :
+  `isPlaceholder = montant_mensuel == null || créneaux vides` (même
+  définition que le mécanisme d'activation automatique déjà existant dans
+  cette route, `beforeIncomplete`, réutilisé plutôt que dupliqué). Si
+  `isPlaceholder` → libellé vide toléré, défaut `'Contrat principal'`. Sinon
+  → le 400 « Le libellé ne peut pas être vide » RESTE actif (protection
+  volontairement conservée pour ne pas perdre le nom d'un contrat réel par
+  accident). Client : ne renvoie plus `null` pour un libellé vide (renvoie la
+  valeur trimée telle quelle, laisse le serveur décider) ; astérisque rouge
+  retirée sur le label.
+
+**Vérifié sur GMCO** (résidence réelle en cours de config,
+`montant_mensuel=null`, `creneaux_acceptes=[]` → confirmé `isPlaceholder=true`
+par requête SQL) : le placeholder existant satisfait la condition attendue —
+le bouton « Créer » de la checklist doit pouvoir être enregistré sans bloquer
+sur libellé/type. **Non testé en clic réel** (règle absolue : jamais de
+connexion manager avec mot de passe, même autorisée) — validation par lecture
+de code + requêtes SQL en lecture seule uniquement, comme pour tous les autres
+parcours de ce chantier.
+
+Build (`npm run build`) propre après chaque commit, aucune erreur/warning.
+
+### DETTE ARCHITECTURE — 3 mécanismes de création de contrat parallèles (découverte 20 juillet 2026)
+
+Audit demandé par Julien après avoir constaté que le bouton « Créer » de la
+checklist résidence ouvrait ENCORE un formulaire avec Libellé/Type
+obligatoires, alors que le wizard IA venait d'être simplifié (`b6548c0`) — a
+révélé que la fiche résidence a **3 boutons distincts qui créent un
+contrat**, chacun par un mécanisme différent :
+
+| Bouton | Composant ouvert | Route API | Comportement |
+|---|---|---|---|
+| Checklist étape ① « Créer » — résidence SANS aucun contrat | `AjoutContratModal` | `POST /contrats` | `insert()` simple, PAS de zones/tâches créées |
+| Checklist étape ① « Créer » — contrat placeholder déjà présent | `GestionContratModal` | `PATCH /contrats/[contratId]` | `update()` champ par champ sur la ligne existante |
+| « Nouveau contrat (assisté IA) » | `AnalyseContratWizard` (`contratId=null`) | `POST /contrats/creer-complet` | RPC `creer_contrat_complet`, transaction atomique **+ zones + tâches** |
+| « + Ajouter un contrat » | `AjoutContratModal` | `POST /contrats` | idem ligne 1 |
+
+**RISQUE confirmé, pas seulement théorique :** la règle « libellé/type
+optionnels, agent optionnel » a dû être appliquée **3 fois séparément**
+(commits `b6548c0` PUIS `45558f9`) parce que chaque chemin a sa propre
+validation client ET serveur — un seul des 3 avait été corrigé au premier
+passage, laissant les 2 autres bloquer exactement le même cas d'usage (GMCO).
+Toute future règle de saisie contrat (nouveau champ obligatoire, nouvelle
+validation, nouveau défaut) devra être répliquée dans les 3 chemins sous
+peine de divergence silencieuse — exactement le même risque déjà connu
+ailleurs dans le projet pour les calculs de rentabilité dupliqués (voir Key
+learnings, chantier Analyse contrat).
+
+**DÉCISION DE CONSOLIDATION NON PRISE, à trancher plus tard** — deux options
+identifiées lors de l'audit du 20/07 :
+- (a) Rediriger les 2 chemins « manuels » (`AjoutContratModal` checklist
+  zéro-contrat, `GestionContratModal` checklist placeholder) vers le wizard
+  IA déjà simplifié — un seul mécanisme de création, bonus : zones/tâches
+  créées automatiquement (ce que `AjoutContratModal` ne fait pas aujourd'hui).
+  Risque à vérifier avant de trancher : l'étape « Analyse IA » est-elle trop
+  lourde pour un flux « configuration rapide checklist » ?
+- (b) Garder les 3 chemins et accepter la charge de maintenance de les faire
+  évoluer en parallèle (documenté ici précisément pour que ce coût soit
+  visible à chaque futur changement de règle de saisie contrat).
+
+`GestionContratModal` reste de toute façon nécessaire pour l'édition d'un
+contrat DÉJÀ pleinement configuré (son usage principal actuel côté
+`ContratParametresPanel`) — l'option (a) n'éliminerait que son rôle de
+« création via placeholder ».
+
 ## Ordre de configuration (session Ana)
 
 Séquence obligatoire (l'étape ③ du wizard résidence dépend des agents existants) :
@@ -2609,6 +2826,42 @@ connexion) + **Item 6** (masqué de la liste agents). Suffisant — pas de suppr
   réelle sauf validation explicite), pas par un vrai clic dans le navigateur.
   Les étapes nécessitant une session agent réelle (upload photo, clôture,
   envoi rapport) restent à valider par Julien/André eux-mêmes.
+
+### Simplification wizard contrat + 3 chemins de création (20 juillet 2026)
+
+- **Un fix UI « terminé » sur UN chemin ne veut pas dire terminé pour la
+  FONCTION.** Le wizard IA a été simplifié en premier (`b6548c0` — libellé,
+  type, agent) et considéré clos — jusqu'à ce que Julien clique le bouton
+  « Créer » de la checklist résidence et retombe sur les MÊMES blocages via
+  un composant totalement différent (`GestionContratModal`, jamais touché au
+  premier passage). **Réflexe à généraliser : avant de considérer un fix UI
+  terminé, toujours chercher s'il existe D'AUTRES boutons/chemins qui
+  produisent le MÊME résultat fonctionnel par un CODE différent** — un grep
+  sur le composant modifié ne suffit pas, il faut auditer l'écran entier
+  (tous les boutons visibles) pour la même action métier (« créer un
+  contrat » ici : 3 boutons sur le même écran, 3 mécanismes différents, voir
+  « DETTE ARCHITECTURE » du chantier Analyse contrat).
+- **Réutiliser une définition métier déjà établie plutôt que d'en recoder une
+  nouvelle, même proche.** Le calcul « placeholder jamais configuré »
+  nécessaire à `GestionContratModal` PATCH existait déjà, sous un autre nom
+  (`beforeIncomplete`, mécanisme d'activation automatique d'un contrat
+  complété), dans la même route — réutilisé tel quel (`isPlaceholder`) plutôt
+  que réinventé, évite une 2e définition qui aurait pu diverger de la
+  première avec le temps.
+- **Un champ « obligatoire » côté UI (astérisque rouge) et un champ
+  réellement bloquant côté serveur (400) sont deux choses différentes à
+  vérifier séparément.** `GestionContratModal` n'avait AUCUN `required` HTML
+  sur Libellé (donc jamais bloquant côté client) mais la route PATCH
+  retournait bel et bien un 400 sur libellé vide — l'astérisque rouge était
+  un signal visuel qui laissait croire à un blocage client inexistant, le
+  vrai blocage était entièrement côté serveur.
+- **Un audit ciblé (« lecture seule, ne rien modifier ») avant de coder a de
+  nouveau évité de corriger le mauvais composant** : sans l'audit demandé par
+  Julien après avoir revu le blocage sur GMCO, le réflexe aurait été de
+  chercher le bug dans `AnalyseContratWizard.tsx` (déjà corrigé) au lieu de
+  découvrir que le clic passait par `GestionContratModal` — même leçon que
+  l'audit « bâtiments renommés » du chantier dispatch_semaine (item
+  ci-dessus), généralisée à un autre type d'écran.
 
 ## À faire Phase 3
 

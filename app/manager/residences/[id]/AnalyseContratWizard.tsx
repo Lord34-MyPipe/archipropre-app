@@ -84,12 +84,6 @@ interface Props {
 
 type Step = 1 | 2 | 3 | 4
 
-const VALID_TYPES = [
-  { value: 'parties_communes', label: 'Parties communes' },
-  { value: 'containers',       label: 'Containers' },
-  { value: 'espaces_verts',    label: 'Espaces verts' },
-]
-
 const JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'] as const
 const JOURS_LABELS: Record<string, string> = {
   lundi: 'Lun', mardi: 'Mar', mercredi: 'Mer',
@@ -120,7 +114,7 @@ const nextYear = new Date(new Date().setFullYear(new Date().getFullYear() + 1)).
 
 function defaultIdentite(): IdentiteContrat {
   return {
-    libelle: '', typeContrat: 'parties_communes', dateDebut: today, dateFin: nextYear,
+    libelle: 'Contrat principal', typeContrat: 'parties_communes', dateDebut: today, dateFin: nextYear,
     montant: '', tauxMode: 'base', tauxSpecifique: '', tauxBase: 25,
   }
 }
@@ -254,7 +248,7 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
   const ecartRentable       = minutesHebdoReelles - plafondRentable
   const ecartRentableOk     = ecartRentable <= 0
 
-  const peutContinuerEtape1 = identite.libelle.trim().length > 0 && agentId !== '' && creneaux.length > 0 && !loadingContrat
+  const peutContinuerEtape1 = creneaux.length > 0 && !loadingContrat
 
   return (
     <div className="fixed inset-0 z-50 bg-white flex flex-col">
@@ -312,26 +306,6 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
           </div>
         ) : step === 1 ? (
           <div className="max-w-2xl mx-auto p-4 md:p-8 space-y-5">
-
-            {/* Libellé */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                Libellé <span className="text-red-400">*</span>
-              </label>
-              <input type="text" value={identite.libelle}
-                onChange={e => setIdentite(f => ({ ...f, libelle: e.target.value }))}
-                placeholder="ex. Bâtiments A à D, Containers…"
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0BBFBF]/40"/>
-            </div>
-
-            {/* Type */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Type de contrat</label>
-              <select value={identite.typeContrat} onChange={e => setIdentite(f => ({ ...f, typeContrat: e.target.value }))}
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#0BBFBF]/40">
-                {VALID_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-            </div>
 
             {/* Dates */}
             <div className="grid grid-cols-2 gap-3">
@@ -410,7 +384,7 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
               {/* Agent attitré */}
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                  Agent attitré <span className="text-red-400">*</span>
+                  Agent attitré <span className="text-slate-400 font-normal normal-case">(optionnel — à affecter plus tard si besoin)</span>
                 </label>
                 <select value={agentId} onChange={e => setAgentId(e.target.value)}
                   className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#0BBFBF]/40">

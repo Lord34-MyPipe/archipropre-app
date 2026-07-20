@@ -1,4 +1,25 @@
-# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 19-20 juillet 2026 — dispatch_semaine durci, mode test scan, garde-fou simulation)
+# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 20 juillet 2026 — 1er test terrain réel réussi + polish containers)
+
+**PREMIER TEST TERRAIN RÉEL RÉUSSI le 20/07/2026** — Julien a scanné une
+mission PRIEURE neuve (5 éléments : Bât 1, Bât 2, 2 tournées Halls, 1
+mouvement containers) via le lien `?test=1`, en conditions réelles sur
+iPhone. Résultat : Bât 1 (4/4 zones), Bât 2 (4/4), Halls Bât 9 (1/1), Halls
+Bât 7-8 (2/2) — tous corrects, photos prises, **clôture groupée
+fonctionnelle** (même `heure_fin` sur les 5 interventions). **C'est la
+première validation terrain complète du modèle `dispatch_semaine`/tournées
+transverses depuis sa création** — confirme que les 3 fixes du commit
+`e386354` fonctionnent tous en conditions réelles, pas seulement en
+simulation SQL.
+
+Seul point relevé : "Containers — sortie" affichait "0/0 zone" sur l'écran
+mission — factuellement correct (ce type d'intervention n'a structurellement
+aucune zone, décision de conception assumée au commit `e386354`) mais
+visuellement trompeur. **Corrigé (commit `4812408`)** : détection par
+préfixe du label synthétique (`batiment` commençant par `"Containers"` —
+aucun champ dédié en base, seul signal disponible), icône 🗑 (Trash2) +
+libellé "Action simple" à la place du compteur de zones, uniquement pour ce
+type d'intervention. Branchement additif, vérifié sur PRIEURE : aucune
+autre intervention de la mission affectée.
 
 **CHANTIER "ANALYSE CONTRAT" + suites — COMPLET et durci.** Après la livraison
 initiale (wizard 4 étapes, IA, taux cible, dispatch semaine, simulation
@@ -60,14 +81,19 @@ quel que soit le dispatch réel. Ne pas s'y fier comme preuve que l'organisation
 tient dans l'enveloppe vendue. À clarifier ou retirer, hors périmètre traité
 à ce jour.
 
+**TEST TERRAIN RÉEL — FAIT (20/07/2026), voir ci-dessus.** ~~Test terrain avec
+André/Julien~~ → réussi via `?test=1`, modèle dispatch_semaine/tournées
+validé en conditions réelles. Reste : refaire un test similaire directement
+par **André lui-même** (celui du 20/07 a été fait par Julien) le jour J réel
+sans `?test=1`, pour valider aussi le parcours de bout en bout avec l'agent
+pilote effectif.
+
 **RESTE À FAIRE EN PRIORITÉ (reprise de session) :**
-1. **TEST TERRAIN RÉEL avec André** (toujours prioritaire) : via le lien
-   `?test=1` désormais disponible si besoin de tester hors du jour J — sinon
-   scan normal le jour J. QR PRIEURE : token `960b3446-7046-4343-8184-d95cb36f3d17`.
+1. Test terrain par André lui-même (voir note ci-dessus), le jour J réel.
 2. Identifier les 3 agents pilotes + lister leur périmètre de résidences à
    configurer via le wizard.
 3. Test lien syndic en conditions réelles sur prod (nécessite du contenu réel
-   généré par André sur PRIEURE, donc après le test terrain du point 1).
+   généré par André sur PRIEURE — le test du 20/07 par Julien peut suffire).
 4. Lot 3 futur (non urgent) : mode « restructurer » un contrat existant écrit
    réellement (aujourd'hui lecture seule / dispatch-only).
 5. Clarifier/retirer le bandeau "Réparti 100%" trompeur (nouvelle dette
@@ -2318,6 +2344,54 @@ testée directement pour les cas cassés, sans appel IA — déterministe) : cas
 conforme → 0 violation ; écart de tournée à 1 jour → détecté par bâtiment ;
 containers inventés → détecté ; dépassement de créneau (400 min sur 240) →
 détecté, avec cascade correcte sur la dérive d'enveloppe.
+
+### 13. Premier test terrain réel réussi + polish containers (20 juillet 2026)
+
+**Test terrain réel** (pas une simulation SQL) : Julien a scanné une mission
+PRIEURE neuve via le lien `?test=1` (item 11 ci-dessus), en conditions
+réelles sur iPhone. Mission du 20/07 : 5 éléments — Bât 1, Bât 2, tournée
+"Halls Bât 9 (2e passage)", tournée "Halls Bât 7-8 (2e passage)", mouvement
+"Containers — sortie". Résultat détaillé (vérifié en base après coup) :
+
+| Intervention | zones résolues | photos | statut final |
+|---|---|---|---|
+| Bât 1 | 4/4 | 4 | terminee |
+| Bât 2 | 4/4 | 4 | terminee |
+| Halls Bât 9 (2e passage) | 1/1 | 1 | terminee |
+| Halls Bât 7-8 (2e passage) | 2/2 | 2 | terminee |
+| Containers — sortie | 0/0 (attendu, voir ci-dessous) | 0 | terminee |
+
+Les 5 interventions partagent le même `heure_fin` — clôture groupée réussie
+via l'écran mission (niveau 1) et son bouton "Envoyer le rapport". **C'est la
+première validation terrain complète du modèle `dispatch_semaine`/tournées
+transverses depuis sa création** : elle confirme que les 3 fixes du commit
+`e386354` (résolution des zones de tournée via `dispatch_semaine`,
+désambiguïsation des noms de zones homonymes, déblocage du bouton rapport
+pour les interventions sans zone) fonctionnent tous ensemble en conditions
+réelles — au-delà de la simulation en script one-off qui les avait validés
+séparément.
+
+**Audit du "0/0 zone" sur containers** : avant de conclure à un bug, audit
+lecture seule confirmant que c'est le comportement ATTENDU — l'intervention
+"Containers — sortie" n'a structurellement aucune `zones_residence`
+associée (décision de conception assumée au commit `e386354` : ce type
+d'action, sortir/rentrer les bacs, n'a pas de surface à nettoyer ni de photo
+à prendre). Le compteur "0/0 zone" était donc factuellement correct mais
+**visuellement trompeur** (ressemble à un oubli/bug pour le manager qui lit
+le rapport).
+
+**Fix d'affichage (commit `4812408`, uniquement visuel, aucune donnée
+touchée)** : sur l'écran mission (`app/agent/mission/[contratId]/page.tsx`),
+détection des interventions "containers" par le seul signal disponible (pas
+de champ dédié en base) — le préfixe du label synthétique,
+`batiment.startsWith('Containers')`, déjà utilisé de façon identique côté
+génération (`generer/route.ts`). Pour ces interventions uniquement : icône
+🗑 (`Trash2` au lieu de `Building2`) + libellé "Action simple" à la place du
+compteur "X/Y zone" ; le badge de statut (Prêt/Terminé) reste inchangé à
+côté. Branchement additif — aucune autre intervention (bâtiments normaux,
+tournées à vraies zones, mono-bâtiment) n'est affectée, vérifié par requête
+SQL sur la mission réelle du 20/07 : seule "Containers — sortie" est détectée
+`containers=true`, les 4 autres restent `false`.
 
 ## Ordre de configuration (session Ana)
 

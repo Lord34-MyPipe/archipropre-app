@@ -33,6 +33,7 @@ export interface Agent {
   id: string
   prenom: string
   nom: string
+  binome_agent_id: string | null
 }
 
 export interface AnalyseTacheIA {
@@ -243,7 +244,15 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
   // ── Organisation actuelle : minutes hebdo réelles + plafond rentable (item 2, principe 1+2) ──
   // Le plafond utilise TOUJOURS le taux cible (jamais le taux effectif du contrat) : c'est un
   // repère de rentabilité, indépendant du prix facturé.
-  const minutesHebdoReelles = creneaux.reduce((sum, c) => sum + dureeCreneauMinutes(c) * c.jours.length, 0)
+  // minutesHebdoReelles doit représenter la MAIN D'ŒUVRE PAYÉE (comparable au plafond
+  // rentable, lui-même en heures-personne), pas la simple présence sur site : si l'agent
+  // choisi est en binôme, 2 agents sont payés simultanément sur le même créneau (cf. audit
+  // du 21/07 — le mirroring binôme de /api/planning/generer confirme cette même règle
+  // uniformément sur toutes les interventions générées).
+  const agentSelectionne    = agents.find(a => a.id === agentId)
+  const estBinome           = !!agentSelectionne?.binome_agent_id
+  const minutesHebdoPresence = creneaux.reduce((sum, c) => sum + dureeCreneauMinutes(c) * c.jours.length, 0)
+  const minutesHebdoReelles  = estBinome ? minutesHebdoPresence * 2 : minutesHebdoPresence
   const plafondRentable     = volumeHebdoMinutes(montantNum, tauxCible)
   const ecartRentable       = minutesHebdoReelles - plafondRentable
   const ecartRentableOk     = ecartRentable <= 0
@@ -462,6 +471,11 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
               {/* Bloc indicateur permanent — plafond rentable (principe 2) */}
               {creneaux.length > 0 && (
                 <div className={`rounded-xl px-4 py-3 border ${ecartRentableOk ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+                  {estBinome && (
+                    <p className="text-xs text-slate-500 mb-1.5">
+                      {Math.round(minutesHebdoPresence)} min/sem (créneau) × 2 agents (binôme) = <span className="font-semibold">{Math.round(minutesHebdoReelles)} min/sem</span> de main d&apos;œuvre
+                    </p>
+                  )}
                   <div className={`text-sm font-medium ${ecartRentableOk ? 'text-green-800' : 'text-amber-800'}`}>
                     Actuel <span className="font-bold">{Math.round(minutesHebdoReelles)} min/sem</span>
                     {' '}({(minutesHebdoReelles / 60).toFixed(1)} h/sem)

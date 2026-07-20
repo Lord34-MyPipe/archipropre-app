@@ -77,6 +77,10 @@ export function recalculerDureesDispatch(
   dispatchSemaine: DispatchJour[],
   creneaux: CreneauLite[],
   zones: ZoneLite[],
+  // Agent du contrat en binôme (audit 21/07) : 2 agents payés simultanément sur le
+  // même créneau — double la durée (main d'œuvre), même règle que le mirroring
+  // binôme déjà appliqué uniformément à toute intervention par /api/planning/generer.
+  estBinome = false,
 ): { dispatch: DispatchJour[]; warnings: string[] } {
   const zoneGroups = grouperZonesParBatiment(zones)
   const zoneParNomComplet = indexerZonesParNom(zones)
@@ -107,11 +111,12 @@ export function recalculerDureesDispatch(
     const dureeContainers = jourEntry.containers ? DUREE_CONTAINERS_MIN : 0
     const nbUnites = nbBatimentsResolus + nbTourneesResolues
 
-    const total = nbUnites === 0
+    const totalPresence = nbUnites === 0
       ? dureeContainers
       : dureeCreneauJour != null
         ? dureeCreneauJour
         : nbUnites * 60 + dureeContainers // repli si aucun créneau connu ce jour (cf generer/route.ts)
+    const total = estBinome ? totalPresence * 2 : totalPresence
 
     return { ...jourEntry, duree_totale_estimee_minutes: Math.round(total) }
   })

@@ -19,7 +19,7 @@ export async function GET() {
   const admin = await createAdminClient()
   const { data, error } = await admin
     .from('profiles')
-    .select('id, prenom, nom')
+    .select('id, prenom, nom, binome_agent_id')
     .eq('role', 'agent')
     .eq('actif', true)
     .eq('manager_id', manager.id)

@@ -38,13 +38,25 @@ async function resolveAndCheck(params: Params) {
   if (!residence) return { error: NextResponse.json({ error: 'Résidence introuvable ou non autorisée' }, { status: 403 }) }
 
   const { data: contrat } = await admin.from('contrats_residences')
-    .select('id, creneaux_acceptes, jours_ramassage_containers, dispatch_semaine')
+    .select('id, creneaux_acceptes, jours_ramassage_containers, dispatch_semaine, agent_prefere_id')
     .eq('id', contratId)
     .eq('residence_id', residenceId)
     .single()
   if (!contrat) return { error: NextResponse.json({ error: 'Contrat introuvable' }, { status: 404 }) }
 
-  return { admin, residenceId, contratId, contrat }
+  // Agent en binôme (audit 21/07) : 2 agents payés simultanément sur le même
+  // créneau — même signal que AnalyseContratWizard.tsx, source de vérité
+  // profiles.binome_agent_id (pas residences.agent_secondaire_id).
+  let estBinome = false
+  if (contrat.agent_prefere_id) {
+    const { data: agentProfile } = await admin.from('profiles')
+      .select('binome_agent_id')
+      .eq('id', contrat.agent_prefere_id)
+      .single()
+    estBinome = !!agentProfile?.binome_agent_id
+  }
+
+  return { admin, residenceId, contratId, contrat, estBinome }
 }
 
 // ── Prompt système — réutilise les règles R1-R5 partagées, sans réanalyser le contrat ──
@@ -121,7 +133,7 @@ Produis dispatch_semaine en respectant R1-R5.`
 export async function POST(req: NextRequest, { params }: { params: Params }) {
   const ctx = await resolveAndCheck(params)
   if ('error' in ctx) return ctx.error
-  const { admin, contratId, contrat } = ctx
+  const { admin, contratId, contrat, estBinome } = ctx
 
   const body = await req.json().catch(() => ({}))
   const joursRamassageContainers: string[] = Array.isArray(body?.joursRamassageContainers)
@@ -184,7 +196,7 @@ export async function POST(req: NextRequest, { params }: { params: Params }) {
   // au manager, on le recalcule à la volée avec la même règle que la vraie
   // génération de planning (lib/dispatchDuree.ts), sur les zones ACTUELLES.
   const dispatchActuelBrut: DispatchJour[] = Array.isArray(contrat.dispatch_semaine) ? contrat.dispatch_semaine : []
-  const { dispatch: dispatchActuel, warnings: warningsActuel } = recalculerDureesDispatch(dispatchActuelBrut, creneaux, zones)
+  const { dispatch: dispatchActuel, warnings: warningsActuel } = recalculerDureesDispatch(dispatchActuelBrut, creneaux, zones, estBinome)
 
   const systemPrompt = buildSystemPrompt()
   const userMessage   = buildUserMessage({ batiments, joursPassage, creneaux, joursRamassageContainers, zonesBiHebdo, enveloppeMinutesHebdo })

@@ -14,7 +14,6 @@ interface Props {
   onClose: () => void
   residenceId: string
   contratId: string
-  currentDispatch: DispatchJour[]
   joursRamassageContainers: string[]
   plafondRentableMin: number
   tauxCible: number
@@ -75,9 +74,10 @@ function DispatchColonne({ titre, dispatch, loading, error }: {
 }
 
 export default function SimulationTauxRentablePanel({
-  open, onClose, residenceId, contratId, currentDispatch, joursRamassageContainers, plafondRentableMin, tauxCible,
+  open, onClose, residenceId, contratId, joursRamassageContainers, plafondRentableMin, tauxCible,
 }: Props) {
   const router = useRouter()
+  const [actuel, setActuel]         = useState<DispatchJour[] | null>(null)
   const [proposal, setProposal]     = useState<DispatchJour[] | null>(null)
   const [alertesIA, setAlertesIA]   = useState<string[]>([])
   const [loading, setLoading]       = useState(false)
@@ -94,6 +94,7 @@ export default function SimulationTauxRentablePanel({
 
   useEffect(() => {
     if (!open) return
+    setActuel(null)
     setProposal(null)
     setAlertesIA([])
     setError(null)
@@ -109,6 +110,10 @@ export default function SimulationTauxRentablePanel({
       .then(async r => {
         const json = await r.json()
         if (!r.ok) { setError(json.error ?? 'Erreur inconnue.'); return }
+        // "Organisation actuelle" recalculée par le serveur (même règle que la
+        // vraie génération de planning), jamais le texte libre stocké en base
+        // (cf audit "540 min faux") — les deux colonnes viennent du même appel.
+        setActuel(json.dispatch_actuel as DispatchJour[])
         setProposal(json.dispatch_semaine as DispatchJour[])
         setAlertesIA(json.alertes ?? [])
       })
@@ -200,7 +205,7 @@ export default function SimulationTauxRentablePanel({
           )}
 
           <div className="flex gap-5 flex-col sm:flex-row">
-            <DispatchColonne titre="Organisation actuelle" dispatch={currentDispatch} />
+            <DispatchColonne titre="Organisation actuelle" dispatch={actuel} loading={loading} error={error} />
             <div className="hidden sm:block w-px bg-slate-100 shrink-0" />
             <DispatchColonne titre="Proposition au taux rentable" dispatch={proposal} loading={loading} error={error} />
           </div>

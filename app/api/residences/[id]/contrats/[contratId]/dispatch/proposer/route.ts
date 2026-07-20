@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createAdminClient } from '@/lib/supabase-server'
 import Anthropic from '@anthropic-ai/sdk'
 import { type DispatchJour, reglesDispatchPrompt, sanitiserDispatch } from '@/lib/dispatchSemaine'
+import { recalculerDureesDispatch } from '@/lib/dispatchDuree'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,7 +37,7 @@ async function resolveAndCheck(params: Params) {
   if (!residence) return { error: NextResponse.json({ error: 'Résidence introuvable ou non autorisée' }, { status: 403 }) }
 
   const { data: contrat } = await admin.from('contrats_residences')
-    .select('id, creneaux_acceptes, jours_ramassage_containers')
+    .select('id, creneaux_acceptes, jours_ramassage_containers, dispatch_semaine')
     .eq('id', contratId)
     .eq('residence_id', residenceId)
     .single()
@@ -176,6 +177,14 @@ export async function POST(req: NextRequest, { params }: { params: Params }) {
     .sort(([a], [b]) => a.localeCompare(b, 'fr', { numeric: true, sensitivity: 'base' }))
     .map(([nom, zonesNoms]) => ({ nom, zones: zonesNoms }))
 
+  // Organisation actuelle recalculée RIGOUREUSEMENT (fix "organisation actuelle
+  // trompeuse") : dispatch_semaine.duree_totale_estimee_minutes en base est un
+  // texte libre, jamais recalculé (cf audit) — on ne l'affiche jamais tel quel
+  // au manager, on le recalcule à la volée avec la même règle que la vraie
+  // génération de planning (lib/dispatchDuree.ts), sur les zones ACTUELLES.
+  const dispatchActuelBrut: DispatchJour[] = Array.isArray(contrat.dispatch_semaine) ? contrat.dispatch_semaine : []
+  const { dispatch: dispatchActuel, warnings: warningsActuel } = recalculerDureesDispatch(dispatchActuelBrut, creneaux, zones)
+
   const systemPrompt = buildSystemPrompt()
   const userMessage   = buildUserMessage({ batiments, joursPassage, creneaux, joursRamassageContainers, zonesBiHebdo, enveloppeMinutesHebdo })
 
@@ -225,5 +234,12 @@ export async function POST(req: NextRequest, { params }: { params: Params }) {
     ? (parsedRaw.alertes as unknown[]).filter((a): a is string => typeof a === 'string')
     : []
 
-  return NextResponse.json({ dispatch_semaine: dispatch, alertes, joursRamassageContainers, enveloppeMinutesHebdo })
+  return NextResponse.json({
+    dispatch_semaine: dispatch,
+    alertes,
+    joursRamassageContainers,
+    enveloppeMinutesHebdo,
+    dispatch_actuel:  dispatchActuel,
+    warnings_actuel:  warningsActuel,
+  })
 }

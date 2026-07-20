@@ -961,7 +961,6 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
           onClose={() => setShowSimulation(false)}
           residenceId={residence.id}
           contratId={contratId}
-          currentDispatch={contrat?.dispatch_semaine ?? []}
           joursRamassageContainers={contrat?.jours_ramassage_containers ?? []}
           plafondRentableMin={plafondRentable}
           tauxCible={tauxCible}

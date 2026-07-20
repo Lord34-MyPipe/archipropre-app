@@ -1,53 +1,97 @@
-# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 19 juillet 2026 — chantier "Analyse contrat" complet)
+# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 19-20 juillet 2026 — dispatch_semaine durci, mode test scan, garde-fou simulation)
 
-**CHANTIER "ANALYSE CONTRAT" COMPLET et fonctionnel** : wizard 4 étapes
-(Identité / Analyse / Répartition / Validation), analyse IA (bâtiments→zones→
-tâches), taux horaire cible, dispatch semaine (répartition jour par jour),
-simulation au taux rentable — tout testé en conditions réelles sur PRIEURE.
-Objectif : configurer les ~130 résidences restantes en 3-5 minutes chacune
-via ce wizard. Détail complet (audit, 8 sous-chantiers, commits, tests) :
-voir section « CHANTIER ANALYSE CONTRAT — LIVRÉ COMPLET (19 juillet 2026) »
-plus bas.
+**CHANTIER "ANALYSE CONTRAT" + suites — COMPLET et durci.** Après la livraison
+initiale (wizard 4 étapes, IA, taux cible, dispatch semaine, simulation
+rentable — voir section « CHANTIER ANALYSE CONTRAT — LIVRÉ COMPLET »), le test
+terrain réel sur PRIEURE a fait remonter 4 problèmes concrets, tous corrigés
+le même jour :
+1. **Bug de durée dispatch** (chaque bâtiment recevait `volumeHebdoMin/9`,
+   peu importe le jour — jusqu'à 4h31 certains jours, 2h13 le vendredi) →
+   corrigé (`d3b0470`) : durée = créneau du jour ÷ nb d'unités CE jour-là.
+2. **Halls jamais réellement bi-hebdo** (dette actée à la livraison initiale,
+   ci-dessous marquée résolue) → corrigé (`2bc0558`, données PRIEURE) via
+   `tache_liee_id` (2e tâche liée) + détection générique côté `dispatch/
+   proposer`.
+3. **3 bugs bloquants du parcours scan agent** pour les interventions
+   "tournée"/"containers" (labels synthétiques sans zone réelle) → corrigés
+   (`e386354`) : 0/0 zone perpétuel + fusion de zones homonymes + blocage
+   définitif du bouton "Envoyer le rapport".
+4. **Mode test `?test=1`** ajouté au scan (`d9135dd`) pour tester une mission
+   hors du jour J sans jamais bricoler une date par SQL brut — un tel
+   bricolage a été tenté en session et a cassé le repli `dispatch_semaine`
+   (résolution par jour de semaine), confirmant que le mode test est la seule
+   bonne méthode.
+5. **"Simuler au taux rentable" fiabilisé** : le chiffre "Organisation
+   actuelle" (540 min) s'est révélé être un texte manuscrit jamais recalculé
+   → corrigé (`d078edd`, `lib/dispatchDuree.ts`, recalcul dynamique, 1200 min
+   réels). Puis garde-fou de vérification déterministe ajouté (`fb360c6`,
+   `lib/dispatchVerification.ts`) : ne fait plus jamais confiance au texte
+   "alertes" de l'IA, bloque le bouton "Appliquer" si R3/R4/R5/enveloppe violés.
 
-**PRIEURE = résidence de référence à nouveau opérationnelle** (reset complet
-le 19/07, repartie de zéro pour ce chantier) : contrat réel (2327,59€/mois,
-taux 30€/h), agent André Sabatier, dispatch 9 bâtiments sur 5 jours +
-containers mardi/vendredi (collecte nocturne), 676 interventions planifiées.
-**NE PAS SUPPRIMER**, config réelle définitive à nouveau.
+Détail complet des 8 sous-chantiers initiaux : voir section « CHANTIER ANALYSE
+CONTRAT — LIVRÉ COMPLET (19 juillet 2026) », items 9 à 12 pour les 4 points
+ci-dessus.
 
-**DETTE ACTÉE (décision Julien, non bloquante) :** le mode simplifié du
-wizard (1 tâche synthétique par zone) ne distingue pas les fréquences
-bi-hebdo par type de zone — les halls « 2×/semaine » du contrat PRIEURE ne
-sont en pratique faits qu'1×/semaine (le jour du bâtiment). La règle R3
-(tournées transverses) existe dans le moteur mais n'est jamais déclenchée
-car l'IA ne détecte pas de bi-hebdo distinct en mode simplifié sur cette
-résidence. À corriger dans un lot dédié post-lancement, PAS avant le test
-terrain de cette semaine.
+**PRIEURE = résidence de référence à nouveau opérationnelle**, dispatch
+durci : 9 bâtiments sur 5 jours (2-2-2-2-1), 9 halls bi-hebdo (écarts ≥2
+jours vérifiés bâtiment par bâtiment), containers mardi/vendredi (collecte
+nocturne), **0 dépassement de créneau** (chaque jour actif remplit exactement
+240 min), 936 interventions planifiées. **NE PAS SUPPRIMER**, config réelle
+définitive.
 
-**DETTE MINEURE :** 3 jours du dispatch PRIEURE dépassent le créneau
-08:00-12:00 de 3 minutes (243 vs 240, forfait containers en bord de créneau)
-— warning R5 remonté correctement, non bloquant.
+**DETTE ACTÉE (livraison initiale) — RÉSOLUE le 19/07 :** ~~le mode
+simplifié ne distinguait pas les fréquences bi-hebdo, R3 ne se déclenchait
+jamais~~ → corrigé, voir point 2 ci-dessus et item 9/10 plus bas.
 
-**DETTE FUTURE (non urgente) :** ajouter un champ « mode collecte (jour/nuit) »
-au wizard pour formaliser R4 par résidence plutôt que la règle universelle
-actuelle (qui suppose collecte nocturne partout — vrai chez Archipropre à ce
-jour, mais fige une hypothèse).
+**DETTE MINEURE (livraison initiale) — RÉSOLUE le 19/07 :** ~~3 jours
+dépassaient le créneau de 3 min~~ → le nouveau calcul de durée par jour
+(`d3b0470`) élimine structurellement tout dépassement (division exacte du
+créneau, jamais une moyenne globale).
+
+**DETTE FUTURE (toujours non urgente, inchangée) :** ajouter un champ « mode
+collecte (jour/nuit) » au wizard pour formaliser R4 par résidence plutôt que
+la règle universelle actuelle.
+
+**NOUVELLE DETTE (identifiée par audit, non traitée) :** le bandeau "Réparti
+X sur Y vendues/semaine — 100%" (`CompteurRepartition`, page Tâches) est une
+**tautologie mathématique** déconnectée de `dispatch_semaine` — il affichera
+toujours 100% dès que chaque zone a ≥1 passage/semaine dans `taches_template`,
+quel que soit le dispatch réel. Ne pas s'y fier comme preuve que l'organisation
+tient dans l'enveloppe vendue. À clarifier ou retirer, hors périmètre traité
+à ce jour.
 
 **RESTE À FAIRE EN PRIORITÉ (reprise de session) :**
-1. Contrôle visuel manager : fiche PRIEURE = badge « Planning actif »,
-   planning affiche les interventions d'André.
-2. **TEST TERRAIN RÉEL (priorité absolue de la semaine)** : sur prod
-   (archipropre-app.vercel.app, Safari normal PUIS PWA), André scanne le QR
-   code du NOUVEAU contrat PRIEURE (l'ancien QR est mort depuis le reset —
-   réimprimer depuis la fiche contrat), vérifie planning J→J+7, photo par
-   zone, clôture, rapport reçu côté manager avec heure de début.
-3. Identifier les 3 agents pilotes (pas encore déterminés) + lister leur
-   périmètre exact de résidences à configurer via le wizard.
-4. Test lien syndic en conditions réelles sur prod (en attente depuis avant
-   cette session — nécessite du contenu réel généré par André sur PRIEURE,
-   donc à refaire après le test terrain du point 2).
-5. Lot 3 futur (non urgent) : mode « restructurer » un contrat existant écrit
+1. **TEST TERRAIN RÉEL avec André** (toujours prioritaire) : via le lien
+   `?test=1` désormais disponible si besoin de tester hors du jour J — sinon
+   scan normal le jour J. QR PRIEURE : token `960b3446-7046-4343-8184-d95cb36f3d17`.
+2. Identifier les 3 agents pilotes + lister leur périmètre de résidences à
+   configurer via le wizard.
+3. Test lien syndic en conditions réelles sur prod (nécessite du contenu réel
+   généré par André sur PRIEURE, donc après le test terrain du point 1).
+4. Lot 3 futur (non urgent) : mode « restructurer » un contrat existant écrit
    réellement (aujourd'hui lecture seule / dispatch-only).
+5. Clarifier/retirer le bandeau "Réparti 100%" trompeur (nouvelle dette
+   ci-dessus).
+
+Avant (19 juillet 2026, matin) : **CHANTIER "ANALYSE CONTRAT" COMPLET et
+fonctionnel** : wizard 4 étapes (Identité / Analyse / Répartition /
+Validation), analyse IA (bâtiments→zones→tâches), taux horaire cible,
+dispatch semaine (répartition jour par jour), simulation au taux rentable —
+tout testé en conditions réelles sur PRIEURE. Objectif : configurer les ~130
+résidences restantes en 3-5 minutes chacune via ce wizard. PRIEURE : contrat
+réel (2327,59€/mois, taux 30€/h), agent André Sabatier, dispatch 9 bâtiments
+sur 5 jours + containers mardi/vendredi (collecte nocturne), 676
+interventions planifiées. DETTE ACTÉE : le mode simplifié du wizard (1 tâche
+synthétique par zone) ne distingue pas les fréquences bi-hebdo par type de
+zone — les halls « 2×/semaine » du contrat PRIEURE ne sont en pratique faits
+qu'1×/semaine ; R3 (tournées transverses) existe dans le moteur mais n'est
+jamais déclenchée en mode simplifié sur cette résidence. DETTE MINEURE : 3
+jours du dispatch PRIEURE dépassent le créneau 08:00-12:00 de 3 minutes (243
+vs 240, forfait containers en bord de créneau). DETTE FUTURE : ajouter un
+champ « mode collecte (jour/nuit) » au wizard. RESTE À FAIRE : contrôle
+visuel manager, test terrain réel (scan André sur nouveau QR, planning J→J+7,
+photo par zone, clôture, rapport), identifier les 3 agents pilotes, test lien
+syndic, lot 3 futur.
 
 Avant (17 juillet 2026) : **CHANTIER "NIVEAU BÂTIMENT" TERMINÉ (fonctionnellement).** Modèle final :
 Résidence → Contrat → [Bâtiment = étiquette texte sur zone] → Zone → Tâche.
@@ -2090,6 +2134,191 @@ seulement PRIEURE.
   rentrée mardi/vendredi, 0 conflit — comportement qui avait été appliqué
   manuellement au chantier 6 est maintenant natif.
 
+### 9. Correctif durée dispatch + halls bi-hebdo PRIEURE (19 juillet 2026, suite)
+
+Le test terrain a révélé deux problèmes concrets sur le dispatch PRIEURE :
+créneaux dépassés (jusqu'à 4h31 certains jours) et vendredi sous-utilisé
+(2h13 sur 4h00 dispo), **et** les halls du contrat exigent 2×/semaine alors
+qu'ils n'étaient nettoyés qu'1×/semaine (dette actée à la livraison initiale).
+
+**Diagnostic (lecture seule d'abord)** : dans la branche dispatch-aware de
+`/api/planning/generer`, la durée d'un bâtiment = `Σ zone.dureePassageMin`
+où `dureePassageMin = (volumeHebdoMin × coefDuree) / totalPoids` — et
+`totalPoids` sommait les **36 zones du contrat entier** (9 bâtiments × 4
+zones, tous `coef_duree=1`, tous `nbPassages=1`). Donc chaque bâtiment
+recevait systématiquement `volumeHebdoMin ÷ 9` (~133 min), **peu importe le
+jour ou le nombre de bâtiments partageant ce jour** — une division fixe sur
+tout le contrat, pas un calcul par jour.
+
+**Fix (commit `d3b0470`, dispatch-aware uniquement, branche legacy
+intacte)** : durée d'un bâtiment/tournée un jour donné = `(durée du créneau
+du jour − containers éventuels) ÷ nombre d'unités (bâtiments complets +
+tournées) réellement prévues CE jour`. Répartition en `Math.floor` + reste
+distribué aux N premières unités : la somme des durées arrondies vaut
+**exactement** le budget du jour → plus jamais de dépassement introduit par
+l'arrondi. Le prorata dispatch devenu inutilisé (`zonePassagesDispatch`,
+`prorataByZoneIdDispatch`) a été supprimé ; `zoneParNomComplet` conservé pour
+la résolution des noms de zones des tournées.
+
+**Halls bi-hebdo — modélisation (aucun type `frequence_type` natif pour
+"bi-hebdo", vérifié par le `CHECK` constraint de `taches_template`)** :
+mécanisme choisi = compter les tâches. Une zone avec **≥2 tâches
+`frequence_type='hebdo'`** distinctes est considérée bi-hebdomadaire. Pour
+les 9 zones "Hall d'entrée" de PRIEURE : une 2e tâche `taches_template`
+ajoutée ("Nettoyage complet — 2e passage (tournée)", `jours_semaine=[]` — le
+jour exact n'est pas connu avant que l'IA propose le dispatch), et
+**`tache_liee_id`** (colonne existante, jusque-là seulement un champ UI
+manager optionnel jamais lu par le code) pointée vers la tâche principale de
+la même zone — sert à distinguer, au scan, la tâche du "2e passage" de la
+tâche principale, plus robuste qu'un matching sur le libellé. Scopé au
+contrat PRIEURE uniquement (`INSERT` ciblé par `contrat_id`), aucune autre
+résidence touchée.
+
+**`dispatch/proposer` étendu (commit `2bc0558`, code générique — aucune
+résidence en dur)** : requête supplémentaire sur `taches_template` pour
+compter les tâches hebdo par zone ; toute zone ≥2 tâches est listée dans une
+nouvelle section du prompt IA ("ZONES EN PRESTATION BI-HEBDOMADAIRE"), avec
+les noms exacts "Bâtiment/Zone" à reprendre tels quels dans
+`tournees_transverses.zones` — l'IA n'a plus à deviner depuis le nom des
+zones.
+
+**Test réel + décision Julien** : le dispatch proposé ne pouvait pas donner
+un 2e passage la même semaine à Bât 7, 8 et 9 (complets jeudi/vendredi — un
+2e passage ≥2 jours plus tard tomberait un samedi/dimanche, hors planning).
+Julien a choisi de reporter leurs tournées au **lundi suivant**, en
+exploitant le fait que `dispatch_semaine` est un gabarit **hebdomadaire
+récurrent** : vendredi → lundi suivant = 3 jours d'écart (ven→sam→dim→lun),
+jeudi → lundi suivant = 4 jours — les deux respectent R3. Dispatch final
+validé : 9 bâtiments 1×/semaine en entier, 9 halls 2×/semaine (écarts 2 à 4
+jours), containers inchangés, **0 dépassement de créneau** (chaque jour
+actif = exactement 240 min), 936 interventions générées (vs 676 avant, cohérent
+avec les 9 zones halls en double-passage sur ~52 semaines).
+
+### 10. 3 bugs bloquants du parcours scan agent (commit `e386354`)
+
+Avant de laisser André tester en vrai, simulation du parcours agent (lecture
+DB + relecture de code — **pas d'accès direct au compte agent lui-même**,
+entrer un mot de passe pour authentifier un compte reste une action interdite
+même avec autorisation explicite ; voir Key learnings). A révélé 3 bugs qui
+auraient bloqué le test terrain :
+
+1. **0/0 zone perpétuel sur tournées/containers** : `app/agent/scan/page.tsx`
+   résout les zones d'une intervention par `zones_residence.batiment =
+   intervention.batiment` — mais une intervention "tournée" (`Halls Bât 7-8
+   (2e passage)`) ou "containers" (`Containers — sortie`) porte un `batiment`
+   **synthétique** qui ne correspond à AUCUNE zone réelle. Fix : repli sur
+   `dispatch_semaine.tournees_transverses` (même convention "Bâtiment/Zone"
+   que `generer/route.ts`) pour résoudre les zones précises d'une tournée.
+2. **Fusion silencieuse de zones homonymes** : une tournée regroupant Bât 7
+   et Bât 8 a deux zones nommées identiquement "Hall d'entrée" — comme
+   `taches_intervention`/`photos_zone`/`zones_intervention` indexent par
+   `zone_nom` seul, les deux auraient fusionné (une photo sur l'un validerait
+   l'autre à tort, sans qu'André s'en aperçoive). Fix : préfixe "Bât X — Hall
+   d'entrée" uniquement quand un nom est dupliqué DANS cette intervention
+   précise (bâtiment complet : 4 zones déjà distinctes, aucun impact).
+3. **Blocage définitif du bouton "Envoyer le rapport"** : `cardState()`
+   (`app/agent/mission/[contratId]/page.tsx`) exigeait `zonesTotal > 0` pour
+   jamais passer "Prêt" — une intervention containers (structurellement 0
+   zone, pas de `zones_residence` dédiée) restait bloquée à "À faire" **pour
+   toujours**, empêchant l'envoi du rapport pour TOUTE la mission du jour dès
+   qu'il y a un containers ce jour-là (4 jours sur 5 pour PRIEURE). Fix : une
+   intervention sans zone mais déjà démarrée (`statut != 'planifiee'`) est
+   considérée prête d'office.
+
+Validé par script one-off lecture seule (non commité) sur les interventions
+réelles du lundi (5 unités) et du mercredi (3 unités) de PRIEURE : zones et
+tâches désormais correctement résolues pour chaque type d'intervention, sans
+collision.
+
+### 11. Mode test `?test=1` sur le scan (commit `d9135dd`)
+
+**Pourquoi** : le scan résout l'intervention **du jour strict**
+(`date_prevue = aujourd'hui`), sans marge — voulu (lié au calcul du temps
+réel/paie, jamais touché). Pour tester une mission fraîche sans attendre le
+vrai jour, Julien a d'abord déplacé `date_prevue` par SQL direct vers
+aujourd'hui (un dimanche). **Ça a cassé le repli tournée/containers** : ce
+repli cherche l'entrée du jour dans `dispatch_semaine` via le jour de semaine
+réel du scan — `dispatch_semaine` de PRIEURE ne couvre que lundi→vendredi,
+"dimanche" n'y existe pas → repli vide → 0/0 zone de nouveau, pour une raison
+totalement différente du bug de l'item 10 (audité et confirmé en détail : les
+bâtiments simples matchaient bien, seuls les labels synthétiques échouaient,
+et uniquement parce que le jour réel du scan n'était pas un jour de dispatch).
+**Leçon retenue : ne jamais bricoler une date de test par SQL brut sur un
+contrat utilisant `dispatch_semaine`** — voir Key learnings.
+
+**Mécanisme retenu : paramètre d'URL explicite `?test=1`** (pas de variable
+d'environnement globale, qui aurait nécessité un redéploiement pour
+activer/désactiver et risqué de rester active pour les 3 agents pilotes).
+Sans le paramètre : comportement strictement inchangé (une seule requête sur
+`today`, comme avant). Avec `?test=1` : élargit la résolution à une fenêtre
+J-3..J+3, retient la date la plus proche d'aujourd'hui ayant réellement une
+intervention pour cet agent+contrat — et fait crucialement suivre
+`jourCourant` (jour de semaine utilisé pour le repli `dispatch_semaine`) sur
+cette date **résolue**, pas sur la date réelle du scan, pour que le repli
+tournée/containers reste cohérent. Bandeau ambre "MODE TEST — fenêtre
+élargie J-3/J+3" affiché à l'écran tant que le paramètre est présent.
+Désactivation : ne plus passer `?test=1` dans le lien — aucun état persisté
+nulle part (pas de flag base, pas de cookie).
+
+URL de test PRIEURE : `.../agent/scan?token=960b3446-7046-4343-8184-d95cb36f3d17&test=1`
+
+### 12. "Simuler au taux rentable" — fix durée + garde-fou de vérification
+
+**Audit déclenché par Julien** : le bandeau "Réparti 19h59 sur 19h59 —
+100%" (page Tâches) et la colonne "Organisation actuelle" du panneau de
+simulation (540 min) prétendent tous les deux décrire la semaine actuelle,
+avec un facteur ×2 d'écart. Diagnostic :
+- **1199 min (bandeau `CompteurRepartition`)** : legacy, ignore totalement
+  `dispatch_semaine` — reparcourt `zones_residence`+`taches_template` (mode
+  simplifié, chaque zone déclare 5 jours/semaine). **Mathématiquement,
+  `totalReparti` est TOUJOURS égal à `volumeHebdoMin` dès que chaque zone a
+  ≥1 passage/semaine** (le prorata redistribue le total, il ne le mesure
+  pas) — le "100%" n'est donc jamais une vraie vérification, c'est une
+  conséquence automatique de la formule. Dette actée dans le bloc ÉTAT
+  ACTUEL, non traitée.
+- **540 min (panneau simulation)** : somme brute de
+  `dispatch_semaine[].duree_totale_estimee_minutes`, des valeurs **tapées à
+  la main** lors de l'item 9 ci-dessus, jamais recalculées depuis.
+
+**Fix (commit `d078edd`, option B retenue — recalcul dynamique, aucune
+valeur stockée comme source de vérité)** : `lib/dispatchDuree.ts`
+(nouveau), `recalculerDureesDispatch()` — même règle que la génération réelle
+(créneau du jour − containers, réparti entre unités résolues ce jour),
+dupliquée intentionnellement en fonction pure de LECTURE plutôt que de
+refactorer `generer/route.ts` (chemin déjà testé/validé, non touché pour un
+calcul d'affichage). `dispatch/proposer` calcule désormais aussi
+`dispatch_actuel` (le dispatch réel, durées recalculées) dans la même
+réponse que la proposition IA. Résultat vérifié sur PRIEURE : **1200
+min/semaine** (au lieu de 540), 0 warning.
+
+**Garde-fou de vérification déterministe (commit `fb360c6`)** : l'IA
+AFFIRME respecter R3/R4/R5 dans son texte "alertes" — rien ne le vérifiait.
+`lib/dispatchVerification.ts` (nouveau), `verifierPropositionDispatch()` —
+tourne pour TOUTE résidence/semaine, jamais confiance au texte du modèle :
+- R1/R3 : pour chaque tournée, retrouve le jour du passage complet du
+  bâtiment référencé et vérifie un **écart cyclique ≥2 jours** (la semaine
+  du dispatch se répète — vendredi→lundi suivant = 3 jours, pas -4),
+  **bâtiment par bâtiment**, pas en moyenne sur le groupe d'une tournée.
+- R4 : reconstruit le mouvement containers ATTENDU depuis
+  `jours_ramassage_containers` réel du contrat (sortie=veille, rentrée=jour
+  même), compare au mouvement proposé dans les deux sens (invention ou
+  oubli).
+- R5 : chaque durée quotidienne annoncée comparée au vrai créneau du jour.
+- Enveloppe (simulation uniquement) : la somme hebdo annoncée doit rester à
+  ±15% (plancher 20 min) de la cible.
+- Si violation : bandeau rouge "⚠ Cette proposition ne respecte pas les
+  règles..." dans `SimulationTauxRentablePanel.tsx` + bouton "Appliquer
+  cette proposition" désactivé. `RepartitionSemainePanel.tsx` (même route,
+  usage différent — "Enregistrer" envoie l'état édité manuellement, pas la
+  proposition brute) affiche le même garde-fou en informatif seulement, sans
+  désactiver de bouton.
+
+Validé par script one-off (lecture seule pour le cas réel ; fonction pure
+testée directement pour les cas cassés, sans appel IA — déterministe) : cas
+conforme → 0 violation ; écart de tournée à 1 jour → détecté par bâtiment ;
+containers inventés → détecté ; dépassement de créneau (400 min sur 240) →
+détecté, avec cascade correcte sur la dérive d'enveloppe.
+
 ## Ordre de configuration (session Ana)
 
 Séquence obligatoire (l'étape ③ du wizard résidence dépend des agents existants) :
@@ -2260,6 +2489,52 @@ connexion) + **Item 6** (masqué de la liste agents). Suffisant — pas de suppr
   comportement IA en conditions quasi réelles sans session manager
   authentifiée ni risque sur les données de production — réutilisable pour
   de futurs tests similaires.
+
+### Chantier dispatch_semaine durci — scan, mode test, simulation (19-20 juillet 2026)
+
+- **Ne jamais décaler une date de test par SQL brut sur un contrat utilisant
+  `dispatch_semaine`.** Une intervention "tournée"/"containers" est résolue
+  au scan via un repli qui cherche l'entrée du jour dans `dispatch_semaine`
+  **par jour de semaine réel** — décaler `date_prevue` vers un jour qui
+  n'existe pas dans `dispatch_semaine` (ex. dimanche pour PRIEURE, qui ne
+  couvre que lundi→vendredi) casse ce repli silencieusement, pour une raison
+  totalement différente d'un vrai bug de code (vécu en session : audité,
+  confirmé, corrigé en remettant la date d'origine). **Toujours utiliser le
+  mécanisme `?test=1` du scan** (fenêtre ±3 jours, résout le bon jour de
+  semaine) plutôt qu'un bricolage de date.
+- **Une durée "estimée" stockée sans recalcul se périme silencieusement et
+  personne ne s'en rend compte.** `dispatch_semaine[].duree_totale_estimee_
+  minutes` tapé à la main lors d'un chantier (540 min) est resté affiché
+  comme "l'organisation actuelle" bien après que la vraie logique de
+  génération produise une réalité complètement différente (1200 min) — sans
+  aucune alerte, aucun écart visible tant que personne ne compare les deux
+  chiffres. **Règle : toute grandeur dérivée d'une structure qui peut
+  changer (dispatch, créneaux, zones) doit être recalculée à la volée à
+  l'affichage, jamais mise en cache dans un champ texte** sauf mécanisme
+  explicite de rafraîchissement.
+- **Ne jamais afficher le texte "alertes"/justificatif d'une IA comme preuve
+  qu'elle a respecté une règle — toujours vérifier côté serveur,
+  déterministiquement, à partir des données structurées.** L'IA de
+  `dispatch/proposer` affirmait respecter l'écart R3 ≥2 jours et la règle
+  containers R4 dans son texte ; un audit manuel avait confirmé une
+  proposition ponctuelle, mais rien n'empêchait une future proposition (autre
+  résidence/semaine) de se tromper silencieusement. Un garde-fou déterministe
+  a été ajouté (`lib/dispatchVerification.ts`) — la leçon généralise à toute
+  future fonctionnalité IA de ce type dans le projet (ANA compris, cf règle
+  anti-hallucination déjà en place ailleurs, même esprit).
+- **Un audit préalable ("explique-moi avant d'agir") a évité une fausse piste
+  coûteuse** : l'hypothèse initiale ("les bâtiments ont été renommés") était
+  fausse — la vraie cause (jour de semaine hors `dispatch_semaine`) n'a été
+  trouvée qu'en comparant précisément les chaînes `zones_residence.batiment`
+  vs `interventions.batiment` par `=` SQL direct, pas en supposant.
+- **Impossible de se connecter en tant qu'agent pour tester le parcours
+  scan en direct** (règle absolue : ne jamais entrer de mot de passe pour
+  authentifier un compte, même avec autorisation explicite) — le test du
+  parcours scan (item 10 ci-dessus) a donc été fait par lecture DB + relecture
+  de code + simulation en script one-off (service role, aucune écriture
+  réelle sauf validation explicite), pas par un vrai clic dans le navigateur.
+  Les étapes nécessitant une session agent réelle (upload photo, clôture,
+  envoi rapport) restent à valider par Julien/André eux-mêmes.
 
 ## À faire Phase 3
 

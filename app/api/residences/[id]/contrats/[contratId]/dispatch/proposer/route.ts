@@ -253,7 +253,7 @@ export async function POST(req: NextRequest, { params }: { params: Params }) {
   // spécifique à un contrat), y compris hors simulation (enveloppeMinutesHebdo
   // absent → le contrôle d'enveloppe est simplement ignoré, cf lib/dispatchVerification.ts).
   const verification = verifierPropositionDispatch({
-    dispatch, creneaux, joursRamassageContainers, enveloppeMinutesHebdo,
+    dispatch, creneaux, joursRamassageContainers, enveloppeMinutesHebdo, estBinome,
   })
 
   return NextResponse.json({

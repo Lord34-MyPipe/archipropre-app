@@ -141,13 +141,20 @@ function verifierCreneaux(dispatch: DispatchJour[], creneaux: CreneauLite[]): st
   return violations
 }
 
-/** Enveloppe (simulation) : la somme hebdo annoncée doit rester proche de la cible — tolérance 15% (plancher 20 min). */
-function verifierEnveloppe(dispatch: DispatchJour[], enveloppeMinutesHebdo: number): string[] {
-  const somme = dispatch.reduce((s, j) => s + j.duree_totale_estimee_minutes, 0)
+/**
+ * Enveloppe (simulation) : la somme hebdo annoncée doit rester proche de la cible —
+ * tolérance 15% (plancher 20 min). L'IA propose un total en PRÉSENCE (elle ne connaît
+ * pas le binôme, cf audit 21/07) ; enveloppeMinutesHebdo est en MAIN D'ŒUVRE (montant÷
+ * tauxCible) — si l'agent du contrat est en binôme, on double la présence avant de
+ * comparer, même règle que recalculerDureesDispatch() (lib/dispatchDuree.ts).
+ */
+function verifierEnveloppe(dispatch: DispatchJour[], enveloppeMinutesHebdo: number, estBinome: boolean): string[] {
+  const sommePresence = dispatch.reduce((s, j) => s + j.duree_totale_estimee_minutes, 0)
+  const somme = estBinome ? sommePresence * 2 : sommePresence
   const tolerance = Math.max(20, enveloppeMinutesHebdo * 0.15)
   const ecart = Math.abs(somme - enveloppeMinutesHebdo)
   if (ecart > tolerance) {
-    return [`Dérive d'enveloppe : la proposition totalise ${somme} min/semaine, contre une enveloppe cible de ${Math.round(enveloppeMinutesHebdo)} min (écart ${Math.round(ecart)} min, tolérance ${Math.round(tolerance)} min).`]
+    return [`Dérive d'enveloppe : la proposition totalise ${somme} min/semaine${estBinome ? ` (${sommePresence} min de présence × 2 agents binôme)` : ''}, contre une enveloppe cible de ${Math.round(enveloppeMinutesHebdo)} min (écart ${Math.round(ecart)} min, tolérance ${Math.round(tolerance)} min).`]
   }
   return []
 }
@@ -157,12 +164,13 @@ export function verifierPropositionDispatch(params: {
   creneaux: CreneauLite[]
   joursRamassageContainers: string[]
   enveloppeMinutesHebdo?: number
+  estBinome?: boolean
 }): VerificationResult {
   const violations: string[] = [
     ...verifierEcartsTournees(params.dispatch),
     ...verifierContainers(params.dispatch, params.joursRamassageContainers),
     ...verifierCreneaux(params.dispatch, params.creneaux),
-    ...(params.enveloppeMinutesHebdo != null ? verifierEnveloppe(params.dispatch, params.enveloppeMinutesHebdo) : []),
+    ...(params.enveloppeMinutesHebdo != null ? verifierEnveloppe(params.dispatch, params.enveloppeMinutesHebdo, !!params.estBinome) : []),
   ]
   return { ok: violations.length === 0, violations }
 }

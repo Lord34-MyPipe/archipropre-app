@@ -145,11 +145,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     creneaux_acceptes, jours_interdits, notes_specifiques,
   } = body
 
+  // Libellé/type absents ou vides → défaut silencieux (même principe que le wizard IA,
+  // commit b6548c0), pas de rejet. Seule une valeur de type explicitement incohérente
+  // reste bloquante.
   const libelleTrimmed = typeof libelle === 'string' ? libelle.trim() : ''
-  if (!libelleTrimmed)
-    return NextResponse.json({ error: 'Le libellé est obligatoire.' }, { status: 400 })
+  const libelleFinal   = libelleTrimmed || 'Contrat principal'
 
-  if (!VALID_TYPES.includes(type_contrat))
+  const typeContratFinal = (type_contrat === undefined || type_contrat === null || type_contrat === '')
+    ? 'parties_communes'
+    : type_contrat
+
+  if (!VALID_TYPES.includes(typeContratFinal))
     return NextResponse.json(
       { error: `type_contrat invalide. Valeurs acceptées : ${VALID_TYPES.join(', ')}` },
       { status: 400 }
@@ -163,8 +169,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { data: created, error: insertErr } = await admin.from('contrats_residences').insert({
     residence_id:             residenceId,
-    libelle:                  libelleTrimmed,
-    type_contrat,
+    libelle:                  libelleFinal,
+    type_contrat:             typeContratFinal,
     date_debut,
     date_fin,
     montant_mensuel:          montant_mensuel ?? null,

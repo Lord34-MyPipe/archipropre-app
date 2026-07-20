@@ -30,11 +30,6 @@ const JOURS_LABELS: Record<string, string> = {
   lundi: 'Lun', mardi: 'Mar', mercredi: 'Mer',
   jeudi: 'Jeu', vendredi: 'Ven', samedi: 'Sam', dimanche: 'Dim',
 }
-const VALID_TYPES = [
-  { value: 'parties_communes', label: 'Parties communes' },
-  { value: 'containers',       label: 'Containers' },
-  { value: 'espaces_verts',    label: 'Espaces verts' },
-]
 
 function formatCreneau(c: Creneau): string {
   const jours = c.jours.map(j => JOURS_LABELS[j] ?? j).join(', ')
@@ -46,9 +41,10 @@ function toggleItem(item: string, list: string[]): string[] {
 }
 
 export default function AjoutContratModal({ residenceId, onClose, onSuccess }: Props) {
-  // Champs obligatoires
-  const [libelle,           setLibelle]          = useState('')
-  const [typeContrat,       setTypeContrat]       = useState('parties_communes')
+  // Libellé et type ne sont plus saisis ici (simplification cohérente avec le wizard
+  // IA, commit b6548c0) : valeur par défaut, éditable ensuite via GestionContratModal.
+  const libelle     = 'Contrat principal'
+  const typeContrat = 'parties_communes'
   const [dateDebut,         setDateDebut]         = useState(today)
   const [dateFin,           setDateFin]           = useState(nextYear)
   const [montant,           setMontant]           = useState('')
@@ -154,37 +150,6 @@ export default function AjoutContratModal({ residenceId, onClose, onSuccess }: P
 
         {/* Body scrollable */}
         <form onSubmit={handleSubmit} className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
-
-          {/* Libellé */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-              Libellé <span className="text-red-400">*</span>
-            </label>
-            <input
-              type="text"
-              value={libelle}
-              onChange={e => setLibelle(e.target.value)}
-              placeholder="ex. Bâtiment B, Containers…"
-              required
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#0BBFBF]/40"
-            />
-          </div>
-
-          {/* Type */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-              Type de contrat
-            </label>
-            <select
-              value={typeContrat}
-              onChange={e => setTypeContrat(e.target.value)}
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#0BBFBF]/40"
-            >
-              {VALID_TYPES.map(t => (
-                <option key={t.value} value={t.value}>{t.label}</option>
-              ))}
-            </select>
-          </div>
 
           {/* Dates */}
           <div className="grid grid-cols-2 gap-3">

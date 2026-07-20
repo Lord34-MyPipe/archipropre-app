@@ -68,6 +68,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
 
   const { admin, user, residenceId, contratId, contratMeta } = ctx
 
+  const hasCreneaux = (c: unknown) => Array.isArray(c) && c.length > 0
+  // Contrat jamais configuré (placeholder créé mais pas encore rempli — montant ou
+  // créneaux absents, cf activation auto plus bas) : tolère un libellé vide, comme le
+  // wizard IA (commit b6548c0) — on défaultera plutôt que de bloquer. Un contrat déjà
+  // configuré garde la protection stricte, pour ne pas perdre un nom réel par accident.
+  const isPlaceholder = contratMeta.montant_mensuel == null || !hasCreneaux(contratMeta.creneaux_acceptes)
+
   const body = await req.json()
   const {
     libelle, type_contrat, date_debut, date_fin,
@@ -79,9 +86,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
   } = body
 
   // Validations
+  let libelleFinal: string | undefined
   if (libelle !== undefined) {
     const trimmed = typeof libelle === 'string' ? libelle.trim() : ''
-    if (!trimmed) return NextResponse.json({ error: 'Le libellé ne peut pas être vide.' }, { status: 400 })
+    if (!trimmed && !isPlaceholder) return NextResponse.json({ error: 'Le libellé ne peut pas être vide.' }, { status: 400 })
+    libelleFinal = trimmed || 'Contrat principal'
   }
 
   if (type_contrat !== undefined && !VALID_TYPES.includes(type_contrat)) {
@@ -99,7 +108,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
 
   // Construire l'objet de mise à jour (seulement les champs fournis, jamais qr_code_token)
   const patch: Record<string, unknown> = {}
-  if (libelle !== undefined)                  patch.libelle = typeof libelle === 'string' ? libelle.trim() : libelle
+  if (libelleFinal !== undefined)              patch.libelle = libelleFinal
   if (type_contrat !== undefined)             patch.type_contrat = type_contrat
   if (date_debut !== undefined)               patch.date_debut = date_debut
   if (date_fin !== undefined)                 patch.date_fin = date_fin
@@ -122,9 +131,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Params }) {
   // créneaux non vides), on l'active. On ne réveille JAMAIS un contrat déjà complet
   // mis en sommeil volontairement (réactivation = action explicite via `actif`),
   // ni quand `actif` est fourni explicitement dans la requête.
-  const hasCreneaux = (c: unknown) => Array.isArray(c) && c.length > 0
   if (actif === undefined && contratMeta.actif === false) {
-    const beforeIncomplete = contratMeta.montant_mensuel == null || !hasCreneaux(contratMeta.creneaux_acceptes)
+    const beforeIncomplete = isPlaceholder
     const afterMontant  = montant_mensuel   !== undefined ? montant_mensuel   : contratMeta.montant_mensuel
     const afterCreneaux = creneaux_acceptes !== undefined ? creneaux_acceptes : contratMeta.creneaux_acceptes
     const afterComplete = afterMontant != null && hasCreneaux(afterCreneaux)

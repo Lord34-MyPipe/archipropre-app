@@ -130,7 +130,7 @@ export default function GestionContratModal({ residenceId, contrat, onClose, onS
     ]).then(([detailJson, agentsJson]) => {
       const d: ContratDetail = detailJson
       setDetail(d)
-      setLibelle(d.libelle ?? '')
+      setLibelle(d.libelle ?? 'Contrat principal')
       setTypeContrat(d.type_contrat ?? 'parties_communes')
       setDateDebut(d.date_debut)
       setDateFin(d.date_fin)
@@ -187,7 +187,7 @@ export default function GestionContratModal({ residenceId, contrat, onClose, onS
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        libelle:                  libelle.trim() || null,
+        libelle:                  libelle.trim(),
         type_contrat:             typeContrat,
         date_debut:               dateDebut,
         date_fin:                 dateFin,
@@ -287,7 +287,7 @@ export default function GestionContratModal({ residenceId, contrat, onClose, onS
               {/* Libellé */}
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                  Libellé <span className="text-red-400">*</span>
+                  Libellé
                 </label>
                 <input
                   type="text"

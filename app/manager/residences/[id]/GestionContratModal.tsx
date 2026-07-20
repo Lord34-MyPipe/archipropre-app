@@ -152,6 +152,12 @@ export default function GestionContratModal({ residenceId, contrat, onClose, onS
     }).catch(() => setLoadErr('Impossible de charger les détails du contrat.')).finally(() => setLoading(false))
   }, [residenceId, contrat.id])
 
+  // ── Rappel d'activation (non bloquant) ──────────────────────────────────────
+  // Un placeholder enregistré sans montant ni créneau ne progresse visuellement
+  // nulle part (libellé/type par défaut, silencieux) — sans ce rappel, ça peut
+  // ressembler à un bug plutôt qu'à une sauvegarde réussie mais incomplète.
+  const rappelActivation = saved && !montant && creneaux.length === 0
+
   // ── Calcul heures vendues ───────────────────────────────────────────────────
 
   const montantNum    = parseFloat(montant) || 0
@@ -268,6 +274,11 @@ export default function GestionContratModal({ residenceId, contrat, onClose, onS
           </div>
           {saveErr && (
             <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{saveErr}</div>
+          )}
+          {rappelActivation && (
+            <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm">
+              Ajoutez un montant et au moins un créneau pour activer ce contrat.
+            </div>
           )}
         </div>
 

@@ -72,6 +72,12 @@ export default function RepartitionSemainePanel({
   const [dureesRef, setDureesRef] = useState<DispatchJour[]>(initialDispatch) // sert uniquement au calcul de durée moyenne (récap live)
 
   const [alertesIA, setAlertesIA] = useState<string[]>([])
+  // Garde-fou déterministe (ne fait jamais confiance au texte de l'IA) sur la
+  // proposition BRUTE reçue — purement informatif ici : contrairement au
+  // panneau de simulation, "Enregistrer" envoie l'état édité par l'utilisateur
+  // (assignations/tournées/containers), pas la proposition brute, donc rien à
+  // désactiver en fonction de ce résultat — seulement à signaler.
+  const [violationsIA, setViolationsIA] = useState<string[]>([])
   const [proposing, setProposing] = useState(false)
   const [proposeErr, setProposeErr] = useState<string | null>(null)
 
@@ -177,6 +183,7 @@ export default function RepartitionSemainePanel({
       for (const j of dispatch) if (j.containers) newContainers[j.jour] = j.containers
       setContainersParJour(newContainers)
       setAlertesIA(json.alertes ?? [])
+      setViolationsIA(json.verification?.violations ?? [])
     } catch {
       setProposeErr('Impossible de contacter le serveur.')
     } finally {
@@ -275,6 +282,27 @@ export default function RepartitionSemainePanel({
             </button>
           </div>
           {proposeErr && <p className="text-xs text-red-600">{proposeErr}</p>}
+
+          {/* Garde-fou déterministe sur la proposition brute reçue — purement
+              informatif (l'édition manuelle ci-dessous peut déjà avoir corrigé
+              le souci ; "Enregistrer" envoie l'état édité, pas cette proposition). */}
+          {violationsIA.length > 0 && (
+            <div className="border border-red-300 bg-red-50 rounded-2xl p-4 space-y-1.5">
+              <p className="text-sm font-bold text-red-700">
+                ⚠ La proposition IA ne respectait pas les règles de répartition
+              </p>
+              <ul className="space-y-1">
+                {violationsIA.map((v, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-red-800">
+                    <span className="shrink-0 mt-0.5">✕</span><span>{v}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-red-600 pt-1">
+                Vérifiez/corrigez l&apos;assignation ci-dessous avant d&apos;enregistrer.
+              </p>
+            </div>
+          )}
 
           {alertesIA.length > 0 && (
             <div className="border border-amber-200 bg-amber-50 rounded-2xl p-4 space-y-1.5">

@@ -3,6 +3,7 @@ import { createClient, createAdminClient } from '@/lib/supabase-server'
 import Anthropic from '@anthropic-ai/sdk'
 import { type DispatchJour, reglesDispatchPrompt, sanitiserDispatch } from '@/lib/dispatchSemaine'
 import { recalculerDureesDispatch } from '@/lib/dispatchDuree'
+import { verifierPropositionDispatch } from '@/lib/dispatchVerification'
 
 export const dynamic = 'force-dynamic'
 
@@ -234,6 +235,15 @@ export async function POST(req: NextRequest, { params }: { params: Params }) {
     ? (parsedRaw.alertes as unknown[]).filter((a): a is string => typeof a === 'string')
     : []
 
+  // Garde-fou : l'IA AFFIRME respecter R1/R3/R4/R5 dans son texte "alertes",
+  // mais rien ne le vérifiait — recalcul déterministe, ne fait jamais confiance
+  // au texte du modèle. Tourne pour TOUTE résidence/semaine (aucune logique
+  // spécifique à un contrat), y compris hors simulation (enveloppeMinutesHebdo
+  // absent → le contrôle d'enveloppe est simplement ignoré, cf lib/dispatchVerification.ts).
+  const verification = verifierPropositionDispatch({
+    dispatch, creneaux, joursRamassageContainers, enveloppeMinutesHebdo,
+  })
+
   return NextResponse.json({
     dispatch_semaine: dispatch,
     alertes,
@@ -241,5 +251,6 @@ export async function POST(req: NextRequest, { params }: { params: Params }) {
     enveloppeMinutesHebdo,
     dispatch_actuel:  dispatchActuel,
     warnings_actuel:  warningsActuel,
+    verification,
   })
 }

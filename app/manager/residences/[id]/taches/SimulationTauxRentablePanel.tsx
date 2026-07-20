@@ -82,6 +82,10 @@ export default function SimulationTauxRentablePanel({
   const [alertesIA, setAlertesIA]   = useState<string[]>([])
   const [loading, setLoading]       = useState(false)
   const [error, setError]           = useState<string | null>(null)
+  // Garde-fou (lecture seule, calculé serveur) : ne fait jamais confiance au
+  // texte "alertes" de l'IA — violations recalculées déterministiquement à
+  // partir des jours/zones/créneaux réels. null = pas encore chargé.
+  const [violations, setViolations] = useState<string[] | null>(null)
 
   const [applying, setApplying]         = useState(false)
   const [applyErr, setApplyErr]         = useState<string | null>(null)
@@ -97,6 +101,7 @@ export default function SimulationTauxRentablePanel({
     setActuel(null)
     setProposal(null)
     setAlertesIA([])
+    setViolations(null)
     setError(null)
     setApplied(false)
     setApplyErr(null)
@@ -116,6 +121,7 @@ export default function SimulationTauxRentablePanel({
         setActuel(json.dispatch_actuel as DispatchJour[])
         setProposal(json.dispatch_semaine as DispatchJour[])
         setAlertesIA(json.alertes ?? [])
+        setViolations(json.verification?.violations ?? [])
       })
       .catch(() => setError('Impossible de contacter le serveur.'))
       .finally(() => setLoading(false))
@@ -163,6 +169,8 @@ export default function SimulationTauxRentablePanel({
     }
   }
 
+  const hasViolations = (violations?.length ?? 0) > 0
+
   if (!open) return null
 
   return (
@@ -191,6 +199,28 @@ export default function SimulationTauxRentablePanel({
 
         {/* Contenu scrollable */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
+          {/* Garde-fou déterministe — prime sur le texte "alertes" de l'IA :
+              si une règle R1/R3/R4/R5 est violée, c'est affiché ici, en rouge,
+              et le bouton "Appliquer" est désactivé plus bas tant que ce n'est
+              pas résolu (nouvelle proposition, ou correction manuelle du contrat). */}
+          {hasViolations && (
+            <div className="border border-red-300 bg-red-50 rounded-2xl p-4 space-y-1.5 mb-4">
+              <p className="text-sm font-bold text-red-700">
+                ⚠ Cette proposition ne respecte pas les règles de répartition — vérifiez avant d&apos;appliquer
+              </p>
+              <ul className="space-y-1">
+                {violations!.map((v, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-red-800">
+                    <span className="shrink-0 mt-0.5">✕</span><span>{v}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-red-600 pt-1">
+                Relancez la simulation pour obtenir une nouvelle proposition, ou fermez ce panneau sans appliquer.
+              </p>
+            </div>
+          )}
+
           {alertesIA.length > 0 && (
             <div className="border border-amber-200 bg-amber-50 rounded-2xl p-4 space-y-1.5 mb-4">
               <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider">Alertes de la proposition</p>
@@ -237,7 +267,8 @@ export default function SimulationTauxRentablePanel({
                   className="flex-1 border border-slate-200 rounded-xl py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
                   Annuler
                 </button>
-                <button type="button" onClick={() => setConfirmApply(true)} disabled={!proposal || loading}
+                <button type="button" onClick={() => setConfirmApply(true)} disabled={!proposal || loading || hasViolations}
+                  title={hasViolations ? 'Proposition non conforme — corrigez ou relancez la simulation' : undefined}
                   className="flex-1 rounded-xl py-2.5 text-sm font-semibold text-white disabled:opacity-40 transition-opacity"
                   style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}>
                   Appliquer cette proposition

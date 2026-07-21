@@ -26,6 +26,15 @@ const JOUR_NOMS: Record<string,string> = {
 const MOIS_COURTS = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc']
 const SEMAINE_LABELS = ['','1ère','2ème','3ème','4ème','Dern.']
 
+// Même formule que AnalyseContratEtape3.tsx:85 (vueParJour) — durée du créneau
+// d'un jour, en minutes de présence. Dupliquée volontairement (calcul d'un
+// écran de consultation, pas une source de vérité partagée — cf lib/dispatchDuree.ts).
+function dureeCreneauMinutes(c: { heure_debut: string; heure_fin: string }): number {
+  const [h1, m1] = c.heure_debut.split(':').map(Number)
+  const [h2, m2] = c.heure_fin.split(':').map(Number)
+  return Math.max(0, (h2 * 60 + m2) - (h1 * 60 + m1))
+}
+
 const FREQ_BADGE: Record<string, { bg: string; label: string }> = {
   hebdo:             { bg: 'bg-green-100 text-green-700',   label: 'Hebdo' },
   mensuel:           { bg: 'bg-blue-100 text-blue-700',     label: 'Mensuel' },
@@ -135,11 +144,12 @@ interface Props {
   statsReel?: StatsReel | null
   contratId?: string
   contratLibelle?: string
+  estBinome?: boolean  // chips par jour (top-down) — binôme de l'agent du contrat
 }
 
 /* ── Composant principal ─────────────────────── */
 
-export default function TachesClient({ residence, zones: initialZones, taches: initialTaches, contrat, parametres, statsReel, contratId, contratLibelle }: Props) {
+export default function TachesClient({ residence, zones: initialZones, taches: initialTaches, contrat, parametres, statsReel, contratId, contratLibelle, estBinome }: Props) {
   const [zones, setZones]         = useState<ZoneResidence[]>(initialZones)
   const [taches, setTaches]       = useState<TacheTemplate[]>(initialTaches)
   const [view, setView]           = useState<'zone' | 'day'>('zone')
@@ -505,6 +515,25 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
     return map
   }, [zones, taches, prorataByZoneId])
 
+  // Chips par jour (Lun...Dim du CompteurRepartition) — top-down (22/07) :
+  // dérivées DIRECTEMENT des créneaux du contrat (× binôme), jamais du
+  // prorata argent (cf audit du 21/07 : repartiParJour divergeait des
+  // créneaux réels — GMCO affichait Mar 2h18/Ven 2h41 au lieu de 2h00/3h00).
+  // Repli sur repartiParJour UNIQUEMENT si le contrat n'a pas de créneaux
+  // structurés (contrats legacy) — n'affecte PAS le bandeau "Réparti X sur Y
+  // vendues/semaine" ni computeProrataZones, toujours utilisés tels quels.
+  const facteurRessource = estBinome ? 2 : 1
+  const parJourChips = useMemo(() => {
+    const creneaux = contrat?.creneaux_acceptes
+    if (!creneaux || creneaux.length === 0) return repartiParJour
+    const map = new Map<string, number>(JOURS_ALL.map(j => [j, 0]))
+    for (const j of JOURS_ALL) {
+      const creneau = creneaux.find(c => c.jours.includes(j))
+      if (creneau) map.set(j, dureeCreneauMinutes(creneau) * facteurRessource)
+    }
+    return map
+  }, [contrat?.creneaux_acceptes, facteurRessource, repartiParJour])
+
   const compteurPct = volumeHebdoMin > 0 ? (totalReparti / volumeHebdoMin) * 100 : null
   const compteurCouleur: 'gray' | 'green' | 'orange' | 'red' =
     compteurPct === null ? 'gray' : compteurPct <= 100 ? 'green' : compteurPct <= 115 ? 'orange' : 'red'
@@ -593,7 +622,7 @@ export default function TachesClient({ residence, zones: initialZones, taches: i
           totalReparti={totalReparti}
           pct={compteurPct}
           couleur={compteurCouleur}
-          parJour={repartiParJour}
+          parJour={parJourChips}
           tauxCible={tauxCible}
           plafondRentable={plafondRentable}
           onSimuler={contratId ? () => setShowSimulation(true) : undefined}

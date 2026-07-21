@@ -122,6 +122,15 @@ export default async function TachesPage({ params, searchParams }: Props) {
   const taches = (r3.data ?? []) as TacheTemplate[]
   const contrat = (r4.data ?? null) as ContratResidence | null
   const contratLibelle = contrat?.libelle ?? undefined
+
+  // Binôme de l'agent du contrat (chips par jour, top-down) — même source que
+  // AnalyseContratWizard.tsx (estBinome = !!agentSelectionne?.binome_agent_id).
+  let estBinome = false
+  if (contrat?.agent_prefere_id) {
+    const { data: agentProfile } = await admin.from('profiles')
+      .select('binome_agent_id').eq('id', contrat.agent_prefere_id).single()
+    estBinome = !!agentProfile?.binome_agent_id
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const statsSource: any[] = r6.data ?? []
 
@@ -147,6 +156,7 @@ export default async function TachesPage({ params, searchParams }: Props) {
         statsReel={statsReel}
         contratId={contratId}
         contratLibelle={contratLibelle}
+        estBinome={estBinome}
       />
     </>
   )

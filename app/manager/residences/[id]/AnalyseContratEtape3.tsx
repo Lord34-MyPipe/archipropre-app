@@ -292,6 +292,10 @@ export default function AnalyseContratEtape3({
   const [reponsesLibres, setReponsesLibres]   = useState<Record<number, string>>({})
   const [envoiEnCours, setEnvoiEnCours]       = useState<Record<number, boolean>>({})
   const [erreursAjustement, setErreursAjustement] = useState<Record<number, string>>({})
+  // Filet de sécurité contre une mauvaise classification IA (question classée
+  // "info" par erreur) : le texte libre reste toujours joignable sur une carte
+  // info, repliée derrière un lien discret plutôt qu'affichée d'office.
+  const [reponseInfoOuverte, setReponseInfoOuverte] = useState<Record<number, boolean>>({})
 
   async function envoyerReponseLibre(alerteIndex: number, alerte: AnalyseIA['alertes'][number]) {
     const reponse = (reponsesLibres[alerteIndex] ?? '').trim()
@@ -949,13 +953,46 @@ export default function AnalyseContratEtape3({
                   )}
 
                   {a.type === 'info' && !decidee && (
-                    <button type="button" onClick={() => acquitterInfo(i)}
-                      className="mt-2 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors">
-                      ✓ Lu
-                    </button>
+                    <>
+                      <div className="mt-2 flex flex-wrap items-center gap-3">
+                        <button type="button" onClick={() => acquitterInfo(i)}
+                          className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors">
+                          ✓ Lu
+                        </button>
+                        <button type="button" onClick={() => setReponseInfoOuverte(o => ({ ...o, [i]: !o[i] }))}
+                          className="text-[11px] font-medium text-slate-400 hover:text-slate-600 underline underline-offset-2">
+                          {reponseInfoOuverte[i] ? 'Annuler' : 'Répondre…'}
+                        </button>
+                      </div>
+                      {reponseInfoOuverte[i] && (
+                        <>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                            <input type="text" placeholder="Votre réponse…" value={reponsesLibres[i] ?? ''}
+                              disabled={envoiEnCours[i]}
+                              onChange={e => setReponsesLibres(r => ({ ...r, [i]: e.target.value }))}
+                              onKeyDown={e => { if (e.key === 'Enter') envoyerReponseLibre(i, a) }}
+                              className="flex-1 min-w-[140px] px-2.5 py-1.5 rounded-lg text-xs border border-slate-200 focus:border-slate-400 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"/>
+                            <button type="button" onClick={() => envoyerReponseLibre(i, a)}
+                              disabled={envoiEnCours[i] || !(reponsesLibres[i] ?? '').trim()}
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-600 text-white hover:bg-slate-700 transition-colors disabled:opacity-40 disabled:hover:bg-slate-600">
+                              {envoiEnCours[i] ? '…' : 'Envoyer'}
+                            </button>
+                          </div>
+                          {erreursAjustement[i] && <p className="mt-1.5 text-xs text-red-600">{erreursAjustement[i]}</p>}
+                        </>
+                      )}
+                    </>
                   )}
 
-                  {a.type === 'info' && decidee && (
+                  {a.type === 'info' && decidee && decision.statut === 'appliquee' && (
+                    <div className="mt-2.5">
+                      <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-green-100 text-green-700">
+                        → {decision.optionLibelle} ✓
+                      </span>
+                    </div>
+                  )}
+
+                  {a.type === 'info' && decidee && decision.statut === 'lue' && (
                     <p className="mt-2 text-[11px] font-semibold text-green-600">✓ Lu</p>
                   )}
                 </div>

@@ -486,20 +486,39 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     )
 
-  // ── 6b. Binôme : durée réduite sur les deux lignes + interventions miroir ─────
+  // ── 6b. Binôme : interventions miroir, durée éventuellement réduite ──────────
   // Source de vérité : profiles.binome_agent_id (pas residences.agent_secondaire_id)
+  //
+  // Mode dispatch (top-down, dispatchActive) : le créneau est un budget de
+  // PRÉSENCE fixe, les 2 agents sont sur site SIMULTANÉMENT sur le même
+  // créneau — aucune raison de raccourcir les horaires (fix 21/07, audit
+  // GMCO : la réduction ×facteurBinome, pensée pour un modèle bottom-up où
+  // la durée = travail à répartir entre agents, créait un décalage/trou
+  // artificiel une fois appliquée à des horaires déjà dérivés du créneau).
+  //
+  // Mode historique (aucun dispatch_semaine) : comportement 100% inchangé —
+  // ces contrats n'ont jamais eu de notion de créneau-budget par jour, la
+  // réduction ×facteurBinome reste le seul modèle de durée disponible pour
+  // eux (rétrocompatibilité stricte, exigée explicitement).
   let rowsForUI = rowsFuturs          // aperçu retourné au client
   let allRows   = [...rowsFuturs]
 
   if (binomeAgentId) {
-    const rowsReduits = rowsFuturs.map(r => ({
-      ...r,
-      heure_fin_prevue: reduireHeureFin(r.heure_debut_prevue, r.heure_fin_prevue, facteurBinome),
-    }))
-    const mirrorRows = rowsReduits.map(r => ({ ...r, agent_id: binomeAgentId }))
-    allRows   = [...rowsReduits, ...mirrorRows]
-    rowsForUI = rowsReduits   // aperçu cohérent avec ce qui est inséré en base
-    console.log(`[generer] binôme ${binomeAgentId} facteur=${facteurBinome} : ${mirrorRows.length} miroirs, durée réduite`)
+    if (dispatchActive) {
+      const mirrorRows = rowsFuturs.map(r => ({ ...r, agent_id: binomeAgentId }))
+      allRows   = [...rowsFuturs, ...mirrorRows]
+      rowsForUI = rowsFuturs   // aperçu cohérent : mêmes horaires que la ligne principale
+      console.log(`[generer] binôme ${binomeAgentId} (dispatch top-down) : ${mirrorRows.length} miroirs, mêmes horaires (présence simultanée sur le créneau)`)
+    } else {
+      const rowsReduits = rowsFuturs.map(r => ({
+        ...r,
+        heure_fin_prevue: reduireHeureFin(r.heure_debut_prevue, r.heure_fin_prevue, facteurBinome),
+      }))
+      const mirrorRows = rowsReduits.map(r => ({ ...r, agent_id: binomeAgentId }))
+      allRows   = [...rowsReduits, ...mirrorRows]
+      rowsForUI = rowsReduits   // aperçu cohérent avec ce qui est inséré en base
+      console.log(`[generer] binôme ${binomeAgentId} facteur=${facteurBinome} : ${mirrorRows.length} miroirs, durée réduite`)
+    }
   }
 
   // ── 7. DELETE + INSERT atomique via RPC PostgreSQL ──────────────────────────

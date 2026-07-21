@@ -32,6 +32,13 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.test.example
+
+# Playwright (e2e)
+/test-results/
+/playwright-report/
+/playwright/.cache/
+/blob-report/
 
 # vercel
 .vercel

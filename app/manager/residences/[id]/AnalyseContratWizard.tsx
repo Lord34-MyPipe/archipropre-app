@@ -472,7 +472,7 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
                   </button>
                 ) : (
                   <div className="border border-slate-200 rounded-xl p-3 space-y-3">
-                    <div>
+                    <div data-testid="jours-creneau">
                       <p className="text-xs text-slate-500 mb-1.5">Jours</p>
                       <div className="flex flex-wrap gap-1.5">
                         {JOURS.map(j => (
@@ -529,7 +529,7 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
               )}
 
               {/* Jours de ramassage containers (agglo) — chantier "Répartition semaine" */}
-              <div>
+              <div data-testid="jours-containers">
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
                   Jours de ramassage containers (agglo) — laisser vide si non concerné
                 </label>

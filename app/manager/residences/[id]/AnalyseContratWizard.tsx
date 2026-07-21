@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { heuresVenduesMois, volumeHebdoMinutes } from '@/lib/prorata'
 import { type DispatchJour } from '@/lib/dispatchSemaine'
 import AnalyseContratEtape2 from './AnalyseContratEtape2'
-import AnalyseContratEtape3, { type StructureSoumission } from './AnalyseContratEtape3'
+import AnalyseContratEtape3, { type StructureSoumission, type DecisionAlerte } from './AnalyseContratEtape3'
 import AnalyseContratEtape4 from './AnalyseContratEtape4'
 
 export type { DispatchJour }
@@ -171,6 +171,7 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
   const [structureFinale, setStructureFinale]     = useState<StructureSoumission | null>(null)
   const [dispatchFinal, setDispatchFinal]         = useState<DispatchJour[]>([])
   const [nbAlertesEnAttenteFinal, setNbAlertesEnAttenteFinal] = useState(0)
+  const [decisionsAlertesFinal, setDecisionsAlertesFinal] = useState<Record<number, DecisionAlerte>>({})
 
   useEffect(() => {
     fetch('/api/agents')
@@ -235,10 +236,11 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
     advance(3)
   }
 
-  function handleStructureContinue(structure: StructureSoumission, dispatch: DispatchJour[], nbAlertesEnAttente: number) {
+  function handleStructureContinue(structure: StructureSoumission, dispatch: DispatchJour[], nbAlertesEnAttente: number, decisionsAlertes: Record<number, DecisionAlerte>) {
     setStructureFinale(structure)
     setDispatchFinal(dispatch)
     setNbAlertesEnAttenteFinal(nbAlertesEnAttente)
+    setDecisionsAlertesFinal(decisionsAlertes)
     advance(4)
   }
 
@@ -603,6 +605,7 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
             dispatchSemaine={dispatchFinal}
             horsPlanningHebdo={analyse?.hors_planning_hebdo ?? []}
             alertes={analyse?.alertes ?? []}
+            decisionsAlertes={decisionsAlertesFinal}
             nbAlertesEnAttente={nbAlertesEnAttenteFinal}
             onBack={() => advance(3)}
             onClose={onClose}

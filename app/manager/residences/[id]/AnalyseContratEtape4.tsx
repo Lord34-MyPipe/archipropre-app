@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { IdentiteContrat, Creneau, HorsPlanningIA, AlerteIA } from './AnalyseContratWizard'
-import type { StructureSoumission } from './AnalyseContratEtape3'
+import type { StructureSoumission, DecisionAlerte } from './AnalyseContratEtape3'
 import { ORDRE_JOURS, type DispatchJour } from '@/lib/dispatchSemaine'
 
 const JOURS_LABELS: Record<string, string> = {
@@ -31,6 +31,7 @@ interface Props {
   structure: StructureSoumission
   horsPlanningHebdo: HorsPlanningIA[]
   alertes: AlerteIA[]
+  decisionsAlertes: Record<number, DecisionAlerte>  // état des décisions prises à l'étape 3 (fix 21/07 : le récap doit refléter les choix, pas ré-afficher le message d'origine)
   nbAlertesEnAttente: number  // décisions non prises à l'étape 3 — informatif, jamais bloquant (sous-étape 5/5)
   joursRamassageContainers: string[]
   dispatchSemaine: DispatchJour[]
@@ -46,7 +47,7 @@ interface CreationResult {
 
 export default function AnalyseContratEtape4({
   residenceId, identite, agentId, agentNom, binomeAgentNom, creneaux, minutesHebdoReelles, plafondRentable, ecartRentable,
-  structure, horsPlanningHebdo, alertes, nbAlertesEnAttente, joursRamassageContainers, dispatchSemaine, onBack, onClose,
+  structure, horsPlanningHebdo, alertes, decisionsAlertes, nbAlertesEnAttente, joursRamassageContainers, dispatchSemaine, onBack, onClose,
 }: Props) {
   const router = useRouter()
   const [creating, setCreating]   = useState(false)
@@ -229,16 +230,37 @@ export default function AnalyseContratEtape4({
       )}
 
       {/* Décisions & remarques — récap final (lecture seule, l'édition se fait à
-          l'étape 3). Compteur "N en attente" près du bouton de validation
-          (sous-étape 5/5) : purement informatif, ne bloque jamais la création. */}
+          l'étape 3). Reflète l'état RÉEL des décisions (fix 21/07) plutôt que
+          de ré-afficher le message d'origine pour une alerte déjà décidée —
+          mêmes états visuels que l'étape 3 (AnalyseContratEtape3.tsx), sans
+          boutons puisque cet écran est lecture seule. Compteur "N en attente"
+          près du bouton de validation (sous-étape 5/5) : purement informatif,
+          ne bloque jamais la création. */}
       {alertes.length > 0 && (
-        <div className="border border-slate-200 rounded-2xl p-4 space-y-2">
+        <div className="border border-slate-200 rounded-2xl p-4 space-y-2.5">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Décisions &amp; remarques</p>
-          {alertes.map((a, i) => (
-            <p key={i} className={`text-sm ${a.type === 'question' ? 'text-amber-800' : 'text-slate-600'}`}>
-              {a.type === 'question' ? '⚠' : 'ℹ'} <span className="font-medium">{a.sujet}</span> — {a.message}
-            </p>
-          ))}
+          {alertes.map((a, i) => {
+            const decision = decisionsAlertes[i]
+            const decidee  = !!decision
+            return (
+              <div key={i} className={`rounded-xl border p-3 ${
+                decidee ? 'bg-green-50 border-green-200' : a.type === 'question' ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'
+              }`}>
+                <p className={`text-sm font-semibold mb-1 ${
+                  decidee ? 'text-green-800' : a.type === 'question' ? 'text-amber-800' : 'text-slate-600'
+                }`}>
+                  {decidee ? '✓ ' : a.type === 'question' ? '⚠ ' : 'ℹ '}{a.sujet}
+                </p>
+                {decidee ? (
+                  <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-green-100 text-green-700">
+                    {decision.statut === 'appliquee' ? `→ ${decision.optionLibelle} ✓` : '✓ Lu'}
+                  </span>
+                ) : (
+                  <p className={`text-sm ${a.type === 'question' ? 'text-amber-700' : 'text-slate-500'}`}>{a.message}</p>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 

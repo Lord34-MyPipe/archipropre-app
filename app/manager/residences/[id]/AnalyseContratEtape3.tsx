@@ -22,6 +22,12 @@ export interface StructureSoumission {
   }[]
 }
 
+// État de décision d'une alerte (index dans analyse.alertes → décision prise),
+// remonté jusqu'à l'étape 4 (fix "récap étape 4 ignore les décisions", 21/07)
+// pour que le récap final reflète l'état réel plutôt que de ré-afficher le
+// message d'origine comme si rien ne s'était passé.
+export interface DecisionAlerte { statut: 'appliquee' | 'lue'; optionLibelle: string }
+
 // ── State local éditable — arbre unique (refonte top-down, 21/07). L'ancien
 // double mode "simplifié / détaillé" est retiré : le mode simplifié ignorait
 // silencieusement les tâches basse fréquence positionnées par l'IA (constaté à
@@ -101,7 +107,7 @@ interface Props {
   facteurRessource: number             // 1 (pas de binôme) ou 2 (binôme) — présence × facteur = ressource
   onBack: () => void                              // "Relancer l'analyse" → retour étape 2 (texte conservé au niveau du wizard)
   onGoToStep1: () => void                         // effet "add_creneau_hint" — retour étape 1, état déjà préservé par le stepper
-  onContinue: (structure: StructureSoumission, dispatch: DispatchJour[], nbAlertesEnAttente: number) => void  // "Continuer → Validation" → étape 4
+  onContinue: (structure: StructureSoumission, dispatch: DispatchJour[], nbAlertesEnAttente: number, decisionsAlertes: Record<number, DecisionAlerte>) => void  // "Continuer → Validation" → étape 4
 }
 
 export default function AnalyseContratEtape3({
@@ -217,7 +223,6 @@ export default function AnalyseContratEtape3({
   // temps par une édition manuelle, l'option reste affichée mais échoue
   // proprement (message inline, pas un clic silencieux sans effet).
 
-  interface DecisionAlerte { statut: 'appliquee' | 'lue'; optionLibelle: string }
   const [decisions, setDecisions]       = useState<Record<number, DecisionAlerte>>({})
   const [erreursCible, setErreursCible] = useState<Record<number, string>>({})
 
@@ -1008,7 +1013,7 @@ export default function AnalyseContratEtape3({
             className="flex-1 border border-slate-200 rounded-xl py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
             Relancer l&apos;analyse
           </button>
-          <button type="button" onClick={() => onContinue(buildStructure(), buildDispatch(), nbAlertesEnAttente)}
+          <button type="button" onClick={() => onContinue(buildStructure(), buildDispatch(), nbAlertesEnAttente, decisions)}
             className="flex-1 rounded-xl py-2.5 text-sm font-semibold text-white transition-opacity"
             style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}>
             Continuer → Validation

@@ -22,7 +22,7 @@ const TOUS_LES_JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'same
 test.describe.serial('Parcours agent — scan → validation des tâches → rapport', () => {
   let residenceId: string
   let residenceQrToken: string
-  let agentAEmail: string
+  let agentALoginId: string
   let contratId: string | null = null
   let interventionId: string
 
@@ -30,7 +30,7 @@ test.describe.serial('Parcours agent — scan → validation des tâches → rap
     const fx = await ensureFixtures()
     residenceId = fx.residenceId
     residenceQrToken = fx.residenceQrToken
-    agentAEmail = fx.agentAEmail
+    agentALoginId = fx.agentALoginId
 
     const admin = adminClient()
     const todayIso = new Date().toISOString().slice(0, 10) // best-effort — le mode ?test=1 couvre ±3 jours, aucune précision fuseau requise ici
@@ -83,7 +83,7 @@ test.describe.serial('Parcours agent — scan → validation des tâches → rap
     await context.grantPermissions(['geolocation'])
     await context.setGeolocation({ latitude: 43.6108, longitude: 3.8767 })
 
-    await login(page, agentAEmail, E2E_AGENT_PASSWORD(), '/agent/dashboard')
+    await login(page, agentALoginId, E2E_AGENT_PASSWORD(), '/agent/dashboard')
 
     // Mode test documenté (app/agent/scan/page.tsx) : bypasse la caméra,
     // résout l'intervention par contrat/agent sur une fenêtre J-3/J+3.

@@ -17,6 +17,7 @@ export const E2E_BASE_URL       = process.env.PLAYWRIGHT_BASE_URL || 'http://loc
 export const E2E_MANAGER_EMAIL  = () => requireEnv('E2E_MANAGER_EMAIL')
 export const E2E_MANAGER_PASSWORD = () => requireEnv('E2E_MANAGER_PASSWORD')
 export const E2E_AGENT_EMAIL    = () => requireEnv('E2E_AGENT_EMAIL')
+export const E2E_AGENT_BINOME_EMAIL = () => requireEnv('E2E_AGENT_BINOME_EMAIL')
 export const E2E_AGENT_PASSWORD = () => requireEnv('E2E_AGENT_PASSWORD')
 
 // Nom fixe et sans ambiguïté — ne JAMAIS réutiliser une résidence réelle (GMCO

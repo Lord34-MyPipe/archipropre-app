@@ -21,8 +21,9 @@ contrepartie :
 
 - Tout est isolé sur une **résidence de test dédiée**, créée automatiquement
   au premier run (`ZZZ-E2E-TEST (Playwright — ne pas modifier manuellement)`)
-  et **2 agents de test dédiés** (`agent-e2e@…` + son binôme miroir) —
-  jamais GMCO, jamais un compte ou une résidence réels.
+  et **2 agents de test dédiés** (`E2E_AGENT_EMAIL` + son binôme miroir
+  `E2E_AGENT_BINOME_EMAIL`) — jamais GMCO, jamais un compte ou une résidence
+  réels.
 - Chaque test crée son propre contrat de test et le **supprime entièrement**
   en fin de run (`delete_contrat_cascade`, la même RPC utilisée pour les
   nettoyages manuels de GMCO cette session) — la résidence elle-même
@@ -46,6 +47,37 @@ octets) restent dans le bucket Supabase Storage après le nettoyage — le
 storage. Impact négligeable (quelques octets par run) ; à améliorer plus
 tard si besoin (purge du bucket dans `nettoyerContrat`).
 
+## Sécurité des fixtures — garde-fou `e2e_fixture` (migration 034)
+
+**Incident du 21/07/2026** : le script de provisioning cherchait un profil/
+une résidence existant par email/nom avant d'en créer un (pour rester
+idempotent entre les runs). Un premier identifiant de test choisi (un
+prénom) a résolu — via le même mécanisme que l'app elle-même
+(`lib/agent-identifiant.ts`) — vers l'email technique d'un **vrai compte
+agent existant**, que le script a alors traité comme une fixture et modifié
+(`binome_agent_id` écrasé). Corrigé manuellement (profil restauré depuis les
+données disponibles, vérifié par recoupement), puis durci en profondeur :
+
+- Colonne `profiles.e2e_fixture` / `residences.e2e_fixture` (booléen, défaut
+  `false`, migration 034) — posée à `true` **uniquement** par ce script, sur
+  les lignes qu'il crée lui-même.
+- `ensureAgent()`/`ensureFixtures()` **refusent bruyamment** (erreur explicite,
+  aucune écriture) si un profil ou une résidence correspondant au nom/email
+  attendu existe déjà mais `e2e_fixture=false` — jamais de réutilisation
+  silencieuse par simple correspondance de nom.
+- Volontairement **pas** de réutilisation du champ `is_demo` existant pour
+  ce garde-fou : `is_demo` s'est déjà révélé non fiable pour ce genre de
+  décision (incident du 14/07/2026, voir `docs/CONTEXT.md`) — `e2e_fixture`
+  est un marqueur neuf, à la sémantique unique.
+
+**Ce que ça implique concrètement** : si vous changez `E2E_AGENT_EMAIL`/
+`E2E_AGENT_BINOME_EMAIL`/le nom de la résidence de test dans `.env.test`
+après un premier run réussi, le prochain run échouera avec un message
+explicite plutôt que de silencieusement réutiliser/modifier autre chose —
+c'est voulu. Choisissez ces identifiants une fois, avec soin (jamais un
+prénom ou une valeur qui pourrait correspondre à un employé réel), et
+gardez-les stables.
+
 ## Lancer les tests en local
 
 ### 1. Configurer les identifiants
@@ -62,10 +94,18 @@ Remplir `.env.test` (jamais commité, voir `.gitignore`) :
   automatiquement en repli si `.env.test` ne les définit pas).
 - `E2E_MANAGER_EMAIL` / `E2E_MANAGER_PASSWORD` : le compte manager de test
   existant (`manager@archipropre.fr` / `Test1234!`, voir `docs/CONTEXT.md`).
-- `E2E_AGENT_EMAIL` / `E2E_AGENT_PASSWORD` : identifiants du compte agent de
-  test **dédié** à la suite (distinct de `agent@archipropre.fr`, qui reste
-  désactivé en prod) — choisissez un mot de passe, le premier run crée le
-  compte automatiquement s'il n'existe pas encore.
+- `E2E_AGENT_EMAIL` / `E2E_AGENT_BINOME_EMAIL` / `E2E_AGENT_PASSWORD` :
+  identifiants des 2 comptes agent de test **dédiés** à la suite (distincts
+  de `agent@archipropre.fr`, qui reste désactivé en prod) — le premier run
+  les crée automatiquement s'ils n'existent pas encore, marqués
+  `e2e_fixture=true` en base (migration 034). **Choisissez un identifiant qui
+  ne peut correspondre à aucun employé réel** (jamais un prénom, même
+  approximatif) — un identifiant simple est résolu par l'app en
+  `<identifiant>@archipropre.local` (`lib/agent-identifiant.ts`) : s'il
+  collisionne avec un compte réel, le script refuse maintenant de le
+  toucher (incident du 21/07/2026, voir `docs/CONTEXT.md`), mais autant
+  l'éviter dès le départ. Valeurs par défaut dans `.env.test.example` :
+  `e2e-agent-principal` / `e2e-agent-binome`.
 
 ### 2. Lancer la suite
 
@@ -105,7 +145,8 @@ repo GitHub : `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
 `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY` (nécessaire au serveur
 Next.js démarré dans le runner — l'étape 2 du wizard appelle Claude en
 réel), `E2E_MANAGER_EMAIL`, `E2E_MANAGER_PASSWORD`, `E2E_AGENT_EMAIL`,
-`E2E_AGENT_PASSWORD` — mêmes valeurs que `.env.test` en local.
+`E2E_AGENT_BINOME_EMAIL`, `E2E_AGENT_PASSWORD` — mêmes valeurs que
+`.env.test` en local.
 
 ## Pourquoi Claude n'exécute jamais ces tests lui-même
 

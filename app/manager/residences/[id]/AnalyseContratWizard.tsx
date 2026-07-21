@@ -64,12 +64,37 @@ export interface HorsPlanningIA {
   frequence: string
   note: string
 }
+
+// Alertes actionnables (21/07, chantier dédié) — vocabulaire d'effets FERMÉ,
+// identique à app/api/ia/analyse-contrat/route.ts (aucun autre effet n'existe
+// ni ne doit être ajouté ici sans l'ajouter aussi côté serveur). `cible`
+// référence une tâche par clé naturelle (batiment+zone+libelle) — jamais par
+// id local, inconnu de l'IA au moment de la génération.
+export type EffetAlerteIA = 'move_task_day' | 'set_semaine_du_mois' | 'set_mois_de_annee' | 'remove_task' | 'add_creneau_hint' | 'none'
+export interface AlerteCibleIA {
+  batiment: string
+  zone: string
+  libelle: string
+}
+export interface AlerteOptionIA {
+  libelle: string
+  effet: EffetAlerteIA
+  cible: AlerteCibleIA | null
+  valeur: string | number | number[] | null
+}
+export interface AlerteIA {
+  type: 'question' | 'info'
+  sujet: string
+  message: string
+  options: AlerteOptionIA[]
+}
+
 export interface AnalyseIA {
   batiments: AnalyseBatimentIA[]
   creneaux_proposes: CreneauProposeIA[]
   jours_interdits_detectes: string[]
   hors_planning_hebdo: HorsPlanningIA[]
-  alertes: string[]
+  alertes: AlerteIA[]
   dispatch_semaine: DispatchJour[]
 }
 

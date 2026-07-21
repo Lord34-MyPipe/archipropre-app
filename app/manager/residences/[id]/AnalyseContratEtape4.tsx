@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { IdentiteContrat, Creneau, HorsPlanningIA } from './AnalyseContratWizard'
+import type { IdentiteContrat, Creneau, HorsPlanningIA, AlerteIA } from './AnalyseContratWizard'
 import type { StructureSoumission } from './AnalyseContratEtape3'
 import { ORDRE_JOURS, type DispatchJour } from '@/lib/dispatchSemaine'
 
@@ -30,7 +30,7 @@ interface Props {
   ecartRentable: number
   structure: StructureSoumission
   horsPlanningHebdo: HorsPlanningIA[]
-  alertes: string[]
+  alertes: AlerteIA[]
   joursRamassageContainers: string[]
   dispatchSemaine: DispatchJour[]
   onBack: () => void
@@ -227,11 +227,17 @@ export default function AnalyseContratEtape4({
         </div>
       )}
 
-      {/* Alertes */}
+      {/* Décisions & remarques — récap final (lecture seule, l'édition se fait à
+          l'étape 3). Compteur "N en attente" près du bouton de validation :
+          sous-étape 5. */}
       {alertes.length > 0 && (
-        <div className="border border-amber-200 bg-amber-50 rounded-2xl p-4 space-y-1.5">
-          <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider">Alertes</p>
-          {alertes.map((a, i) => <p key={i} className="text-sm text-amber-800">⚠ {a}</p>)}
+        <div className="border border-slate-200 rounded-2xl p-4 space-y-2">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Décisions &amp; remarques</p>
+          {alertes.map((a, i) => (
+            <p key={i} className={`text-sm ${a.type === 'question' ? 'text-amber-800' : 'text-slate-600'}`}>
+              {a.type === 'question' ? '⚠' : 'ℹ'} <span className="font-medium">{a.sujet}</span> — {a.message}
+            </p>
+          ))}
         </div>
       )}
 

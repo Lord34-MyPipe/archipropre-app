@@ -202,6 +202,14 @@ export default function AnalyseContratEtape3({
     [batiments],
   )
 
+  // Décisions & remarques (sous-étape 2/5) : pour l'instant, toute alerte
+  // "question" compte comme en attente (aucun mécanisme de décision encore
+  // branché — sous-étape 3). Jamais bloquant (badge informatif uniquement).
+  const nbAlertesEnAttente = useMemo(
+    () => analyse.alertes.filter(a => a.type === 'question').length,
+    [analyse.alertes],
+  )
+
   // ── Répartition semaine (chantier "Répartition semaine") — tournées transverses
   // + containers, INCHANGÉS. Le sélecteur bâtiment→jour a été retiré (retour
   // Julien : sans objet, les jours sont déjà imposés par les créneaux de
@@ -753,18 +761,51 @@ export default function AnalyseContratEtape3({
           </div>
         )}
 
-        {/* ── Alertes ── */}
+        {/* ── Décisions & remarques (chantier "alertes actionnables", 21/07) ──
+            Sous-étape 2/5 : rendu seul, boutons/champ non actifs (disabled) —
+            branchés en sous-étape 3 (options) et 4 (texte libre). */}
         {analyse.alertes.length > 0 && (
-          <div className="border border-amber-200 bg-amber-50 rounded-2xl p-4 space-y-2">
-            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider">Alertes</p>
-            <ul className="space-y-1.5">
+          <div className="border border-slate-200 rounded-2xl overflow-hidden">
+            <div className="bg-slate-50 px-4 py-2.5 flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Décisions &amp; remarques</p>
+              {nbAlertesEnAttente > 0 && (
+                <span className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700">
+                  {nbAlertesEnAttente} en attente
+                </span>
+              )}
+            </div>
+            <div className="p-3 space-y-2.5">
               {analyse.alertes.map((a, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-amber-800">
-                  <span className="shrink-0 mt-0.5">⚠</span>
-                  <span>{a}</span>
-                </li>
+                <div key={i} className={`rounded-xl border p-3 ${
+                  a.type === 'question' ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'
+                }`}>
+                  <p className={`text-sm font-semibold mb-1 ${a.type === 'question' ? 'text-amber-800' : 'text-slate-600'}`}>
+                    {a.type === 'question' ? '⚠ ' : 'ℹ '}{a.sujet}
+                  </p>
+                  <p className={`text-sm ${a.type === 'question' ? 'text-amber-700' : 'text-slate-500'}`}>{a.message}</p>
+
+                  {a.type === 'question' && (
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+                      {a.options.map((o, oi) => (
+                        <button key={oi} type="button" disabled
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white border border-amber-300 text-amber-700 cursor-default opacity-70">
+                          {o.libelle}
+                        </button>
+                      ))}
+                      <input type="text" disabled placeholder="Autre réponse…"
+                        className="flex-1 min-w-[140px] px-2.5 py-1.5 rounded-lg text-xs border border-slate-200 bg-slate-50 text-slate-400 placeholder:text-slate-400"/>
+                    </div>
+                  )}
+
+                  {a.type === 'info' && (
+                    <button type="button" disabled
+                      className="mt-2 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white border border-slate-200 text-slate-400 cursor-default">
+                      ✓ Lu
+                    </button>
+                  )}
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
         )}
 

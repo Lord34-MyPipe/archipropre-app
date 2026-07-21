@@ -1,4 +1,4 @@
-# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 21 juillet 2026 — 1er test terrain réel réussi + polish containers + simplification 3 chemins création contrat + bug binôme corrigé sur 3 endroits)
+# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 21 juillet 2026 — 1er test terrain réel réussi + polish containers + simplification 3 chemins création contrat + bug binôme corrigé sur 3 endroits + refonte top-down étape 3 + affichage binôme wizard)
 
 **PREMIER TEST TERRAIN RÉEL RÉUSSI le 20/07/2026** — Julien a scanné une
 mission PRIEURE neuve (5 éléments : Bât 1, Bât 2, 2 tournées Halls, 1
@@ -102,6 +102,57 @@ d'un coup) :
 
 Détail complet (formules, preuves par script, vérifié non concerné :
 `/api/planning/generer`) : voir item 17, section « CHANTIER ANALYSE CONTRAT ».
+
+**REFONTE MAJEURE (21 juillet 2026) — étape 3 "Répartition" du wizard passe en
+philosophie TOP-DOWN.** Décision de conception fondamentale de Julien après
+usage réel sur GMCO, **à ne jamais "réparer" en sens inverse par une future
+session qui croirait bien faire** : l'ANCIEN modèle bottom-up (l'IA estimait
+une durée par tâche, sommait, comparait à l'enveloppe → alertes de
+dépassement, ex. "500 min vs 300 vendues" sur GMCO) est **abandonné**. Le
+NOUVEAU modèle : le budget temps est une **donnée d'entrée fixe** (créneaux
+réels × agents) que l'IA ne fait plus que **répartir** — elle n'estime plus
+JAMAIS de durée par tâche, identifie seulement quelles tâches existent et à
+quelle fréquence. Aucune alerte de dépassement n'est plus possible par
+construction (le budget est le budget, tout est réparti dedans). Budget de
+répartition par jour = **PRÉSENCE** (le créneau contraint physiquement le
+passage) ; le **temps ressource** (présence × nb agents, binôme = ×2)
+s'affiche partout en information, jamais comme contenant. Un indicateur de
+déséquilibre discret et non bloquant remplace les anciennes alertes
+(heuristique simple — densité tâches/temps relative entre jours — sans
+réintroduire d'estimation de durée). Livré en 5 commits, un par sous-étape,
+détail complet : voir item 18, section « CHANTIER ANALYSE CONTRAT ».
+
+**Affichage du binôme dans le wizard (commit `7c61f05`, même jour)** : les
+calculs binôme étaient déjà corrects (fix `8a099dd`) mais invisibles à
+l'écran — le sélecteur "Agent attitré" suffixe désormais les agents en binôme
+("Edgard Rakotondrasoa (binôme avec Marie R.)"), un bandeau apparaît sous le
+sélecteur dès qu'un agent en binôme est choisi, et le récap de l'étape 4
+affiche les deux noms ("Agents : Edgard Rakotondrasoa + Marie Razafindrakoto
+(binôme)"). Affichage pur dérivé de `binome_agent_id`, aucune donnée
+supplémentaire stockée.
+
+**RESTE À FAIRE (important, deux chantiers identifiés, aucun commencé) :**
+1. **Sous-étape 6 de la refonte top-down** : la génération réelle des tâches
+   mensuelles positionnées. `/api/planning/generer` ne lit toujours QUE
+   `frequence_type='hebdo'` — une tâche "mensuelle, 2e mardi du mois" est
+   stockée et éditable (`semaine_du_mois`/`mois_de_annee`, migration 033) mais
+   **dormante** : aucune intervention n'est générée pour elle. Chantier
+   identifié : calcul "Nième occurrence du jour dans le mois", insertion dans
+   l'intervention du jour concerné, gestion du conflit si le jour calculé
+   n'est pas un jour de passage de l'agent (même esprit que R4 containers).
+2. **Alertes actionnables** (nouveau chantier cadré avec Julien, audit +
+   conception livrés, code pas commencé) : aujourd'hui l'IA renvoie
+   `alertes[]` en texte libre — parfois de vraies questions ("à valider avec
+   le manager", options explicites en prose) auxquelles rien ne permet de
+   répondre dans le wizard (dialogue à sens unique, seul bouton = validation
+   globale). Décisions actées par Julien : chaque alerte-question devient une
+   carte de décision (boutons d'options + champ texte libre renvoyé à l'IA),
+   application EN DIRECT sur la structure (pas de "tout décider puis
+   relancer"), alertes informatives restent de simples notes acquittables.
+   Nécessite un format structuré d'alertes (`type`, `options[]` avec un
+   vocabulaire fermé d'effets déterministes applicables côté client) — analyse
+   détaillée à reprendre avec Julien avant tout code (audit interrompu en
+   session, non encore livré).
 
 **PRIEURE = résidence de référence à nouveau opérationnelle**, dispatch
 durci : 9 bâtiments sur 5 jours (2-2-2-2-1), 9 halls bi-hebdo (écarts ≥2
@@ -2755,6 +2806,188 @@ donc été faites par script pur (fonctions isolées, données réelles GMCO en
 entrée, aucune écriture) plutôt que par comparaison avant/après sur une
 résidence de production existante.
 
+### 18. REFONTE ÉTAPE 3 "Répartition" — top-down (21 juillet 2026, 5 commits)
+
+**Décision de conception fondamentale de Julien, à graver.** Après usage réel
+du wizard sur GMCO : l'ANCIEN modèle était **bottom-up** — l'IA estimait une
+durée par tâche, sommait, comparait à l'enveloppe vendue, et produisait des
+alertes de dépassement (ex. "500 min vs 300 vendues" sur GMCO). Julien a jugé
+**ce modèle mauvais dans son principe**, pas juste buggé : le budget temps
+(créneaux réels de l'agent) est une donnée déjà connue avec certitude — faire
+« deviner » un total par l'IA puis le comparer à ce budget ne peut que créer
+de fausses tensions (l'IA se trompe forcément un peu, et chaque erreur devient
+une fausse alerte). **Ce modèle est ABANDONNÉ, ne pas le réintroduire.**
+
+**Nouveau modèle top-down :**
+- Le budget temps est une **donnée d'entrée fixe et intouchable** :
+  créneaux réels × nombre d'agents (binôme = 2, cf item 17) = temps ressource
+  hebdo. Pour GMCO : Mar 60 min + Ven 90 min = 150 min présence × 2 agents =
+  300 min ressource/semaine.
+- **L'IA n'estime JAMAIS de durée par tâche.** Son seul rôle : identifier
+  depuis le texte du contrat QUELLES tâches existent et à QUELLE FRÉQUENCE
+  (hebdomadaire, mensuelle, trimestrielle, semestrielle, annuelle), puis les
+  **positionner** dans les jours de passage déjà fixés (jamais juger si « ça
+  rentre » — le créneau est une contrainte physique, pas un budget à doser).
+- **Aucune alerte « dépassement d'enveloppe » n'est plus possible par
+  construction** : le budget est le budget, tout est réparti dedans.
+- Les tâches basse fréquence (mensuelles…) **consomment** le budget du jour
+  où elles tombent (occurrence différente d'un jour ordinaire) — un effet de
+  la répartition, jamais une durée à produire.
+- **Budget de répartition par jour = PRÉSENCE** (le créneau contraint
+  physiquement le passage, indépendamment du nombre d'agents). Le **temps
+  ressource** (présence × nb agents) s'affiche partout où un temps apparaît,
+  à titre d'information seulement — jamais comme contenant de répartition.
+
+**Les 5 commits (un par sous-étape, testable entre chaque, build+push
+systématique) :**
+
+1. **`9ab45a0` — Prompt IA + sanitisation.** `app/api/ia/analyse-contrat/route.ts` :
+   retrait de `duree_minutes_estimee`, `totaux` (`minutes_hebdo_estimees`/
+   `verdict`), `repartition_hebdo` (dead code, jamais affiché côté client,
+   confirmé par grep avant suppression) et de la règle "chiffre le
+   dépassement". Nouveau schéma de tâche : `frequence_type`, `jours_semaine`,
+   `semaine_du_mois` (mensuel), `mois_de_annee` (trimestriel/semestriel/
+   annuel) — les tâches basse fréquence restent DANS l'arbre bâtiments→zones→
+   taches, positionnées, au lieu d'être reléguées dans `hors_planning_hebdo`
+   (ce champ devient un filet défensif résiduel pour les cas vraiment non
+   positionnables, plus une destination normale). `sanitiserAnalyse` défaulte
+   proprement si l'IA omet `semaine_du_mois`/`mois_de_annee` (1ère semaine,
+   cycle janvier pour trimestriel/semestriel/annuel) — jamais bloquant,
+   toujours modifiable ensuite par le manager.
+   **Effet de bord découvert et corrigé dans le même commit** : retirer la
+   consigne de durée a fait tomber `dispatch_semaine[].duree_totale_
+   estimee_minutes` à 0 (ce champ, indépendant des tâches, est toujours utile
+   à R5 — inchangé) — une instruction ciblée et séparée a été réintroduite
+   pour ce seul champ. Vérifié par appel Claude réel (pas un mock) sur un
+   descriptif GMCO réaliste : tâche "Vitres hall" positionnée `mensuel`,
+   `jours_semaine=["mardi"]`, `semaine_du_mois=[2]` — exactement la
+   consigne "2e mardi du mois" du texte source ; tâche "Lessivage" positionnée
+   `semestriel`, `mois_de_annee=[1,7]`, avec alerte explicative de l'IA sur
+   son propre choix.
+2. **`5805b5f` — Types + RPC (migration 033).** `AnalyseIA`/`StructureSoumission`
+   (côté wizard) étendus avec `semaine_du_mois`/`mois_de_annee`. RPC
+   `creer_contrat_complet` : `CREATE OR REPLACE` additif (même signature,
+   ancienne définition documentée en commentaire pour rollback, pattern déjà
+   suivi migration 028/031) — `taches_template.semaine_du_mois`/`.mois_de_annee`
+   (colonnes déjà existantes depuis la migration initiale, jusque-là seulement
+   utilisées par l'écran manuel `/taches`/`TacheModal.tsx`) sont maintenant
+   aussi écrites depuis le wizard IA. **Vérifié par transaction `ROLLBACK`**
+   sur GMCO (résidence réelle) : insertion test confirmée correcte
+   (`semaine_du_mois=[2]` pour la tâche mensuelle, `mois_de_annee=[1,4,7,10]`
+   pour la trimestrielle), **aucune ligne persistée** après le rollback
+   (`count=0` vérifié). Grants RPC (`postgres`+`service_role` seulement,
+   correctif sécurité du 19/07) confirmés inchangés après le `CREATE OR
+   REPLACE`.
+3. **`f72a8ac` — Vue par jour de passage** (maquette validée par Julien avant
+   code). `AnalyseContratEtape3.tsx` quasi entièrement réécrit : le double
+   mode "simplifié / détaillé" est **retiré** (le mode simplifié ignorait
+   silencieusement les tâches basse fréquence positionnées par l'IA — gap
+   découvert pendant l'implémentation, corrigé en unifiant sur un seul arbre).
+   Nouvelle disposition : un bloc par jour de créneau (« Mardi 18h30-19h30 ·
+   60 min présence · 120 min ressource (binôme ×2) »), puis « Passage
+   ordinaire » (tâches hebdo positionnées ce jour, groupées par bâtiment/zone)
+   et « Variante — occurrence positionnée » (tâches basse fréquence
+   positionnées ce jour précis) en blocs visuellement distincts sous le même
+   jour. **Sélecteur bâtiment→jour supprimé** (retour Julien : sans objet,
+   les jours sont déjà imposés par les créneaux de l'étape 1) — un bâtiment
+   est désormais considéré « complet » un jour donné si au moins une de ses
+   zones a une tâche hebdo positionnée ce jour-là (dérivé de l'arbre, pas
+   d'assignation manuelle séparée qui pouvait diverger). **Colonne "Durée
+   est. ⚠ > Xmin" retirée** du récap jour par jour (confuse, basée sur des
+   moyennes IA bottom-up sans rapport avec le budget top-down — le mécanisme
+   sous-jacent, R5, reste actif en interne pour `dispatch_semaine`, juste plus
+   affiché ainsi). **Indicateur discret de déséquilibre** : heuristique
+   simple et transparente — minutes de présence du jour ÷ nombre de tâches
+   hebdo ce jour-là, comparé à la MOYENNE des autres jours du même contrat
+   (jamais à un objectif absolu, jamais une estimation de durée par tâche) ;
+   badge subtil "Plus chargé"/"Plus dégagé" seulement si l'écart dépasse
+   ±40 %, muet sinon et muet si <2 jours comparables.
+4. **`c0aa1b4` — Tâches basse fréquence actionnables.** Le résumé en lecture
+   seule des tâches mensuelles/trimestrielles/semestrielles/annuelles devient
+   un éditeur inline : sélecteur de jour, sélecteur "Semaine du mois"
+   (1ère/2ème/3ème/4ème/Dernière, constante `SEMAINE_LABELS` reprise telle
+   quelle du pattern déjà existant dans `TacheModal.tsx`/écran manuel
+   `/taches` — pas réinventé), et pour trimestriel/semestriel/annuel un
+   sélecteur de mois concernés (grille de 12 boutons, interaction cohérente
+   avec le reste de l'app plutôt qu'une réplique exacte des sélecteurs par
+   offset de `TacheModal.tsx`, jugés trop lourds pour ce contexte). Persisté
+   dans la structure soumise (branché depuis le commit 2) ; la vue par jour
+   (commit 3) reflète les positions éditées en direct, même state, ne peut
+   pas diverger.
+5. **`2ced691` — Retrait du garde-fou enveloppe.** `lib/dispatchVerification.ts::
+   verifierEnveloppe()` **supprimée** (plus son appel dans
+   `dispatch/proposer/route.ts`) : sous le modèle top-down, le total hebdo
+   réparti égale TOUJOURS le budget par construction — comparer une somme à
+   elle-même ne peut plus jamais rien détecter, **même corrigée du binôme**
+   (fix du jour plus tôt, item 17) — c'est très exactement la même nature de
+   tautologie que le bandeau "Réparti X sur Y — 100 %" déjà noté en dette le
+   19/07 (`CompteurRepartition`, toujours non traité, sans lien direct avec ce
+   chantier). **R1 (bâtiment entier un seul jour), R3 (écart tournées ≥2j), R4
+   (containers) intacts** — orthogonaux au budget, non touchés comme demandé.
+   **R5 (créneau journalier) intact mais son rôle change** : sous
+   construction top-down correcte il ne peut structurellement plus se
+   déclencher (le total EST le créneau) — gardé comme filet anti-bug de
+   notre propre code de répartition plutôt que comme garde-fou contre une
+   IA qui se tromperait. Vérifié par script (fonction pure isolée) : cas
+   conforme à 150 min total (très loin d'une ancienne "enveloppe" de 300) →
+   `ok:true`, 0 violation ; cas R5 cassé (créneau dépassé) → toujours
+   détecté ; cas R1 cassé (bâtiment dupliqué sur 2 jours) → toujours détecté.
+
+**Affichage du binôme dans le wizard (commit `7c61f05`, même jour, hors
+chantier top-down mais lié)** : les calculs binôme étaient déjà corrects
+(fix `8a099dd`, item 17) mais invisibles à l'écran. `AnalyseContratWizard.tsx`
+étape 1 : sélecteur "Agent attitré" suffixé pour les agents en binôme
+("Edgard Rakotondrasoa (binôme avec Marie R.)"), bandeau dédié affiché sous le
+sélecteur dès qu'un agent en binôme est choisi ("👥 Binôme : Marie
+Razafindrakoto interviendra aussi (binôme indissociable)"). `AnalyseContratEtape4.tsx` :
+le récap "Organisation actuelle" affiche les deux noms ("Agents : Edgard
+Rakotondrasoa + Marie Razafindrakoto (binôme)", libellé singulier/pluriel
+adapté automatiquement) au lieu de l'agent seul. Vérifié : aucun autre endroit
+du wizard (étapes 2/3) n'affiche le nom de l'agent (grep exhaustif, 0
+occurrence). **Affichage pur dérivé de `binome_agent_id` (déjà exposé par
+`GET /api/agents` depuis le fix du 19/07) — aucune donnée supplémentaire
+stockée, `agent_prefere_id` reste l'agent choisi seul, le mirroring binôme
+aval (déjà fonctionnel partout) s'en charge comme toujours.**
+
+**RESTE À FAIRE — sous-étape 6, NON COMMENCÉE (chantier lourd identifié) :**
+la génération réelle des tâches mensuelles positionnées. `/api/planning/
+generer` ne lit toujours QUE `frequence_type='hebdo'` (confirmé par lecture
+de code, filtre `.eq('frequence_type', 'hebdo')` sur la requête
+`taches_template`) — une tâche "mensuelle, 2e mardi du mois" créée via le
+wizard est désormais stockée et éditable (commits 2 et 4 ci-dessus) mais
+**dormante** : aucune intervention réelle n'est générée pour elle tant que
+cette sous-étape n'est pas livrée. Implique : calcul "Nième occurrence du jour
+dans le mois" pour chaque date de génération, décision d'insertion dans
+l'intervention du jour concerné (probablement comme tâche additionnelle de la
+zone existante plutôt qu'un nouveau concept dans `dispatch_semaine`), et
+gestion du conflit si le jour calculé n'est PAS un jour de passage de l'agent
+(même esprit que R4 pour les containers — signaler plutôt qu'inventer un jour
+supplémentaire).
+
+**NOUVEAU CHANTIER CADRÉ, NON COMMENCÉ : alertes actionnables.** Constat de
+Julien après usage réel sur GMCO : l'IA produit des alertes en texte libre qui
+posent parfois de vraies questions ("à valider avec le manager", options
+explicites en prose) — mais rien ne permet d'y répondre dans le wizard,
+dialogue à sens unique, seul bouton = la validation globale. Décisions actées
+par Julien (audit + conception demandés, **interrompus en session avant
+livraison du rapport — à reprendre**) :
+- Chaque alerte-question devient une carte de décision : boutons d'options
+  rapides (reprenant les options que l'IA propose déjà en prose) + un champ
+  texte libre pour les cas complexes (renvoyé à l'IA pour ajustement).
+- Une décision prise s'applique EN DIRECT sur la structure (arbre, positions,
+  dispatch) — pas de "tout décider puis relancer une analyse globale".
+- Les alertes purement informatives restent de simples notes, éventuellement
+  acquittables (✓ lu), sans options.
+Nécessite un format d'alertes structuré (`type: question|info`, `options[]`
+avec un vocabulaire fermé d'effets déterministes que le client sait appliquer,
+ex. déplacer une tâche à un autre jour, positionner une semaine du mois) —
+questions ouvertes restées sans réponse à ce stade : schéma JSON exact,
+endpoint de réanalyse incrémentale vs réutilisation de l'existant, persistance
+des décisions si le manager quitte le wizard, rétrocompatibilité avec des
+analyses déjà générées au format prose. **Prochaine session : reprendre
+l'audit là où il s'est arrêté avant tout code — Julien doit valider la
+maquette en premier.**
+
 ## Ordre de configuration (session Ana)
 
 Séquence obligatoire (l'étape ③ du wizard résidence dépend des agents existants) :
@@ -3035,6 +3268,39 @@ connexion) + **Item 6** (masqué de la liste agents). Suffisant — pas de suppr
   lui-même le même angle mort binôme que ce qu'il était censé vérifier — un
   garde-fou déterministe n'est déterministement correct que sur les entrées
   qu'il sait effectivement modéliser.
+
+### Refonte top-down étape 3 (21 juillet 2026)
+
+- **Quand une IA produit des chiffres (estimations) ET que l'utilisateur
+  possède déjà la vérité (un budget contractuel fixe), faire estimer l'IA
+  crée des conflits artificiels.** L'ancien modèle bottom-up de l'étape 3
+  demandait à l'IA d'estimer une durée par tâche puis comparait la somme à
+  l'enveloppe vendue — chaque erreur d'estimation (inévitable) devenait une
+  fausse alerte de dépassement. Donner le budget comme **contrainte d'entrée**
+  et limiter l'IA à la **répartition** (identifier quoi/quand, jamais combien
+  de temps) élimine la classe de bug entière plutôt que de l'atténuer.
+- **Retirer une instruction d'un prompt IA peut casser un champ voisin par
+  effet de bord, même sans lien apparent.** Retirer la consigne de durée par
+  tâche (`duree_minutes_estimee`) a fait tomber à 0 un champ complètement
+  différent, `dispatch_semaine[].duree_totale_estimee_minutes` — le modèle
+  perdait le seul ancrage de réalisme sur les durées en général, y compris
+  pour un champ qu'on ne visait pas. **Réflexe à généraliser : après toute
+  modification de prompt IA, retester TOUS les champs de la sortie
+  structurée, pas seulement ceux visés par le changement** — vérifié ici par
+  appel réel (pas un mock) avant de considérer la sous-étape close.
+- **Un double mode UI (simplifié/détaillé) peut cacher un vrai gap
+  fonctionnel, pas juste une différence de confort.** Le mode "simplifié" de
+  l'étape 3 ignorait silencieusement les tâches basse fréquence positionnées
+  par l'IA — découvert seulement en implémentant la vue par jour, pas prévu à
+  l'audit initial. Unifier sur un seul modèle de données a supprimé la classe
+  de bug plutôt que de la corriger dans les deux modes séparément.
+- **Vérifier une transaction d'écriture réelle (RPC, migration) sans polluer
+  la base : `BEGIN; ...; ROLLBACK;`** — utilisé pour confirmer que la RPC
+  `creer_contrat_complet` étendue insère correctement `semaine_du_mois`/
+  `mois_de_annee` sur GMCO (résidence réelle), avec un `SELECT count(*)`
+  après coup confirmant zéro ligne persistée. Complète le pattern déjà
+  établi (script service-role en lecture seule) pour les cas où l'écriture
+  elle-même doit être testée, pas seulement la lecture.
 
 ## À faire Phase 3
 

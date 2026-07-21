@@ -170,6 +170,7 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
   const [analyseVersion, setAnalyseVersion]       = useState(0) // remonte l'étape 3 à neuf à chaque nouvelle analyse
   const [structureFinale, setStructureFinale]     = useState<StructureSoumission | null>(null)
   const [dispatchFinal, setDispatchFinal]         = useState<DispatchJour[]>([])
+  const [nbAlertesEnAttenteFinal, setNbAlertesEnAttenteFinal] = useState(0)
 
   useEffect(() => {
     fetch('/api/agents')
@@ -234,9 +235,10 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
     advance(3)
   }
 
-  function handleStructureContinue(structure: StructureSoumission, dispatch: DispatchJour[]) {
+  function handleStructureContinue(structure: StructureSoumission, dispatch: DispatchJour[], nbAlertesEnAttente: number) {
     setStructureFinale(structure)
     setDispatchFinal(dispatch)
+    setNbAlertesEnAttenteFinal(nbAlertesEnAttente)
     advance(4)
   }
 
@@ -601,6 +603,7 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
             dispatchSemaine={dispatchFinal}
             horsPlanningHebdo={analyse?.hors_planning_hebdo ?? []}
             alertes={analyse?.alertes ?? []}
+            nbAlertesEnAttente={nbAlertesEnAttenteFinal}
             onBack={() => advance(3)}
             onClose={onClose}
           />

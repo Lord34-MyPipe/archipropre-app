@@ -101,7 +101,7 @@ interface Props {
   facteurRessource: number             // 1 (pas de binôme) ou 2 (binôme) — présence × facteur = ressource
   onBack: () => void                              // "Relancer l'analyse" → retour étape 2 (texte conservé au niveau du wizard)
   onGoToStep1: () => void                         // effet "add_creneau_hint" — retour étape 1, état déjà préservé par le stepper
-  onContinue: (structure: StructureSoumission, dispatch: DispatchJour[]) => void  // "Continuer → Validation" → étape 4
+  onContinue: (structure: StructureSoumission, dispatch: DispatchJour[], nbAlertesEnAttente: number) => void  // "Continuer → Validation" → étape 4
 }
 
 export default function AnalyseContratEtape3({
@@ -971,7 +971,7 @@ export default function AnalyseContratEtape3({
             className="flex-1 border border-slate-200 rounded-xl py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
             Relancer l&apos;analyse
           </button>
-          <button type="button" onClick={() => onContinue(buildStructure(), buildDispatch())}
+          <button type="button" onClick={() => onContinue(buildStructure(), buildDispatch(), nbAlertesEnAttente)}
             className="flex-1 rounded-xl py-2.5 text-sm font-semibold text-white transition-opacity"
             style={{ background: 'linear-gradient(135deg,#0A2E5A,#1A5FA8)' }}>
             Continuer → Validation

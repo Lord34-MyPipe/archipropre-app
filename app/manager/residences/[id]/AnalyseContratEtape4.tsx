@@ -31,6 +31,7 @@ interface Props {
   structure: StructureSoumission
   horsPlanningHebdo: HorsPlanningIA[]
   alertes: AlerteIA[]
+  nbAlertesEnAttente: number  // décisions non prises à l'étape 3 — informatif, jamais bloquant (sous-étape 5/5)
   joursRamassageContainers: string[]
   dispatchSemaine: DispatchJour[]
   onBack: () => void
@@ -45,7 +46,7 @@ interface CreationResult {
 
 export default function AnalyseContratEtape4({
   residenceId, identite, agentId, agentNom, binomeAgentNom, creneaux, minutesHebdoReelles, plafondRentable, ecartRentable,
-  structure, horsPlanningHebdo, alertes, joursRamassageContainers, dispatchSemaine, onBack, onClose,
+  structure, horsPlanningHebdo, alertes, nbAlertesEnAttente, joursRamassageContainers, dispatchSemaine, onBack, onClose,
 }: Props) {
   const router = useRouter()
   const [creating, setCreating]   = useState(false)
@@ -228,8 +229,8 @@ export default function AnalyseContratEtape4({
       )}
 
       {/* Décisions & remarques — récap final (lecture seule, l'édition se fait à
-          l'étape 3). Compteur "N en attente" près du bouton de validation :
-          sous-étape 5. */}
+          l'étape 3). Compteur "N en attente" près du bouton de validation
+          (sous-étape 5/5) : purement informatif, ne bloque jamais la création. */}
       {alertes.length > 0 && (
         <div className="border border-slate-200 rounded-2xl p-4 space-y-2">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Décisions &amp; remarques</p>
@@ -249,6 +250,15 @@ export default function AnalyseContratEtape4({
             Réessayer
           </button>
         </div>
+      )}
+
+      {nbAlertesEnAttente > 0 && (
+        <p className="text-xs text-amber-700 flex items-center gap-1.5">
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700">
+            {nbAlertesEnAttente} décision{nbAlertesEnAttente > 1 ? 's' : ''} en attente
+          </span>
+          non bloquant — vous pouvez créer le contrat maintenant et ajuster plus tard.
+        </p>
       )}
 
       <div className="flex gap-3 pt-2">

@@ -46,12 +46,38 @@ interface HorsPlanning {
   frequence: string
   note: string
 }
+
+// Alertes actionnables (21/07, chantier "alertes actionnables") — remplace
+// alertes: string[] (prose non exploitable). Vocabulaire d'effets FERMÉ,
+// chacun mappé sur un mutateur déjà existant côté client
+// (AnalyseContratEtape3.tsx : updateTache/deleteTache/goTo) — rien d'autre
+// n'est ajouté ni prévu. `cible` référence une tâche par clé NATURELLE
+// (batiment+zone+libelle), jamais par id local (inconnu de l'IA).
+type EffetAlerte = 'move_task_day' | 'set_semaine_du_mois' | 'set_mois_de_annee' | 'remove_task' | 'add_creneau_hint' | 'none'
+interface AlerteCible {
+  batiment: string
+  zone: string
+  libelle: string
+}
+interface AlerteOption {
+  libelle: string
+  effet: EffetAlerte
+  cible: AlerteCible | null
+  valeur: string | number | number[] | null
+}
+interface Alerte {
+  type: 'question' | 'info'
+  sujet: string
+  message: string
+  options: AlerteOption[]
+}
+
 interface AnalyseIA {
   batiments: AnalyseBatiment[]
   creneaux_proposes: CreneauPropose[]
   jours_interdits_detectes: string[]
   hors_planning_hebdo: HorsPlanning[]
-  alertes: string[]
+  alertes: Alerte[]
   dispatch_semaine: DispatchJour[]
 }
 
@@ -117,7 +143,24 @@ RÈGLES DE SORTIE — ABSOLUES :
   "creneaux_proposes": [ { "jours": ["lundi","jeudi"], "heure_debut": "08:00", "heure_fin": "12:00" } ],
   "jours_interdits_detectes": [],
   "hors_planning_hebdo": [],
-  "alertes": [ "Le contrat mentionne une sortie containers le dimanche soir — hors créneaux proposés" ],
+  "alertes": [
+    {
+      "type": "question",
+      "sujet": "Fréquence des vitres du hall",
+      "message": "Le texte mentionne un nettoyage des vitres du hall « régulier » sans préciser la fréquence exacte. Positionné en mensuel, 2e mardi, à valider ou ajuster.",
+      "options": [
+        { "libelle": "Garder mensuel, 2e mardi", "effet": "none", "cible": null, "valeur": null },
+        { "libelle": "Passer en hebdomadaire", "effet": "move_task_day", "cible": { "batiment": "Bât A", "zone": "Hall", "libelle": "Vitres hall d'entrée" }, "valeur": "mardi" },
+        { "libelle": "Retirer cette tâche", "effet": "remove_task", "cible": { "batiment": "Bât A", "zone": "Hall", "libelle": "Vitres hall d'entrée" }, "valeur": null }
+      ]
+    },
+    {
+      "type": "info",
+      "sujet": "Sortie containers hors créneaux",
+      "message": "Le contrat mentionne une sortie containers le dimanche soir, hors créneaux de passage proposés — signalé pour information, aucune action requise ici.",
+      "options": []
+    }
+  ],
   "dispatch_semaine": [ { "jour": "lundi", "batiments_complets": ["Bât A"], "tournees_transverses": [], "containers": null, "duree_totale_estimee_minutes": 33 } ]
 }
 
@@ -137,8 +180,21 @@ RÈGLES MÉTIER — RÉPARTITION TOP-DOWN (le temps de présence de chaque jour 
 - creneaux_proposes : recopie simplement les créneaux du planning actuel fourni (champ informatif, non décisionnel — les horaires viennent de l'utilisateur, pas de toi).
 - jours_interdits_detectes liste les jours que le texte exclut explicitement (ex. "jamais le mercredi").
 - dispatch_semaine[].duree_totale_estimee_minutes (règles ci-dessus) reste une estimation informative de la durée totale du jour (bâtiments complets + tournées + containers) — INDÉPENDANTE des tâches détaillées ci-dessus (qui n'ont plus de durée). Minutes entières positives réalistes, jamais 0 sauf jour sans aucune activité.
-- Toute contrainte exprimée dans le texte du contrat ou dans les contraintes particulières qui n'est PAS satisfaite par ta proposition doit donner lieu à une entrée claire dans alertes (cite la contrainte et explique pourquoi).
-- Les jours sont toujours en minuscules, parmi : lundi, mardi, mercredi, jeudi, vendredi, samedi, dimanche.`
+- Les jours sont toujours en minuscules, parmi : lundi, mardi, mercredi, jeudi, vendredi, samedi, dimanche.
+
+RÈGLES ALERTES — CHAQUE ALERTE EST UN OBJET STRUCTURÉ, jamais une simple phrase :
+- "type": "question" si tu poses un choix réel au manager (fréquence ambiguë, contrainte non satisfaite avec plusieurs traitements possibles, positionnement incertain…) ; "info" pour un simple constat qui n'appelle aucune décision (ex. contrainte déjà respectée mais notable, remarque descriptive). Toute contrainte du texte ou des contraintes particulières NON satisfaite par ta proposition DOIT donner lieu à une alerte "question" ou "info" selon qu'elle appelle ou non un choix.
+- "sujet" : titre court (4-8 mots). "message" : explication complète, comme avant en prose libre — c'est le TEXTE affiché au manager, rédige-le normalement.
+- "options" : UNIQUEMENT pour "type":"question", 2 à 4 choix concrets quand un choix réel existe. Chaque option a un "effet" — VOCABULAIRE FERMÉ, AUCUN AUTRE MOT AUTORISÉ :
+  - "move_task_day" : repositionne une tâche sur un autre jour. "valeur" = le jour cible (string, un des 7 jours). "cible" obligatoire.
+  - "set_semaine_du_mois" : change la semaine du mois d'une tâche mensuelle. "valeur" = un entier 1-5. "cible" obligatoire.
+  - "set_mois_de_annee" : change les mois concernés d'une tâche trimestrielle/semestrielle/annuelle. "valeur" = tableau d'entiers 1-12. "cible" obligatoire.
+  - "remove_task" : retire la tâche. "cible" obligatoire, "valeur" = null.
+  - "add_creneau_hint" : le choix nécessiterait un créneau supplémentaire, hors de ta portée (les créneaux sont fixés à une étape précédente, tu ne les modifies jamais) — "cible" = null, "valeur" = null, le manager sera renvoyé modifier ses créneaux.
+  - "none" : garder l'état actuel tel quel, aucun changement. "cible" = null, "valeur" = null.
+  Si aucune option fermée ne convient à une question, laisse "options": [] — le manager pourra répondre en texte libre côté application, ne force jamais une option qui ne correspond pas exactement à un des 6 effets ci-dessus.
+- "cible" (quand requis) DOIT référencer EXACTEMENT un "nom" de bâtiment + "nom" de zone + "libelle" de tâche que TU VIENS DE PRODUIRE dans "batiments" ci-dessus — jamais un bâtiment/zone/tâche inventé ou absent de ta propre réponse. CHAQUE option d'une alerte donnée ne référence QUE la tâche dont CETTE alerte parle — ne réutilise JAMAIS la "cible" d'une autre alerte, même par erreur d'inattention ; si la tâche concernée par l'alerte n'existe pas dans "batiments" (ex. tu l'as mise en hors_planning_hebdo, ou elle ne peut pas être positionnée du tout), n'invente pas de cible de substitution : laisse cette option de côté ou utilise "add_creneau_hint"/"none" selon le cas.
+- INTERDIT ABSOLU, quel que soit le type d'alerte : ne mentionne JAMAIS un dépassement, une enveloppe, un temps qui "ne rentre pas" ou une durée totale à respecter — ce concept n'existe plus (répartition top-down, le budget est le budget, voir plus haut). Une alerte sur le temps disponible ne peut porter que sur un CONFLIT DE JOUR (tâche positionnée un jour hors planning actuel, ou jour de containers hors créneaux), jamais sur une quantité de minutes.`
 }
 
 function dureeCreneauMinutes(c: { heure_debut: string; heure_fin: string }): number {
@@ -198,6 +254,87 @@ const MOIS_ANNEE_DEFAUT: Record<string, number[]> = {
   trimestriel: [1, 4, 7, 10],
   semestriel:  [1, 7],
   annuel:      [1],
+}
+
+const EFFETS_VALIDES = new Set<EffetAlerte>(['move_task_day', 'set_semaine_du_mois', 'set_mois_de_annee', 'remove_task', 'add_creneau_hint', 'none'])
+const EFFETS_AVEC_CIBLE = new Set<EffetAlerte>(['move_task_day', 'set_semaine_du_mois', 'set_mois_de_annee', 'remove_task'])
+
+// Alertes (vocabulaire d'effets FERMÉ, cf commentaire du type Alerte) : chaque
+// option est validée indépendamment — une option invalide (effet inconnu,
+// cible absente de l'arbre qu'on vient de produire, valeur mal formée) est
+// silencieusement retirée SANS faire tomber toute l'alerte ni planter. La
+// cible est vérifiée contre les tâches RÉELLEMENT présentes dans `batiments`
+// (déjà sanitisé) — jamais de confiance aveugle dans ce que l'IA prétend avoir
+// créé.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function sanitiserAlertes(raw: any, batiments: AnalyseBatiment[]): Alerte[] {
+  const clesTaches = new Set<string>()
+  for (const b of batiments) {
+    for (const z of b.zones) {
+      for (const t of z.taches) {
+        clesTaches.add(`${b.nom} ${z.nom} ${t.libelle}`)
+      }
+    }
+  }
+
+  function sanitiserOption(o: unknown): AlerteOption | null {
+    if (!o || typeof o !== 'object') return null
+    const rec = o as Record<string, unknown>
+    const libelle = typeof rec.libelle === 'string' ? rec.libelle.trim() : ''
+    if (!libelle) return null
+    const effet = typeof rec.effet === 'string' && EFFETS_VALIDES.has(rec.effet as EffetAlerte) ? rec.effet as EffetAlerte : null
+    if (!effet) return null
+
+    if (!EFFETS_AVEC_CIBLE.has(effet)) {
+      // add_creneau_hint / none : jamais de cible ni de valeur, quoi qu'ait
+      // renvoyé le modèle — effets sans mutation de tâche par définition.
+      return { libelle, effet, cible: null, valeur: null }
+    }
+
+    const cibleRaw = rec.cible
+    if (!cibleRaw || typeof cibleRaw !== 'object') return null
+    const cRec = cibleRaw as Record<string, unknown>
+    const cible: AlerteCible = {
+      batiment: typeof cRec.batiment === 'string' ? cRec.batiment : '',
+      zone:     typeof cRec.zone === 'string' ? cRec.zone : '',
+      libelle:  typeof cRec.libelle === 'string' ? cRec.libelle : '',
+    }
+    if (!clesTaches.has(`${cible.batiment} ${cible.zone} ${cible.libelle}`)) return null
+
+    if (effet === 'remove_task') return { libelle, effet, cible, valeur: null }
+
+    if (effet === 'move_task_day') {
+      const jour = typeof rec.valeur === 'string' && JOURS_VALIDES.has(rec.valeur) ? rec.valeur : null
+      return jour ? { libelle, effet, cible, valeur: jour } : null
+    }
+
+    if (effet === 'set_semaine_du_mois') {
+      const n = Number(rec.valeur)
+      return Number.isInteger(n) && n >= 1 && n <= 5 ? { libelle, effet, cible, valeur: n } : null
+    }
+
+    // set_mois_de_annee
+    const mois = Array.isArray(rec.valeur)
+      ? (rec.valeur as unknown[]).map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 12)
+      : []
+    return mois.length > 0 ? { libelle, effet, cible, valeur: mois } : null
+  }
+
+  if (!Array.isArray(raw)) return []
+  const alertes: Alerte[] = []
+  for (const a of raw as unknown[]) {
+    if (!a || typeof a !== 'object') continue
+    const rec = a as Record<string, unknown>
+    const message = typeof rec.message === 'string' ? rec.message.trim() : ''
+    if (!message) continue // une alerte sans texte n'a aucune valeur pour le manager
+    const type: Alerte['type'] = rec.type === 'question' ? 'question' : 'info'
+    const sujet = typeof rec.sujet === 'string' && rec.sujet.trim() ? rec.sujet.trim() : message.slice(0, 60)
+    const options = type === 'question' && Array.isArray(rec.options)
+      ? (rec.options as unknown[]).map(sanitiserOption).filter((o): o is AlerteOption => o !== null)
+      : []
+    alertes.push({ type, sujet, message, options })
+  }
+  return alertes
 }
 
 // Nettoie et sécurise le JSON retourné par le modèle : coerce les types, POSITIONNE
@@ -293,9 +430,7 @@ function sanitiserAnalyse(raw: any): AnalyseIA {
     ? (raw.jours_interdits_detectes as unknown[]).filter((j): j is string => typeof j === 'string' && JOURS_VALIDES.has(j))
     : []
 
-  const alertes = Array.isArray(raw?.alertes)
-    ? (raw.alertes as unknown[]).filter((a): a is string => typeof a === 'string')
-    : []
+  const alertes = sanitiserAlertes(raw?.alertes, batiments)
 
   return {
     batiments,

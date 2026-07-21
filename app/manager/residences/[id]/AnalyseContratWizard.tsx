@@ -571,6 +571,7 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
         ) : step === 3 && analyse ? (
           <AnalyseContratEtape3
             key={analyseVersion}
+            residenceId={residenceId}
             analyse={analyse}
             joursOrganisationActuelle={[...new Set(creneaux.flatMap(c => c.jours))]}
             creneaux={creneaux}

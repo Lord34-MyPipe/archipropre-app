@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import type { AnalyseIA, AnalyseTacheIA, AlerteOptionIA, AlerteCibleIA, Creneau } from './AnalyseContratWizard'
+import type { AnalyseIA, AnalyseTacheIA, AnalyseBatimentIA, AlerteOptionIA, AlerteCibleIA, Creneau } from './AnalyseContratWizard'
 import { ORDRE_JOURS, type DispatchJour } from '@/lib/dispatchSemaine'
 
 // ── Structure soumise à /api/residences/[id]/contrats/creer-complet (item 3) ──
@@ -89,6 +89,7 @@ function dureeCreneauMinutes(c: Creneau): number {
 }
 
 interface Props {
+  residenceId: string                  // ajuster/route.ts (sous-étape 4) — auth/ownership
   analyse: AnalyseIA
   joursOrganisationActuelle: string[]  // jours de l'organisation actuelle (étape 1)
   creneaux: Creneau[]                  // pour la borne créneau par jour (R5) + vue par jour de passage
@@ -104,7 +105,7 @@ interface Props {
 }
 
 export default function AnalyseContratEtape3({
-  analyse, joursOrganisationActuelle, creneaux, joursRamassageContainers,
+  residenceId, analyse, joursOrganisationActuelle, creneaux, joursRamassageContainers,
   minutesHebdoReelles, plafondRentable, ecartRentable, tauxCible, facteurRessource,
   onBack, onGoToStep1, onContinue,
 }: Props) {
@@ -112,9 +113,11 @@ export default function AnalyseContratEtape3({
   const nextId = () => `l${idRef.current++}`
 
   // ── Arbre bâtiments → zones → tâches — pré-rempli depuis l'analyse IA ──
-
-  const [batiments, setBatiments] = useState<BatimentLocal[]>(() =>
-    analyse.batiments.map(b => ({
+  // Fonction réutilisée pour l'état initial ET pour ré-hydrater la structure
+  // renvoyée par /api/ia/analyse-contrat/ajuster (sous-étape 4) — même
+  // conversion, jamais dupliquée.
+  function versBatimentsLocal(source: AnalyseBatimentIA[]): BatimentLocal[] {
+    return source.map(b => ({
       id: nextId(),
       nom: b.nom,
       zones: b.zones.map(z => ({
@@ -125,8 +128,10 @@ export default function AnalyseContratEtape3({
           jours: [...t.jours_semaine], semaineDuMois: t.semaine_du_mois, moisDeAnnee: t.mois_de_annee,
         })),
       })),
-    })),
-  )
+    }))
+  }
+
+  const [batiments, setBatiments] = useState<BatimentLocal[]>(() => versBatimentsLocal(analyse.batiments))
   const [expanded, setExpanded] = useState<Set<string>>(
     () => new Set(analyse.batiments.map((_, i) => `b${i}`)),
   )
@@ -277,6 +282,56 @@ export default function AnalyseContratEtape3({
     () => analyse.alertes.filter((a, i) => a.type === 'question' && !decisions[i]).length,
     [analyse.alertes, decisions],
   )
+
+  // ── Texte libre → /api/ia/analyse-contrat/ajuster (sous-étape 4/5) ──────────
+  // Endpoint dédié et court (structure actuelle + alerte + réponse → structure
+  // ajustée) plutôt qu'une réanalyse complète — cf audit du 21/07. Remplace
+  // ENTIÈREMENT l'arbre par la réponse (ré-hydraté via versBatimentsLocal) :
+  // le prompt de l'endpoint garantit que tout ce qui n'est pas concerné par la
+  // réponse est recopié à l'identique côté serveur.
+  const [reponsesLibres, setReponsesLibres]   = useState<Record<number, string>>({})
+  const [envoiEnCours, setEnvoiEnCours]       = useState<Record<number, boolean>>({})
+  const [erreursAjustement, setErreursAjustement] = useState<Record<number, string>>({})
+
+  async function envoyerReponseLibre(alerteIndex: number, alerte: AnalyseIA['alertes'][number]) {
+    const reponse = (reponsesLibres[alerteIndex] ?? '').trim()
+    if (!reponse) return
+    setEnvoiEnCours(e => ({ ...e, [alerteIndex]: true }))
+    setErreursAjustement(e => ({ ...e, [alerteIndex]: '' }))
+    try {
+      const res = await fetch('/api/ia/analyse-contrat/ajuster', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          residenceId,
+          structureActuelle: { batiments: batiments.map(b => ({
+            nom: b.nom,
+            zones: b.zones.map(z => ({
+              nom: z.nom,
+              taches: z.taches.map(t => ({
+                libelle: t.libelle, frequence_type: t.frequence, jours_semaine: t.jours,
+                semaine_du_mois: t.semaineDuMois, mois_de_annee: t.moisDeAnnee,
+              })),
+            })),
+          })) },
+          planningActuel: { jours: joursOrganisationActuelle, creneaux },
+          alerte: { sujet: alerte.sujet, message: alerte.message },
+          reponseLibre: reponse,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setErreursAjustement(e => ({ ...e, [alerteIndex]: json.error ?? 'Erreur inconnue.' }))
+        return
+      }
+      setBatiments(versBatimentsLocal(json.batiments))
+      setDecisions(d => ({ ...d, [alerteIndex]: { statut: 'appliquee', optionLibelle: `« ${reponse} »` } }))
+    } catch {
+      setErreursAjustement(e => ({ ...e, [alerteIndex]: 'Impossible de contacter le serveur.' }))
+    } finally {
+      setEnvoiEnCours(e => ({ ...e, [alerteIndex]: false }))
+    }
+  }
 
   // ── Répartition semaine (chantier "Répartition semaine") — tournées transverses
   // + containers, INCHANGÉS. Le sélecteur bâtiment→jour a été retiré (retour
@@ -830,9 +885,9 @@ export default function AnalyseContratEtape3({
         )}
 
         {/* ── Décisions & remarques (chantier "alertes actionnables", 21/07) ──
-            Sous-étape 3/5 : boutons d'options branchés (effets déterministes,
-            aucun appel réseau) — le champ "Autre réponse" reste désactivé
-            (texte libre → sous-étape 4). */}
+            Sous-étape 4/5 : boutons d'options (effets déterministes, aucun
+            appel réseau) + champ "Autre réponse" → /api/ia/analyse-contrat/ajuster
+            pour les cas non couverts par les options fermées. */}
         {analyse.alertes.length > 0 && (
           <div className="border border-slate-200 rounded-2xl overflow-hidden">
             <div className="bg-slate-50 px-4 py-2.5 flex items-center justify-between gap-2">
@@ -864,14 +919,24 @@ export default function AnalyseContratEtape3({
                       <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
                         {a.options.map((o, oi) => (
                           <button key={oi} type="button" onClick={() => appliquerOption(i, o)}
-                            className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white border border-amber-300 text-amber-700 hover:bg-amber-100 transition-colors">
+                            disabled={envoiEnCours[i]}
+                            className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white border border-amber-300 text-amber-700 hover:bg-amber-100 transition-colors disabled:opacity-50">
                             {o.libelle}
                           </button>
                         ))}
-                        <input type="text" disabled placeholder="Autre réponse… (bientôt)"
-                          className="flex-1 min-w-[140px] px-2.5 py-1.5 rounded-lg text-xs border border-slate-200 bg-slate-50 text-slate-400 placeholder:text-slate-400"/>
+                        <input type="text" placeholder="Autre réponse…" value={reponsesLibres[i] ?? ''}
+                          disabled={envoiEnCours[i]}
+                          onChange={e => setReponsesLibres(r => ({ ...r, [i]: e.target.value }))}
+                          onKeyDown={e => { if (e.key === 'Enter') envoyerReponseLibre(i, a) }}
+                          className="flex-1 min-w-[140px] px-2.5 py-1.5 rounded-lg text-xs border border-slate-200 focus:border-amber-300 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"/>
+                        <button type="button" onClick={() => envoyerReponseLibre(i, a)}
+                          disabled={envoiEnCours[i] || !(reponsesLibres[i] ?? '').trim()}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-600 text-white hover:bg-amber-700 transition-colors disabled:opacity-40 disabled:hover:bg-amber-600">
+                          {envoiEnCours[i] ? '…' : 'Envoyer'}
+                        </button>
                       </div>
                       {erreur && <p className="mt-1.5 text-xs text-red-600">{erreur}</p>}
+                      {erreursAjustement[i] && <p className="mt-1.5 text-xs text-red-600">{erreursAjustement[i]}</p>}
                     </>
                   )}
 

@@ -250,11 +250,10 @@ export async function POST(req: NextRequest, { params }: { params: Params }) {
   // Garde-fou : l'IA AFFIRME respecter R1/R3/R4/R5 dans son texte "alertes",
   // mais rien ne le vérifiait — recalcul déterministe, ne fait jamais confiance
   // au texte du modèle. Tourne pour TOUTE résidence/semaine (aucune logique
-  // spécifique à un contrat), y compris hors simulation (enveloppeMinutesHebdo
-  // absent → le contrôle d'enveloppe est simplement ignoré, cf lib/dispatchVerification.ts).
-  const verification = verifierPropositionDispatch({
-    dispatch, creneaux, joursRamassageContainers, enveloppeMinutesHebdo, estBinome,
-  })
+  // spécifique à un contrat). Le contrôle d'enveloppe a été retiré (refonte
+  // top-down, 21/07, sous-étape 5/5, cf lib/dispatchVerification.ts) — le
+  // budget est réparti par construction, plus de "dérive" possible à détecter.
+  const verification = verifierPropositionDispatch({ dispatch, creneaux, joursRamassageContainers })
 
   return NextResponse.json({
     dispatch_semaine: dispatch,

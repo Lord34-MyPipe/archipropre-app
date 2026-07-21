@@ -68,6 +68,20 @@ const FREQ_OPTIONS: { value: AnalyseTacheIA['frequence_type']; label: string }[]
   { value: 'annuel',      label: 'Annuelle' },
 ]
 
+// Réutilise le pattern déjà en place pour les tâches basse fréquence saisies à
+// la main (app/manager/residences/[id]/taches/TacheModal.tsx) : mêmes libellés
+// de semaine du mois, même liste de mois courts — ne pas réinventer.
+const SEMAINE_LABELS = ['', '1ère', '2ème', '3ème', '4ème', 'Dernière']
+const MOIS_COURTS = ['jan', 'fév', 'mar', 'avr', 'mai', 'jun', 'jul', 'aoû', 'sep', 'oct', 'nov', 'déc']
+// Mêmes défauts que sanitiserAnalyse (app/api/ia/analyse-contrat/route.ts) —
+// utilisés uniquement quand le manager change la fréquence d'une tâche déjà
+// hebdo vers une fréquence basse, sans mois_de_annee préexistant.
+const MOIS_DEFAUT: Record<string, number[]> = {
+  trimestriel: [1, 4, 7, 10],
+  semestriel:  [1, 7],
+  annuel:      [1],
+}
+
 function dureeCreneauMinutes(c: Creneau): number {
   const [h1, m1] = c.heure_debut.split(':').map(Number)
   const [h2, m2] = c.heure_fin.split(':').map(Number)
@@ -498,7 +512,19 @@ export default function AnalyseContratEtape3({
                                 />
                                 <select
                                   value={t.frequence}
-                                  onChange={e => updateTache(b.id, z.id, t.id, { frequence: e.target.value as TacheLocale['frequence'] })}
+                                  onChange={e => {
+                                    const freq = e.target.value as TacheLocale['frequence']
+                                    if (freq === 'hebdo') {
+                                      updateTache(b.id, z.id, t.id, { frequence: freq, semaineDuMois: null, moisDeAnnee: null })
+                                    } else {
+                                      updateTache(b.id, z.id, t.id, {
+                                        frequence: freq,
+                                        jours: t.jours[0] ? [t.jours[0]] : [],
+                                        semaineDuMois: t.semaineDuMois ?? [1],
+                                        moisDeAnnee: freq === 'mensuel' ? null : (t.moisDeAnnee ?? MOIS_DEFAUT[freq]),
+                                      })
+                                    }
+                                  }}
                                   className="shrink-0 px-2 py-1.5 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-[#0BBFBF]/40"
                                 >
                                   {FREQ_OPTIONS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
@@ -522,13 +548,68 @@ export default function AnalyseContratEtape3({
                                   ))}
                                 </div>
                               ) : (
-                                // Positionnement (semaine du mois / mois de l'année) éditable en détail
-                                // à la sous-étape 4 — ici, résumé en lecture seule du positionnement proposé.
-                                <p className="text-[11px] text-slate-400 italic">
-                                  Basse fréquence — positionnée {t.jours[0] ? `le ${JOURS.find(j => j.value === t.jours[0])?.label ?? t.jours[0]}` : '(jour non déterminé)'}
-                                  {t.semaineDuMois ? ` (semaine ${t.semaineDuMois[0]})` : ''}
-                                  {t.moisDeAnnee ? ` (mois ${t.moisDeAnnee.join(', ')})` : ''} — détail modifiable à une prochaine étape.
-                                </p>
+                                // Positionnement basse fréquence (sous-étape 4) — même pattern que
+                                // TacheModal.tsx (semaine du mois + jour), réutilisé tel quel.
+                                <div className="space-y-2">
+                                  <div>
+                                    <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Jour du passage</p>
+                                    <div className="flex flex-wrap gap-1">
+                                      {JOURS.map(j => (
+                                        <button key={j.value} type="button"
+                                          onClick={() => updateTache(b.id, z.id, t.id, { jours: [j.value] })}
+                                          className={`px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                                            t.jours[0] === j.value ? 'bg-[#0A2E5A] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                          }`}>
+                                          {j.label}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Semaine du mois</p>
+                                    <div className="flex flex-wrap gap-1">
+                                      {[1, 2, 3, 4, 5].map(s => (
+                                        <button key={s} type="button"
+                                          onClick={() => updateTache(b.id, z.id, t.id, { semaineDuMois: [s] })}
+                                          className={`px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                                            t.semaineDuMois?.[0] === s ? 'bg-[#1A5FA8] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                          }`}>
+                                          {SEMAINE_LABELS[s]}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  {t.frequence !== 'mensuel' && (
+                                    <div>
+                                      <p className="text-[10px] text-slate-400 uppercase tracking-wider mb-1">Mois concernés</p>
+                                      <div className="flex flex-wrap gap-1">
+                                        {MOIS_COURTS.map((m, i) => {
+                                          const moisNum = i + 1
+                                          const actif = t.moisDeAnnee?.includes(moisNum) ?? false
+                                          return (
+                                            <button key={moisNum} type="button"
+                                              onClick={() => updateTache(b.id, z.id, t.id, {
+                                                moisDeAnnee: actif
+                                                  ? (t.moisDeAnnee ?? []).filter(x => x !== moisNum)
+                                                  : [...(t.moisDeAnnee ?? []), moisNum].sort((a, c) => a - c),
+                                              })}
+                                              className={`px-2 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                                                actif ? 'bg-[#0BBFBF] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                              }`}>
+                                              {m}
+                                            </button>
+                                          )
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+                                  <p className="text-[11px] text-slate-500">
+                                    → {t.jours[0] ? JOURS.find(j => j.value === t.jours[0])?.label ?? t.jours[0] : '(jour non choisi)'}
+                                    {t.semaineDuMois ? `, ${SEMAINE_LABELS[t.semaineDuMois[0]]} semaine` : ''}
+                                    {t.frequence !== 'mensuel' && t.moisDeAnnee?.length ? ` de ${t.moisDeAnnee.map(mm => MOIS_COURTS[mm - 1]).join('/')}` : ''}
+                                    {' '}de chaque {t.frequence === 'mensuel' ? 'mois' : t.frequence === 'trimestriel' ? 'trimestre' : t.frequence === 'semestriel' ? 'semestre' : 'année'}.
+                                  </p>
+                                </div>
                               )}
                             </div>
                           ))}

@@ -23,6 +23,7 @@ interface Props {
   identite: IdentiteContrat
   agentId: string
   agentNom: string
+  binomeAgentNom?: string  // binôme indissociable de l'agent choisi (affichage seul, cf CONTEXT.md)
   creneaux: Creneau[]
   minutesHebdoReelles: number
   plafondRentable: number
@@ -43,7 +44,7 @@ interface CreationResult {
 }
 
 export default function AnalyseContratEtape4({
-  residenceId, identite, agentId, agentNom, creneaux, minutesHebdoReelles, plafondRentable, ecartRentable,
+  residenceId, identite, agentId, agentNom, binomeAgentNom, creneaux, minutesHebdoReelles, plafondRentable, ecartRentable,
   structure, horsPlanningHebdo, alertes, joursRamassageContainers, dispatchSemaine, onBack, onClose,
 }: Props) {
   const router = useRouter()
@@ -168,7 +169,11 @@ export default function AnalyseContratEtape4({
       {/* Organisation actuelle */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-1.5">
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Organisation actuelle</p>
-        <p className="text-sm text-slate-700">Agent : <span className="font-semibold">{agentNom || '—'}</span></p>
+        <p className="text-sm text-slate-700">
+          {binomeAgentNom ? 'Agents' : 'Agent'} : <span className="font-semibold">
+            {agentNom || '—'}{binomeAgentNom ? ` + ${binomeAgentNom} (binôme)` : ''}
+          </span>
+        </p>
         <div className="flex flex-wrap gap-1.5 mt-1">
           {creneaux.map((c, i) => (
             <span key={i} className="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-600">{formatCreneau(c)}</span>

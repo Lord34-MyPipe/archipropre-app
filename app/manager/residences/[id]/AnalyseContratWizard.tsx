@@ -245,6 +245,13 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
   // uniformément sur toutes les interventions générées).
   const agentSelectionne    = agents.find(a => a.id === agentId)
   const estBinome           = !!agentSelectionne?.binome_agent_id
+  // Agents en binôme indissociables (règle métier CONTEXT.md, déjà le
+  // comportement du planning/ANA) : sélectionner un membre affiche
+  // immédiatement l'autre — affichage seul, agent_prefere_id reste l'agent
+  // choisi, le mirroring aval s'en charge déjà partout.
+  const binomeAgent = agentSelectionne?.binome_agent_id
+    ? agents.find(a => a.id === agentSelectionne.binome_agent_id)
+    : undefined
   const minutesHebdoPresence = creneaux.reduce((sum, c) => sum + dureeCreneauMinutes(c) * c.jours.length, 0)
   const minutesHebdoReelles  = estBinome ? minutesHebdoPresence * 2 : minutesHebdoPresence
   const plafondRentable     = volumeHebdoMinutes(montantNum, tauxCible)
@@ -392,8 +399,21 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
                 <select value={agentId} onChange={e => setAgentId(e.target.value)}
                   className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#0BBFBF]/40">
                   <option value="">— Choisir un agent —</option>
-                  {agents.map(a => <option key={a.id} value={a.id}>{a.prenom} {a.nom}</option>)}
+                  {agents.map(a => {
+                    const binome = a.binome_agent_id ? agents.find(x => x.id === a.binome_agent_id) : undefined
+                    return (
+                      <option key={a.id} value={a.id}>
+                        {a.prenom} {a.nom}{binome ? ` (binôme avec ${binome.prenom} ${binome.nom.charAt(0)}.)` : ''}
+                      </option>
+                    )
+                  })}
                 </select>
+                {binomeAgent && (
+                  <p className="mt-1.5 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#EAF2FF] text-xs text-[#0A4A8A]">
+                    <span>👥</span>
+                    <span>Binôme : <span className="font-semibold">{binomeAgent.prenom} {binomeAgent.nom}</span> interviendra aussi (binôme indissociable)</span>
+                  </p>
+                )}
               </div>
 
               {/* Créneaux de passage actuels */}
@@ -543,7 +563,8 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
             residenceId={residenceId}
             identite={identite}
             agentId={agentId}
-            agentNom={(() => { const a = agents.find(a => a.id === agentId); return a ? `${a.prenom} ${a.nom}` : '' })()}
+            agentNom={agentSelectionne ? `${agentSelectionne.prenom} ${agentSelectionne.nom}` : ''}
+            binomeAgentNom={binomeAgent ? `${binomeAgent.prenom} ${binomeAgent.nom}` : undefined}
             creneaux={creneaux}
             joursRamassageContainers={joursRamassageContainers}
             minutesHebdoReelles={minutesHebdoReelles}

@@ -1,4 +1,22 @@
-# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 21 juillet 2026 — 1er test terrain réel réussi + polish containers + simplification 3 chemins création contrat + bug binôme corrigé sur 3 endroits + refonte top-down étape 3 + affichage binôme wizard + chantier alertes actionnables livré + fix calibrage question/info + fix chips par jour page Tâches + fix étape 4 reflète l'état des décisions)
+# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 21 juillet 2026 — 1er test terrain réel réussi + polish containers + simplification 3 chemins création contrat + bug binôme corrigé sur 3 endroits + refonte top-down étape 3 + affichage binôme wizard + chantier alertes actionnables livré + fix calibrage question/info + fix chips par jour page Tâches + fix étape 4 reflète l'état des décisions + fix R3 mono/multi-bâtiments + fix binôme dispatch + fix panneau Répartition + VALIDATION BOUT EN BOUT GMCO)
+
+**🏁 VALIDATION DE BOUT EN BOUT GMCO (21 juillet 2026) — JALON MAJEUR.**
+Premier contrat entièrement configuré et testé sur la chaîne complète, du
+wizard au terrain : wizard IA top-down → cartes de décision (boutons
+cliqués en réel par Julien : "Garder 1re semaine", "2e semaine", "Garder
+mardi et vendredi") → création du contrat (RPC `creer_contrat_complet`) →
+génération du planning créneau-based → **scan agent réel** → tâches
+validées → rapport envoyé → intervention passée "Validé" au planning.
+Planning final conforme au modèle top-down : mardi 18h30-19h30 plein
+(60 min), vendredi 18h30-20h00 plein (90 min), Edgard et Marie (binôme) aux
+mêmes horaires exacts (présence simultanée, plus de réduction ×0,5), une
+seule intervention par jour et par agent (plus de split bâtiment/tournée
+fictif). Cette validation n'a été possible qu'après les 3 fixes de la
+journée (items 23-25 ci-dessous — deux nettoyages complets de GMCO ont été
+nécessaires entre-temps pour rejouer le flux à blanc). **GMCO devient la
+méthode de référence pour la configuration des ~156 résidences restantes**
+avec Ana : le parcours wizard → décisions → génération est désormais
+considéré fiable de bout en bout pour un contrat top-down standard.
 
 **PREMIER TEST TERRAIN RÉEL RÉUSSI le 20/07/2026** — Julien a scanné une
 mission PRIEURE neuve (5 éléments : Bât 1, Bât 2, 2 tournées Halls, 1
@@ -180,6 +198,40 @@ verte + badge du choix fait) que l'étape 3 au lieu de répéter le message
 d'origine. Détail complet : voir item 22, section « CHANTIER ANALYSE
 CONTRAT ».
 
+**3 FIX SUPPLÉMENTAIRES suite à un 2e audit GMCO (21 juillet 2026, commits
+`57a7128`/`05d26f7`/`9d37e76`) — modélisation mono-bâtiment + binôme
+top-down + panneau Répartition.** Après le fix étape 4 ci-dessus, un nouveau
+test réel sur GMCO a révélé que le planning généré ne couvrait pas les
+créneaux (mardi 15+15 min avec un trou au lieu de 60 min continus, vendredi
+45 min au lieu de 90). Audit en lecture seule d'abord (comme toujours),
+3 causes distinctes trouvées et corrigées, UN COMMIT PAR VOLET :
+- **`57a7128` (R3 mono/multi-bâtiments)** : la règle R3 (2e passage
+  bi-hebdomadaire → "tournée transverse") était appliquée littéralement à
+  GMCO, mono-bâtiment, en inventant un "2e lieu" fictif pour son 2e passage
+  hebdo — cassant le calcul créneau-based en aval (2 unités au lieu d'1).
+  `reglesDispatchPrompt()` accepte maintenant `nbBatimentsConnus` : R3 ne
+  produit plus JAMAIS de tournée transverse sur un mono-bâtiment (le contenu
+  du jour est déjà porté par `jours_semaine` au niveau des tâches).
+- **`05d26f7` (binôme top-down)** : `reduireHeureFin()` (×`facteur_binome`,
+  0.5 pour Edgard/Marie) était appliquée à toutes les lignes générées, y
+  compris en mode `dispatch_semaine` où l'horaire vient déjà du créneau réel
+  — un modèle bottom-up ("durée = travail à diviser entre agents") en
+  contradiction directe avec la doctrine top-down de l'item 17 ("même
+  créneau de présence pour les 2 agents"). Conditionné à `!dispatchActive` :
+  en mode dispatch, le miroir binôme garde exactement les mêmes horaires que
+  la ligne principale ; comportement des contrats historiques 100% inchangé.
+- **`9d37e76` (panneau Répartition)** : la colonne "Durée est." de
+  `RepartitionSemainePanel.tsx` moyennait `duree_totale_estimee_minutes`
+  (estimation IA jamais recalée sur les créneaux) lissée sur toute la
+  semaine — GMCO affichait 148/78 min au lieu de 60/90. Nouvelle fonction
+  d'affichage lisant directement le créneau du jour ; la valeur persistée
+  (utilisée par `buildDispatch()`) reste inchangée, purement informative.
+
+Ces 3 fixes + le fix étape 4 ci-dessus ont permis la **validation de bout en
+bout GMCO** décrite en tête de fichier. Détail complet (audit, vérifications
+par script, 4 mécanismes de durée périmés recensés cette session) : voir
+items 23-26, section « CHANTIER ANALYSE CONTRAT ».
+
 **RESTE À FAIRE (un chantier identifié, non commencé — l'autre livré depuis) :**
 1. **Sous-étape 6 de la refonte top-down** : la génération réelle des tâches
    mensuelles positionnées. `/api/planning/generer` ne lit toujours QUE
@@ -191,7 +243,12 @@ CONTRAT ».
    n'est pas un jour de passage de l'agent (même esprit que R4 containers).
    **Toujours non commencé au 21/07/2026 soir** (reconfirmé par audit lors du
    fix chips par jour, voir item 21 — cette route ne lit toujours que
-   `frequence_type='hebdo'`).
+   `frequence_type='hebdo'`). **Concret sur GMCO** (validation bout en bout,
+   voir en tête de fichier) : la décision "2e semaine" prise en direct sur la
+   tâche "Ranger le local" (mensuelle) est bien stockée en base
+   (`semaine_du_mois=[2]`, vérifié) mais **ne produira aucune intervention le
+   bon vendredi** tant que cette sous-étape n'est pas livrée — **PROCHAIN
+   GROS MORCEAU** identifié pour la suite.
 2. ~~**Alertes actionnables** (nouveau chantier cadré avec Julien, audit +
    conception livrés, code pas commencé)~~ → **LIVRÉ le 21/07/2026, en 7
    commits** (5 de livraison + 2 fix de calibrage/affichage suite à test réel
@@ -213,6 +270,21 @@ CONTRAT ».
    vocabulaire fermé d'effets déterministes applicables côté client) — analyse
    détaillée à reprendre avec Julien avant tout code (audit interrompu en
    session, non encore livré).
+3. **NOUVEAU SUJET À CADRER (question posée par Julien le 21/07, pas encore
+   audité) : rapport binôme.** Sur une intervention en binôme, un seul agent
+   devrait remplir le rapport (tâches cochées + photos), pas les deux en
+   double — actuellement le modèle "2 interventions miroir" (validé pour la
+   présence/paie, cf item 17 et `facteur_binome`) n'a jamais tranché qui
+   saisit quoi côté rapport. À rattacher à **P2-13 — Tâches partagées en
+   binôme** (déjà cadré en partie, jamais implémenté, voir section dédiée
+   plus bas), qui pose déjà des questions très proches. Points identifiés en
+   discussion, à valider par audit avant toute décision : les 2 agents
+   scannent chacun (garde présence/paie + alertes scan manquant intactes),
+   un seul remplit le rapport (tâches/zones/photos), la clôture de
+   l'intervention de l'autre se fait automatiquement en miroir de la
+   première ; vérifier l'impact sur le garde-fou paie existant (groupement
+   par mission/intervention). **Chantier dédié, avec audit lecture seule
+   avant toute décision — pas commencé.**
 
 **PRIEURE = résidence de référence à nouveau opérationnelle**, dispatch
 durci : 9 bâtiments sur 5 jours (2-2-2-2-1), 9 halls bi-hebdo (écarts ≥2
@@ -1625,6 +1697,11 @@ mais UNE SEULE liste tâches/zones/photos PARTAGÉE. Comportement visé :
 impact sur le rapport manager (un seul affiché ou fusion), affichage côté agent
 (chaque agent voit les coches de l'autre en temps réel ?).
 Tech probable : Supabase Realtime sur taches_intervention + intervention_id partagé.
+
+**Relancé le 21/07/2026** par une question de Julien après la validation bout
+en bout GMCO (voir tête de fichier + « RESTE À FAIRE », point 3) : même
+constat, un seul agent devrait remplir le rapport. Reste un chantier à cadrer
+par audit avant tout code — rien d'implémenté depuis cette note initiale.
 
 ### P2-14 — Contrôle géographique 200m (✅ DÉJÀ IMPLÉMENTÉ en prod)
 
@@ -3276,6 +3353,148 @@ le message d'origine comme si rien ne s'était passé.
 que le test réel de Julien, script réel puis supprimé) : badge final correct
 pour les 3 alertes, cohérent avec la structure envoyée à la RPC.
 
+### 23. FIX R3 (tournées transverses) restreinte aux multi-bâtiments (commit `57a7128`, 21 juillet 2026)
+
+**2e audit GMCO le même jour**, après le fix de l'item 22 : Julien a lancé un
+nouveau test réel et constaté que le planning généré ne couvrait pas les
+créneaux — mardi (18h30-19h30) affichait "Bâtiment principal" 18h30-18h45
+(15 min) puis un TROU puis "Passage intermédiaire mardi" 19h00-19h15 (fin à
+19h15 au lieu de 19h30) ; vendredi (18h30-20h00) affichait 18h30-19h15
+(45 min au lieu de 90). Le panneau "Répartition de la semaine" affichait en
+plus des durées "148 min ⚠ > 60" (mardi) / "78 min" (vendredi), sans rapport
+avec les créneaux.
+
+**Audit en lecture seule d'abord** (comme pour tout ce chantier) : 3 causes
+distinctes trouvées, chacune sur un mécanisme différent — traitées en 3
+commits séparés (items 23-25).
+
+**Cause 1 — modélisation (cet item) :** la règle R3 (`lib/dispatchSemaine.ts`,
+partagée entre `analyse-contrat` et `dispatch/proposer`) dit *« pour une
+prestation bi-hebdomadaire par bâtiment, le 2e passage est une "tournée
+transverse" un autre jour »* — **sans jamais restreindre au multi-bâtiments**.
+Vérifié en base : GMCO (mono-bâtiment, "Bâtiment principal") a bien de
+nombreuses tâches bi-hebdomadaires réelles (`jours_semaine: ["mardi",
+"vendredi"]` — mardi = passage allégé, vendredi = passage complet). L'IA a
+donc appliqué R3 **littéralement et correctement selon la lettre de la
+règle**, produisant une "tournée transverse" pour le 2e passage — mais R3 a
+été conçue pour le cas multi-bâtiments (regrouper les 2e passages de
+PLUSIEURS bâtiments dans une tournée qui saute les autres) : sur un
+mono-bâtiment, ce concept n'a pas d'objet, il n'y a qu'un seul lieu à
+visiter. Conséquence en aval (`generer/route.ts`) : `nbUnitesJour = 2`
+(bâtiment + tournée) au lieu de 1, le créneau de 60 min divisé en 30+30 min
+au lieu d'être couvert par une seule unité de 60 min.
+
+**Fix :** `reglesDispatchPrompt(nbBatimentsConnus?: number)` — R3 précise
+maintenant explicitement *« SI PLUSIEURS bâtiments (2 ou plus) : [texte R3
+original] ; SI UN SEUL bâtiment (mono-bâtiment) : N'UTILISE JAMAIS
+tournees_transverses »*. `nbBatimentsConnus` fourni par `dispatch/proposer`
+(structure déjà connue avant l'appel IA — nombre réel passé explicitement) ;
+absent pour `analyse-contrat` (les bâtiments sont l'OUTPUT que l'IA est en
+train de produire, pas une donnée d'entrée à ce stade) — dans ce cas la
+règle demande à l'IA de compter elle-même son propre tableau `batiments`.
+Dans les deux cas : un mono-bâtiment garde simplement `batiments_complets:
+["Bâtiment principal"]` les deux jours, sans tournée — la différence de
+charge mardi/vendredi reste entièrement portée par `jours_semaine` au
+niveau de chaque tâche (déjà correcte, rien à changer là).
+
+**Vérifié par script réel** (2 appels Claude) : GMCO reconstitué
+(mono-bâtiment, tâches bi-hebdo réelles mardi/vendredi) → 0 tournée
+produite, 1 unité/jour les deux jours. Résidence multi-bâtiments simulée
+(3 bâtiments, halls bi-hebdo) → tournées toujours produites normalement
+(R3 intacte pour son cas d'usage réel, ex. PRIEURE).
+
+### 24. FIX binôme sans réduction de durée en mode dispatch (commit `05d26f7`, 21 juillet 2026)
+
+**Cause 2** du même audit : `reduireHeureFin(heure_debut, heure_fin,
+facteur_binome)` (`generer/route.ts`) était appliquée à **toutes** les
+lignes générées dès que l'agent a un `binome_agent_id` — y compris en mode
+`dispatch_semaine` où les horaires viennent déjà du créneau réel du jour.
+Vérifié en base : `facteur_binome` d'Edgard Rakotondrasoa (agent GMCO) =
+**0.50**. Ce mécanisme réduit `heure_fin_prevue` de chaque ligne
+INDÉPENDAMMENT (sans re-chaîner `heure_debut_prevue`), ce qui explique à la
+fois la réduction (30 min × 0.5 = 15 min mardi par unité, 90 × 0.5 = 45 min
+vendredi) ET le trou observé (la 2e unité du mardi gardait son
+`heure_debut_prevue` d'origine, 19:00, calculé AVANT réduction — recalcul
+exact confirmé identique aux horaires observés en base, au chiffre près).
+
+Ce mécanisme vient d'un modèle antérieur, **bottom-up** : « durée = travail
+à faire, qui se répartit entre 2 agents → chacun finit 2× plus vite »
+(cohérent pour son usage d'origine, ANA/intervention ponctuelle, où la
+durée est une estimation de travail). **Directement contradictoire avec la
+doctrine top-down déjà gravée à l'item 17** : *« un binôme = 2 agents payés
+simultanément = 2× la main d'œuvre pour le MÊME créneau de présence »* — la
+présence ne se raccourcit jamais avec un 2e agent.
+
+**Fix :** la réduction est conditionnée à `!dispatchActive`. En mode
+dispatch (top-down), la ligne miroir reprend **exactement** les mêmes
+horaires que la ligne principale (présence simultanée, créneau intact,
+aucun trou). En mode historique (sans `dispatch_semaine`), comportement
+**100% inchangé** — rétrocompatibilité stricte. Aucun risque pour PRIEURE
+(vérifié : agent André Sabatier `binome_agent_id: null`, cette branche ne
+s'applique déjà pas à lui aujourd'hui, avec ou sans le fix).
+
+**Vérifié par script** (logique copiée du fichier, appliquée aux durées
+GMCO attendues après l'item 23 — 1 unité/jour) : `dispatchActive=true` →
+les 2 agents ont 18h30-19h30 mardi et 18h30-20h00 vendredi, identiques ;
+`dispatchActive=false` → réduction ×0.5 inchangée (18h30-19h00 /
+18h30-19h15), confirmant qu'aucun contrat historique n'est affecté.
+
+### 25. FIX panneau Répartition — durée du créneau au lieu d'une moyenne périmée (commit `9d37e76`, 21 juillet 2026)
+
+**Cause 3** du même audit, sur un **4e mécanisme de durée distinct**,
+jusque-là non identifié : le panneau "Répartition de la semaine"
+(`RepartitionSemainePanel.tsx`, accessible depuis les paramètres du contrat)
+affichait 148 min (mardi) / 78 min (vendredi) dans sa colonne "Durée est."
+— recalculé au chiffre près : `dureeJour()` moyenne
+`duree_totale_estimee_minutes` (l'estimation informative de l'IA, jamais
+recalée sur les créneaux — mardi=140/vendredi=85 stockés en base pour GMCO)
+**lissée sur TOUTE la semaine par type d'unité** (bâtiment vs tournée), puis
+réapplique cette moyenne à chaque jour selon son nombre d'unités — un
+mécanisme totalement indépendant des 2 précédents, propre à cet écran.
+
+**Fix, changement d'affichage pur :** nouvelle fonction
+`dureeAfficheeJour()` lisant directement `creneauMaxMinutes()` (déjà
+présent dans ce même fichier, déjà utilisé pour la comparaison overflow) —
+un jour avec au moins une activité affiche désormais exactement la durée de
+son créneau. `dureeJour()` (moyenne lissée) reste **inchangée** et continue
+d'alimenter `duree_totale_estimee_minutes` dans `buildDispatch()` (champ
+persisté, toujours purement informatif) — aucune donnée modifiée ni
+sauvegardée différemment, uniquement ce qui est affiché au manager.
+
+### 26. VALIDATION DE BOUT EN BOUT GMCO (21 juillet 2026) — JALON MAJEUR
+
+Après les items 22-25, Julien a rejoué le parcours complet sur GMCO
+(2 nettoyages complets nécessaires entre-temps pour repartir à blanc — voir
+détail ci-dessous) : **wizard IA top-down → cartes de décision (boutons
+cliqués en réel) → création du contrat → génération du planning
+créneau-based → scan agent réel → tâches validées → rapport envoyé →
+intervention "Validé" au planning.** Planning final conforme : mardi
+18h30-19h30 plein, vendredi 18h30-20h00 plein, Edgard et Marie aux mêmes
+horaires exacts, une seule intervention par jour et par agent. **Premier
+contrat de la refonte top-down validé sur TOUTE la chaîne, terrain inclus.**
+GMCO devient la méthode de référence pour la configuration des ~156
+résidences restantes avec Ana.
+
+**2 nettoyages complets de GMCO** effectués cette session (mêmes étapes à
+chaque fois, lecture seule d'abord) : vérification que 100% des
+interventions sont `statut='planifiee'` sans `heure_scan`/`heure_fin` (donc
+aucune trace de scan réel) et que toutes les dépendances (photos,
+taches_intervention, alertes, commandes_produits, rapports_syndic_liens)
+sont à 0 → `DELETE FROM interventions` → `delete_contrat_cascade()` → GMCO
+revient à "À configurer" (0 contrat, 0 zone, 0 tâche, 0 intervention),
+résidence elle-même (nom/adresse/GPS/manager) toujours intacte. PRIEURE et
+les autres résidences vérifiées non affectées à chaque fois.
+
+**Les 4 mécanismes de durée périmés trouvés cette session** (item majeur
+pour la suite — voir aussi Key learnings ci-dessous) :
+
+| # | Mécanisme | Écran | État au 21/07/2026 soir |
+|---|---|---|---|
+| 1 | `computeProrataZones` (prorata financier, montant÷taux) pour les **chips par jour** | `/manager/residences/[id]/taches` (`CompteurRepartition`) | **Corrigé** (`2be7b99`, item 21) — chips dérivées des créneaux. Le bandeau global "Réparti X/Y" et `computeProrataZones` lui-même **conservés tels quels** (encore utiles aux contrats legacy à durées manuelles saisies à la main) |
+| 2 | `reduireHeureFin` × `facteur_binome` sur **toutes** les lignes générées | `/api/planning/generer` (interventions réelles) | **Corrigé** (`05d26f7`, item 24) — scopé à `!dispatchActive`. **Conservé tel quel** pour les contrats historiques (rétrocompatibilité paie legacy) |
+| 3 | Moyenne lissée inter-jours sur `duree_totale_estimee_minutes` | `RepartitionSemainePanel.tsx` (panneau "Répartition de la semaine") | **Corrigé en affichage** (`9d37e76`, item 25) — lit le créneau directement. La valeur persistée (`dureeJour`/`buildDispatch`) **conservée**, toujours purement informative |
+| 4 | `duree_totale_estimee_minutes` produit par l'IA (source des mécanismes 1 et 3) | Champ stocké dans `dispatch_semaine`, généré à l'étape 3 du wizard (règle R5 du prompt) | **Conservé** — reste une estimation informative de l'IA par design, plus aucun écran de calcul réel n'en dépend après ces fixes ; seul le panneau (mécanisme 3) l'utilisait pour l'affichage, désormais découplé |
+
 ## Ordre de configuration (session Ana)
 
 Séquence obligatoire (l'étape ③ du wizard résidence dépend des agents existants) :
@@ -3617,6 +3836,33 @@ connexion) + **Item 6** (masqué de la liste agents). Suffisant — pas de suppr
   Réflexe à généraliser : après toute refonte de flux, grep les écrans de
   consultation/rapport en aval pour les mêmes concepts, ils ne sont pas migrés
   automatiquement juste parce que la source l'est.
+
+### KEY LEARNING MAJEUR — les 4 mécanismes de durée périmés (21 juillet 2026)
+
+Cette session a trouvé, **un par un, jamais tous d'un coup**, 4 endroits
+distincts du code qui calculent "la durée d'un jour/d'une zone" — chacun sur
+un écran différent, chacun avec sa propre logique, jamais synchronisés entre
+eux (détail complet : items 21, 23-26 ci-dessus) :
+1. `computeProrataZones` (prorata financier) — chips par jour, page `/taches`.
+2. `reduireHeureFin` × `facteur_binome` — génération réelle du planning.
+3. Moyenne lissée inter-jours sur `duree_totale_estimee_minutes` — panneau
+   "Répartition de la semaine".
+4. `duree_totale_estimee_minutes` lui-même (l'estimation IA source des
+   mécanismes 1 et 3, informative par design mais traitée comme une vérité
+   par erreur à deux endroits différents).
+
+**Leçon à généraliser, au-delà de ce chantier précis :** à chaque évolution
+de philosophie de calcul (ici : bottom-up → top-down), **inventorier
+explicitement TOUS les endroits qui calculent la même grandeur** avant de
+considérer la migration terminée — un grep large sur le concept (ex. "durée
+par jour", "binôme", "créneau") à travers `app/` ET `lib/`, pas seulement
+sur le flux principal qu'on vient de refondre. Chacun des 4 mécanismes
+ci-dessus aurait pu être trouvé dès le début top-down (item 18) avec ce
+réflexe ; ils ont chacun nécessité un test réel séparé de Julien pour
+remonter à la surface, sur plusieurs jours de session. Un audit
+"inventaire des calculs de durée" en une seule passe, AVANT de commencer
+la refonte top-down, aurait probablement évité les 3 allers-retours de
+cette journée.
 
 ## À faire Phase 3
 

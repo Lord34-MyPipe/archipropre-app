@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import type { AnalyseIA, AnalyseTacheIA, Creneau } from './AnalyseContratWizard'
+import type { AnalyseIA, AnalyseTacheIA, AlerteOptionIA, AlerteCibleIA, Creneau } from './AnalyseContratWizard'
 import { ORDRE_JOURS, type DispatchJour } from '@/lib/dispatchSemaine'
 
 // ── Structure soumise à /api/residences/[id]/contrats/creer-complet (item 3) ──
@@ -99,13 +99,14 @@ interface Props {
   tauxCible: number
   facteurRessource: number             // 1 (pas de binôme) ou 2 (binôme) — présence × facteur = ressource
   onBack: () => void                              // "Relancer l'analyse" → retour étape 2 (texte conservé au niveau du wizard)
+  onGoToStep1: () => void                         // effet "add_creneau_hint" — retour étape 1, état déjà préservé par le stepper
   onContinue: (structure: StructureSoumission, dispatch: DispatchJour[]) => void  // "Continuer → Validation" → étape 4
 }
 
 export default function AnalyseContratEtape3({
   analyse, joursOrganisationActuelle, creneaux, joursRamassageContainers,
   minutesHebdoReelles, plafondRentable, ecartRentable, tauxCible, facteurRessource,
-  onBack, onContinue,
+  onBack, onGoToStep1, onContinue,
 }: Props) {
   const idRef = useRef(0)
   const nextId = () => `l${idRef.current++}`
@@ -202,12 +203,79 @@ export default function AnalyseContratEtape3({
     [batiments],
   )
 
-  // Décisions & remarques (sous-étape 2/5) : pour l'instant, toute alerte
-  // "question" compte comme en attente (aucun mécanisme de décision encore
-  // branché — sous-étape 3). Jamais bloquant (badge informatif uniquement).
+  // ── Décisions & remarques (sous-étape 3/5) — effets client déterministes ──
+  // Vocabulaire FERMÉ (identique au serveur, aucun autre effet) : chaque
+  // option agit directement sur l'arbre ci-dessus via les mutateurs déjà
+  // existants (updateTache/deleteTache), aucun appel réseau. `cible` est une
+  // clé naturelle (batiment+zone+libelle) résolue dans l'arbre COURANT (pas
+  // l'arbre original de l'IA) — si la tâche a été renommée/supprimée entre
+  // temps par une édition manuelle, l'option reste affichée mais échoue
+  // proprement (message inline, pas un clic silencieux sans effet).
+
+  interface DecisionAlerte { statut: 'appliquee' | 'lue'; optionLibelle: string }
+  const [decisions, setDecisions]       = useState<Record<number, DecisionAlerte>>({})
+  const [erreursCible, setErreursCible] = useState<Record<number, string>>({})
+
+  function trouverTache(cible: AlerteCibleIA): { bId: string; zId: string; tId: string } | null {
+    for (const b of batiments) {
+      if (b.nom !== cible.batiment) continue
+      for (const z of b.zones) {
+        if (z.nom !== cible.zone) continue
+        for (const t of z.taches) {
+          if (t.libelle === cible.libelle) return { bId: b.id, zId: z.id, tId: t.id }
+        }
+      }
+    }
+    return null
+  }
+
+  function appliquerOption(alerteIndex: number, option: AlerteOptionIA) {
+    if (option.effet === 'none') {
+      setErreursCible(e => ({ ...e, [alerteIndex]: '' }))
+      setDecisions(d => ({ ...d, [alerteIndex]: { statut: 'appliquee', optionLibelle: option.libelle } }))
+      return
+    }
+    if (option.effet === 'add_creneau_hint') {
+      setErreursCible(e => ({ ...e, [alerteIndex]: '' }))
+      setDecisions(d => ({ ...d, [alerteIndex]: { statut: 'appliquee', optionLibelle: option.libelle } }))
+      onGoToStep1()
+      return
+    }
+
+    // move_task_day / set_semaine_du_mois / set_mois_de_annee / remove_task —
+    // tous exigent une cible résolue dans l'arbre courant.
+    const loc = option.cible ? trouverTache(option.cible) : null
+    if (!loc) {
+      setErreursCible(e => ({ ...e, [alerteIndex]: 'Cette tâche a été modifiée — décision non applicable.' }))
+      return
+    }
+
+    if (option.effet === 'move_task_day' && typeof option.valeur === 'string') {
+      updateTache(loc.bId, loc.zId, loc.tId, { jours: [option.valeur] })
+    } else if (option.effet === 'set_semaine_du_mois' && typeof option.valeur === 'number') {
+      updateTache(loc.bId, loc.zId, loc.tId, { semaineDuMois: [option.valeur] })
+    } else if (option.effet === 'set_mois_de_annee' && Array.isArray(option.valeur)) {
+      updateTache(loc.bId, loc.zId, loc.tId, { moisDeAnnee: option.valeur as number[] })
+    } else if (option.effet === 'remove_task') {
+      deleteTache(loc.bId, loc.zId, loc.tId)
+    } else {
+      // valeur mal formée malgré la sanitisation serveur — filet défensif client.
+      setErreursCible(e => ({ ...e, [alerteIndex]: 'Cette décision n\'a pas pu être appliquée.' }))
+      return
+    }
+    setErreursCible(e => ({ ...e, [alerteIndex]: '' }))
+    setDecisions(d => ({ ...d, [alerteIndex]: { statut: 'appliquee', optionLibelle: option.libelle } }))
+  }
+
+  function acquitterInfo(alerteIndex: number) {
+    setDecisions(d => ({ ...d, [alerteIndex]: { statut: 'lue', optionLibelle: '' } }))
+  }
+
+  // Une alerte "en erreur" (cible introuvable) reste EN ATTENTE tant qu'aucune
+  // option n'a réussi — jamais bloquant, juste pas encore décidée.
   const nbAlertesEnAttente = useMemo(
-    () => analyse.alertes.filter(a => a.type === 'question').length,
-    [analyse.alertes],
+    () => analyse.alertes.filter((a, i) => a.type === 'question' && !decisions[i]).length,
+    [analyse.alertes, decisions],
   )
 
   // ── Répartition semaine (chantier "Répartition semaine") — tournées transverses
@@ -762,8 +830,9 @@ export default function AnalyseContratEtape3({
         )}
 
         {/* ── Décisions & remarques (chantier "alertes actionnables", 21/07) ──
-            Sous-étape 2/5 : rendu seul, boutons/champ non actifs (disabled) —
-            branchés en sous-étape 3 (options) et 4 (texte libre). */}
+            Sous-étape 3/5 : boutons d'options branchés (effets déterministes,
+            aucun appel réseau) — le champ "Autre réponse" reste désactivé
+            (texte libre → sous-étape 4). */}
         {analyse.alertes.length > 0 && (
           <div className="border border-slate-200 rounded-2xl overflow-hidden">
             <div className="bg-slate-50 px-4 py-2.5 flex items-center justify-between gap-2">
@@ -775,36 +844,58 @@ export default function AnalyseContratEtape3({
               )}
             </div>
             <div className="p-3 space-y-2.5">
-              {analyse.alertes.map((a, i) => (
+              {analyse.alertes.map((a, i) => {
+                const decision = decisions[i]
+                const erreur   = erreursCible[i]
+                const decidee  = !!decision
+                return (
                 <div key={i} className={`rounded-xl border p-3 ${
-                  a.type === 'question' ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'
+                  decidee ? 'bg-green-50 border-green-200' : a.type === 'question' ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'
                 }`}>
-                  <p className={`text-sm font-semibold mb-1 ${a.type === 'question' ? 'text-amber-800' : 'text-slate-600'}`}>
-                    {a.type === 'question' ? '⚠ ' : 'ℹ '}{a.sujet}
+                  <p className={`text-sm font-semibold mb-1 ${
+                    decidee ? 'text-green-800' : a.type === 'question' ? 'text-amber-800' : 'text-slate-600'
+                  }`}>
+                    {decidee ? '✓ ' : a.type === 'question' ? '⚠ ' : 'ℹ '}{a.sujet}
                   </p>
-                  <p className={`text-sm ${a.type === 'question' ? 'text-amber-700' : 'text-slate-500'}`}>{a.message}</p>
+                  <p className={`text-sm ${decidee ? 'text-green-700' : a.type === 'question' ? 'text-amber-700' : 'text-slate-500'}`}>{a.message}</p>
 
-                  {a.type === 'question' && (
-                    <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
-                      {a.options.map((o, oi) => (
-                        <button key={oi} type="button" disabled
-                          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white border border-amber-300 text-amber-700 cursor-default opacity-70">
-                          {o.libelle}
-                        </button>
-                      ))}
-                      <input type="text" disabled placeholder="Autre réponse…"
-                        className="flex-1 min-w-[140px] px-2.5 py-1.5 rounded-lg text-xs border border-slate-200 bg-slate-50 text-slate-400 placeholder:text-slate-400"/>
+                  {a.type === 'question' && !decidee && (
+                    <>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+                        {a.options.map((o, oi) => (
+                          <button key={oi} type="button" onClick={() => appliquerOption(i, o)}
+                            className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white border border-amber-300 text-amber-700 hover:bg-amber-100 transition-colors">
+                            {o.libelle}
+                          </button>
+                        ))}
+                        <input type="text" disabled placeholder="Autre réponse… (bientôt)"
+                          className="flex-1 min-w-[140px] px-2.5 py-1.5 rounded-lg text-xs border border-slate-200 bg-slate-50 text-slate-400 placeholder:text-slate-400"/>
+                      </div>
+                      {erreur && <p className="mt-1.5 text-xs text-red-600">{erreur}</p>}
+                    </>
+                  )}
+
+                  {a.type === 'question' && decidee && (
+                    <div className="mt-2.5">
+                      <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-green-100 text-green-700">
+                        → {decision.optionLibelle} ✓
+                      </span>
                     </div>
                   )}
 
-                  {a.type === 'info' && (
-                    <button type="button" disabled
-                      className="mt-2 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white border border-slate-200 text-slate-400 cursor-default">
+                  {a.type === 'info' && !decidee && (
+                    <button type="button" onClick={() => acquitterInfo(i)}
+                      className="mt-2 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors">
                       ✓ Lu
                     </button>
                   )}
+
+                  {a.type === 'info' && decidee && (
+                    <p className="mt-2 text-[11px] font-semibold text-green-600">✓ Lu</p>
+                  )}
                 </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}

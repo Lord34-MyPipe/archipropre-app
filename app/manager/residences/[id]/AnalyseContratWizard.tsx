@@ -581,6 +581,7 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
             tauxCible={tauxCible}
             facteurRessource={estBinome ? 2 : 1}
             onBack={() => advance(2)}
+            onGoToStep1={() => goTo(1)}
             onContinue={handleStructureContinue}
           />
         ) : step === 4 && !contratId && structureFinale ? (

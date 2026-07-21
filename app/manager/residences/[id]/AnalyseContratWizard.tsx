@@ -534,6 +534,7 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
             plafondRentable={plafondRentable}
             ecartRentable={ecartRentable}
             tauxCible={tauxCible}
+            facteurRessource={estBinome ? 2 : 1}
             onBack={() => advance(2)}
             onContinue={handleStructureContinue}
           />

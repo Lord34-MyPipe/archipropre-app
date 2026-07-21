@@ -1,4 +1,30 @@
-# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 21 juillet 2026 — 1er test terrain réel réussi + polish containers + simplification 3 chemins création contrat + bug binôme corrigé sur 3 endroits + refonte top-down étape 3 + affichage binôme wizard + chantier alertes actionnables livré + fix calibrage question/info + fix chips par jour page Tâches + fix étape 4 reflète l'état des décisions + fix R3 mono/multi-bâtiments + fix binôme dispatch + fix panneau Répartition + VALIDATION BOUT EN BOUT GMCO)
+# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 21 juillet 2026 — 1er test terrain réel réussi + polish containers + simplification 3 chemins création contrat + bug binôme corrigé sur 3 endroits + refonte top-down étape 3 + affichage binôme wizard + chantier alertes actionnables livré + fix calibrage question/info + fix chips par jour page Tâches + fix étape 4 reflète l'état des décisions + fix R3 mono/multi-bâtiments + fix binôme dispatch + fix panneau Répartition + VALIDATION BOUT EN BOUT GMCO + suite de tests E2E Playwright livrée)
+
+**🧪 SUITE DE TESTS E2E (PLAYWRIGHT) — LIVRÉE (21 juillet 2026).** Suite à
+une question directe de Julien sur ce que Claude peut/ne peut pas faire côté
+tests live (voir Key learnings — « règle credentials, non négociable »),
+mise en place d'une suite Playwright complète couvrant les 2 parcours
+critiques (manager : login → wizard → décisions → création → génération ;
+agent : login → scan → validation tâches → rapport) + un test dédié aux 3
+régressions du jour (durées créneau, mono-bâtiment, chips par jour). Tourne
+contre la base Supabase existante, isolée sur une résidence + 2 agents de
+test dédiés (jamais GMCO ni un compte réel — décision actée avec Julien
+avant implémentation). Workflow GitHub Actions à chaque push sur `main`,
+rapport HTML (traces + screenshots des échecs) publié en artefact. **Claude
+n'exécute jamais la suite lui-même** (déclenche de vraies connexions) —
+seul Julien ou la CI peuvent la lancer ; Claude écrit/fait évoluer les tests
+et lit les rapports après coup. Détail complet : voir la section dédiée
+« CHANTIER TESTS E2E (PLAYWRIGHT) ».
+
+**⚠️ PUSH BLOQUÉ (à débloquer par Julien) :** le commit `399a0e8` (workflow
+GitHub Actions, `.github/workflows/e2e.yml`) et tout ce qui suit sont
+committés localement mais **pas poussés** — GitHub refuse le push
+(`refusing to allow a Personal Access Token to create or update workflow
+... without workflow scope`). Le token Git utilisé n'a pas le scope
+`workflow`, requis par GitHub pour tout push touchant `.github/workflows/*`.
+**Action requise :** ajouter le scope `workflow` au personal access token
+(GitHub → Settings → Developer settings → Personal access tokens), ou
+pousser ces commits manuellement depuis un poste avec les droits.
 
 **🏁 VALIDATION DE BOUT EN BOUT GMCO (21 juillet 2026) — JALON MAJEUR.**
 Premier contrat entièrement configuré et testé sur la chaîne complète, du
@@ -3495,6 +3521,76 @@ pour la suite — voir aussi Key learnings ci-dessous) :
 | 3 | Moyenne lissée inter-jours sur `duree_totale_estimee_minutes` | `RepartitionSemainePanel.tsx` (panneau "Répartition de la semaine") | **Corrigé en affichage** (`9d37e76`, item 25) — lit le créneau directement. La valeur persistée (`dureeJour`/`buildDispatch`) **conservée**, toujours purement informative |
 | 4 | `duree_totale_estimee_minutes` produit par l'IA (source des mécanismes 1 et 3) | Champ stocké dans `dispatch_semaine`, généré à l'étape 3 du wizard (règle R5 du prompt) | **Conservé** — reste une estimation informative de l'IA par design, plus aucun écran de calcul réel n'en dépend après ces fixes ; seul le panneau (mécanisme 3) l'utilisait pour l'affichage, désormais découplé |
 
+## CHANTIER TESTS E2E (PLAYWRIGHT) — LIVRÉ (21 juillet 2026)
+
+**Origine :** après la validation bout en bout GMCO (item 26 ci-dessus) et
+ses 3 allers-retours de test réel dans la même journée, Julien a posé une
+question directe sur ce que Claude peut/ne peut pas faire pour tester l'app
+lui-même — sans que Julien ait à retester manuellement à chaque fix. Réponse
+donnée avant tout code (voir Key learnings ci-dessous pour la règle exacte) :
+Claude ne peut jamais se connecter (interactivement ou via script automatisé
+qu'il exécute lui-même), même avec autorisation explicite — mais peut écrire
+une suite Playwright complète, à charge de Julien ou de la CI de l'exécuter.
+
+**Décision d'environnement actée avant implémentation** (3 options
+présentées, tranchées ensemble) :
+- Base de données : **Supabase existant (prod)**, pas de projet séparé —
+  le branching Supabase (DB éphémère par run, testé via `list_branches`)
+  n'est pas disponible sur le plan actuel. Isolation par une **résidence de
+  test dédiée** (`ZZZ-E2E-TEST (Playwright — ne pas modifier manuellement)`,
+  jamais GMCO) + **2 agents de test dédiés** en binôme (`agent-e2e@…` +
+  miroir), provisionnés automatiquement et idempotents entre runs. Chaque
+  contrat de test créé par un run est entièrement supprimé en fin de test
+  (même RPC `delete_contrat_cascade` que les 2 nettoyages manuels GMCO de
+  cette session).
+- App testée : **serveur Next.js local dans le runner** (`npm run build &&
+  npm run start`), pas de déploiement Preview Vercel — plus rapide, teste
+  exactement le code du commit.
+
+**Ce qui a été livré (4 commits) :**
+1. **`819dc5b` — Infrastructure + parcours manager/agent.**
+   `e2e/support/fixtures.ts` (provisioning idempotent résidence + 2 agents,
+   réplique en script autonome la logique de `app/api/agents/route.ts` et
+   `app/api/residences/creer-rapide/route.ts` — ces routes exigent une
+   session manager via `next/headers`, indisponible hors requête Next.js).
+   `e2e/01-manager-flow.spec.ts` : parcours complet réel (créneaux mardi
+   60min/vendredi 90min identiques au cas GMCO, décisions résolues en
+   cliquant l'option "garder tel quel" — TOUJOURS proposée par le prompt
+   pour une carte "question", cf chantier alertes actionnables — pour rester
+   robuste au texte non déterministe généré par Claude d'un run à l'autre).
+   `e2e/03-agent-flow.spec.ts` : seed déterministe dédié (1 bâtiment/1 zone/
+   1 tâche/1 intervention datée aujourd'hui, indépendant du wizard) puis scan
+   via le mode `?test=1` **déjà documenté dans le code** de
+   `app/agent/scan/page.tsx` (fenêtre J-3/J+3, pensé précisément pour ce
+   genre de test). 2 `data-testid` ajoutés dans `AnalyseContratWizard.tsx`
+   (créneaux vs containers, 2 sélecteurs de jours identiques sinon
+   ambigus) — changement additif, aucun comportement modifié.
+2. **`bf6b476` — Test dédié aux 3 régressions du 21/07.** Contrat seedé
+   directement via l'API (`creer-complet` + `planning/generer`, structure et
+   `dispatch_semaine` fixes), PAS via le wizard IA — ces assertions portent
+   sur des nombres précis (durées exactes, absence de tournée, valeur des
+   chips), elles ne doivent jamais dépendre du texte non déterministe de
+   l'IA. Vérifie précisément les fixes `05d26f7`/`57a7128`/`2be7b99`.
+3. **`399a0e8` — Workflow GitHub Actions.** `.github/workflows/e2e.yml` : à
+   chaque push sur `main`, build + démarre l'app, installe Chromium, lance
+   la suite, publie le rapport HTML (traces + screenshots des échecs) en
+   artefact téléchargeable — même si la suite échoue.
+4. **`f43af24` — Documentation.** `docs/E2E_TESTS.md` : commande exacte
+   (`npm run test:e2e`), procédure `.env.test` (jamais commité,
+   `.env.test.example` commis pour la structure), secrets GitHub requis,
+   rappel explicite que Claude ne lance jamais la suite lui-même.
+
+**Vérifié sans exécuter la suite** (impossible sans connexion réelle, cf
+règle credentials) : build propre, `tsc --noEmit` propre, `npx playwright
+test --list` détecte correctement les 5 tests dans les 3 fichiers.
+**L'exécution réelle reste à faire par Julien ou par la CI** — non
+confirmée par Claude à ce stade.
+
+**⚠️ PUSH DES 4 COMMITS BLOQUÉ** dès `399a0e8` (workflow) : le token Git
+utilisé n'a pas le scope `workflow` requis par GitHub pour toucher
+`.github/workflows/*`. Voir note en tête de fichier — à débloquer par
+Julien (scope à ajouter au token, ou push manuel).
+
 ## Ordre de configuration (session Ana)
 
 Séquence obligatoire (l'étape ③ du wizard résidence dépend des agents existants) :
@@ -3863,6 +3959,40 @@ remonter à la surface, sur plusieurs jours de session. Un audit
 "inventaire des calculs de durée" en une seule passe, AVANT de commencer
 la refonte top-down, aurait probablement évité les 3 allers-retours de
 cette journée.
+
+### Règle credentials — non négociable, redemandée explicitement le 21/07/2026
+
+Julien a demandé directement si son autorisation explicite ("ce sont mes
+comptes de test, sur mon app, je t'autorise") changeait la position de
+Claude sur la connexion live. **Réponse actée, à ne jamais requestionner :
+non.** Entrer un mot de passe pour authentifier — dans un formulaire de
+login, via `curl` sur l'API Supabase Auth, ou via un script Playwright que
+Claude écrirait ET exécuterait lui-même — reste interdit **même avec
+autorisation explicite, même sur les comptes de test du propre projet de
+l'utilisateur.** Ce n'est pas une évaluation de risque au cas par cas, c'est
+une règle catégorique de l'outil. Distinction importante retenue : Claude
+PEUT provisionner des comptes de test via l'API admin Supabase (service-role,
+déjà autorisée — c'est de l'infra/seeding, pas une authentification en tant
+qu'utilisateur) et PEUT écrire des scripts Playwright qui, une fois exécutés
+par un humain ou la CI, se connectent — la ligne rouge est précisément
+l'exécution du geste d'authentification par Claude lui-même, jamais l'écriture
+du code qui l'automatise. Résultat concret : suite Playwright livrée (section
+ci-dessus), mais jamais exécutée par Claude — seulement `--list`/`tsc
+--noEmit` pour vérifier sans se connecter.
+
+### GitHub — un token sans scope `workflow` ne peut pas toucher `.github/workflows/*`
+
+Découvert en poussant le commit `399a0e8` (nouveau workflow Actions) :
+GitHub refuse tout push touchant `.github/workflows/` si le personal access
+token utilisé n'a pas explicitement le scope `workflow` — même si tous les
+autres pushes de la session ont fonctionné sans problème avec ce même token.
+Erreur exacte : `refusing to allow a Personal Access Token to create or
+update workflow ... without workflow scope`. Pas un bug, une restriction de
+sécurité volontaire de GitHub. Réflexe pour la suite : si un futur chantier
+ajoute/modifie un fichier sous `.github/workflows/`, s'attendre à ce que le
+push échoue tant que ce scope n'est pas ajouté au token (GitHub → Settings →
+Developer settings → Personal access tokens) — ne pas chercher un autre bug
+côté repo ou côté commit.
 
 ## À faire Phase 3
 

@@ -21,11 +21,24 @@ export const ORDRE_JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', '
 
 // ── Prompt système — règles R1-R5 (universelles, cf conception du chantier) ──
 
-export function reglesDispatchPrompt(): string {
+// nbBatimentsConnus : nombre RÉEL de bâtiments de la résidence quand il est
+// déjà connu avant l'appel IA (dispatch/proposer — structure existante).
+// Absent (undefined) pour analyse-contrat : à ce stade les bâtiments sont
+// l'OUTPUT que l'IA est en train de produire, pas une donnée d'entrée — R3
+// lui demande alors de compter elle-même son propre tableau "batiments".
+// Dans les deux cas, R3 ne doit JAMAIS produire de tournée transverse sur un
+// mono-bâtiment (fix 21/07, audit GMCO : R3 appliquée littéralement à un
+// contrat mono-bâtiment inventait un "2e lieu" fictif là où il n'y a qu'un
+// seul bâtiment, cassant le calcul de durée par jour en aval).
+export function reglesDispatchPrompt(nbBatimentsConnus?: number): string {
+  const r3ContexteBatiments = nbBatimentsConnus != null
+    ? `Cette résidence compte EXACTEMENT ${nbBatimentsConnus} bâtiment${nbBatimentsConnus > 1 ? 's' : ''} (donnée fournie, ne la recompte pas).`
+    : `Compte le nombre de bâtiments DISTINCTS que TU VIENS DE PRODUIRE dans "batiments" ci-dessus.`
+
   return `RÈGLES DE RÉPARTITION SEMAINE (dispatch_semaine) — ABSOLUES, valables pour toute résidence :
 R1. Un bâtiment commencé est terminé dans la même intervention : ne JAMAIS répartir les zones d'un même bâtiment sur plusieurs jours dans batiments_complets.
 R2. Les bâtiments identiques se répartissent équitablement sur les jours de passage (ex. 9 bâtiments / 5 jours → 2-2-2-2-1). Chaque bâtiment apparaît dans EXACTEMENT UN jour de batiments_complets (jamais deux, jamais zéro).
-R3. Pour une prestation bi-hebdomadaire par bâtiment (ex. halls 2×/semaine) : le 1er passage a lieu le jour de l'entretien complet du bâtiment (il fait partie de batiments_complets ce jour-là). Le 2e passage est une "tournée transverse" (tournees_transverses) un AUTRE jour, espacé d'AU MOINS 2 jours du premier passage. Place les tournées transverses en priorité sur les jours les plus légers (ceux avec le moins de bâtiments complets ce jour-là).
+R3. ${r3ContexteBatiments} SI PLUSIEURS bâtiments (2 ou plus) : pour une prestation bi-hebdomadaire par bâtiment (ex. halls 2×/semaine), le 1er passage a lieu le jour de l'entretien complet du bâtiment (il fait partie de batiments_complets ce jour-là), le 2e passage est une "tournée transverse" (tournees_transverses) un AUTRE jour, espacé d'AU MOINS 2 jours du premier passage — place les tournées transverses en priorité sur les jours les plus légers (ceux avec le moins de bâtiments complets ce jour-là). SI UN SEUL bâtiment (mono-bâtiment) : N'UTILISE JAMAIS tournees_transverses, quelle que soit la fréquence des tâches — il n'y a qu'un seul lieu à visiter, pas de second bâtiment à "sauter" pour justifier une tournée séparée. Un jour de passage plus léger (ex. 2e passage hebdomadaire avec moins de tâches) reste simplement ce même bâtiment dans batiments_complets ce jour-là ; la différence de charge entre les jours est déjà entièrement portée par jours_semaine au niveau de chaque tâche, pas par dispatch_semaine.
 R4. Containers = zone commune résidence (pas par bâtiment, jamais dans batiments_complets ni tournees_transverses). Le camion de collecte passe TOUJOURS de nuit : si jours_ramassage_containers est fourni, pour chaque jour de ramassage J, sortie = veille de J (J-1), rentrée = LE JOUR MÊME de J (jamais le lendemain — la collecte a lieu pendant la nuit précédant J, les bacs peuvent donc être rentrés dès J). Si deux jours de ramassage sont consécutifs (J et J+1), la sortie du second (J+1, soit veille = J) coïncide avec la rentrée du premier (J) : une seule entrée ce jour-là, containers="sortie" prime. Si le jour de ramassage J lui-même n'est PAS un jour de passage de l'agent (planningActuel.jours) — la rentrée ne peut alors pas y être faite — NE JAMAIS inventer un jour de passage supplémentaire : ajoute une alerte explicite décrivant précisément le conflit et proposant 1 ou 2 alternatives (jour de passage suivant disponible dans planningActuel.jours, ou report), en laissant le choix final à l'utilisateur.
 R5. La somme de duree_totale_estimee_minutes d'un jour doit tenir dans le créneau de ce jour (heure_fin − heure_debut) ; si ça dépasse, ajoute une alerte chiffrant précisément le dépassement.
 

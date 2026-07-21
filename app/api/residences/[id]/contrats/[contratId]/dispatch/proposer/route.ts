@@ -61,7 +61,7 @@ async function resolveAndCheck(params: Params) {
 
 // ── Prompt système — réutilise les règles R1-R5 partagées, sans réanalyser le contrat ──
 
-function buildSystemPrompt(): string {
+function buildSystemPrompt(nbBatiments: number): string {
   return `Tu es un expert en planification de tournées de nettoyage pour Archipropre Services (société de nettoyage professionnel, Montpellier). On te fournit la structure bâtiments/zones déjà en place pour une résidence (elle ne change pas), le planning de passage actuel de l'agent, et éventuellement les jours de ramassage containers. Ta seule mission : produire une répartition semaine (dispatch_semaine) — quel bâtiment complet passe quel jour, quelles tournées transverses, et les mouvements containers.
 
 RÈGLES DE SORTIE — ABSOLUES :
@@ -69,7 +69,7 @@ RÈGLES DE SORTIE — ABSOLUES :
 2. "alertes" est un tableau de chaînes (peut être vide) — utilise-le pour tout conflit ou dépassement détecté (cf règles R4/R5 ci-dessous).
 3. Ne modifie, n'invente et ne supprime AUCUN bâtiment ni AUCUNE zone : utilise EXACTEMENT les noms fournis en contexte.
 
-${reglesDispatchPrompt()}`
+${reglesDispatchPrompt(nbBatiments)}`
 }
 
 function buildUserMessage(params: {
@@ -198,7 +198,7 @@ export async function POST(req: NextRequest, { params }: { params: Params }) {
   const dispatchActuelBrut: DispatchJour[] = Array.isArray(contrat.dispatch_semaine) ? contrat.dispatch_semaine : []
   const { dispatch: dispatchActuel, warnings: warningsActuel } = recalculerDureesDispatch(dispatchActuelBrut, creneaux, zones, estBinome)
 
-  const systemPrompt = buildSystemPrompt()
+  const systemPrompt = buildSystemPrompt(batiments.length)
   const userMessage   = buildUserMessage({ batiments, joursPassage, creneaux, joursRamassageContainers, zonesBiHebdo, enveloppeMinutesHebdo })
 
   let rawText: string

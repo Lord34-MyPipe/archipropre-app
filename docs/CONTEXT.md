@@ -1,4 +1,4 @@
-# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 21 juillet 2026 — 1er test terrain réel réussi + polish containers + simplification 3 chemins création contrat + bug binôme corrigé sur 3 endroits + refonte top-down étape 3 + affichage binôme wizard)
+# ⚡ ÉTAT ACTUEL DU PROJET (mis à jour 21 juillet 2026 — 1er test terrain réel réussi + polish containers + simplification 3 chemins création contrat + bug binôme corrigé sur 3 endroits + refonte top-down étape 3 + affichage binôme wizard + chantier alertes actionnables livré + fix calibrage question/info + fix chips par jour page Tâches + fix étape 4 reflète l'état des décisions)
 
 **PREMIER TEST TERRAIN RÉEL RÉUSSI le 20/07/2026** — Julien a scanné une
 mission PRIEURE neuve (5 éléments : Bât 1, Bât 2, 2 tournées Halls, 1
@@ -131,7 +131,56 @@ affiche les deux noms ("Agents : Edgard Rakotondrasoa + Marie Razafindrakoto
 (binôme)"). Affichage pur dérivé de `binome_agent_id`, aucune donnée
 supplémentaire stockée.
 
-**RESTE À FAIRE (important, deux chantiers identifiés, aucun commencé) :**
+**CHANTIER "ALERTES ACTIONNABLES" — LIVRÉ COMPLET (21 juillet 2026, 7
+commits).** Constat de Julien en test réel sur GMCO : l'IA posait de vraies
+questions dans ses alertes ("à valider avec le manager") sans aucun moyen d'y
+répondre — dialogue à sens unique, seul bouton = validation globale. Audit +
+maquette validés par Julien avant tout code, puis livrés en 5 sous-étapes +
+2 fix de calibrage suite à nouveau test réel le même jour. Décisions clé :
+boutons de choix rapides + texte libre pour les cas complexes, application EN
+DIRECT sur la structure (jamais de "tout décider puis relancer une analyse
+globale"), jamais bloquant. Vocabulaire fermé de 6 effets déterministes
+(`move_task_day`, `set_semaine_du_mois`, `set_mois_de_annee`, `remove_task`,
+`add_creneau_hint`, `none`), mappés 1:1 sur les mutateurs déjà existants du
+wizard — principe : un bouton ne peut promettre que ce que le code sait
+exécuter, jamais de prose IA exécutée directement. Ciblage par clé naturelle
+(bâtiment+zone+libellé), texte libre routé vers un endpoint dédié `POST
+/api/ia/analyse-contrat/ajuster` (prompt court, structure ajustée re-
+sanitisée). Détail complet (7 commits, architecture, bugs trouvés en test
+réel et corrigés) : voir items 19 et 20, section « CHANTIER ANALYSE CONTRAT ».
+
+**FIX CHIPS PAR JOUR page Tâches (21 juillet 2026, commit `2be7b99`).** Suite
+directe du chantier alertes (même journée de test réel GMCO) : Julien a
+constaté que les chips Lun...Dim de la page `/taches` (`CompteurRepartition`)
+affichaient Mar 2h18/Ven 2h41 au lieu des 2h00/3h00 attendus (créneaux réels ×
+binôme). Audit (lecture seule, avant tout code) a identifié un **troisième
+mécanisme de calcul**, plus ancien que la refonte top-down (`computeProrataZones`,
+purement financier — montant÷taux, aucun lien avec créneaux ni binôme),
+jamais migré quand l'étape 3 du wizard est passée top-down. **Résultat rassurant
+de l'audit : divergence isolée à cet affichage** — la génération réelle
+(`/api/planning/generer` en mode `dispatch_semaine`) et la simulation "Simuler
+au taux rentable" sont déjà créneau-based (corrigées lors du fix binôme du
+même jour, item 17). Fix à périmètre strict : chips dérivées de
+`creneaux_acceptes` × `facteurRessource`, repli automatique sur l'ancien
+calcul si le contrat n'a pas de créneaux structurés (contrats legacy), bandeau
+global "Réparti X sur Y vendues/semaine" et `computeProrataZones` non touchés
+(toujours utiles au legacy — dette déjà notée plus bas, non résolue par ce
+fix). Détail complet : voir item 21, section « CHANTIER ANALYSE CONTRAT ».
+
+**FIX ÉTAPE 4 IGNORAIT L'ÉTAT DES DÉCISIONS (21 juillet 2026, commit
+`ac1492e`).** Nouveau test réel GMCO (résidence nettoyée à blanc pour retester
+le wizard bout en bout) : les 3 décisions prises à l'étape 3 (cartes vertes ✓)
+étaient ré-affichées en prose brute ⚠ à l'étape 4, comme si rien n'avait été
+décidé. Vérifié EN PREMIER par script réel (même algorithme exact que le
+composant) que la structure envoyée à la RPC était déjà correcte — pas un bug
+de fond, seulement `onContinue` qui ne transmettait jamais l'état des
+décisions de l'étape 3 jusqu'à l'étape 4. Fix : état `decisions` remonté
+étape 3 → Wizard → étape 4, qui réutilise les mêmes styles visuels (carte
+verte + badge du choix fait) que l'étape 3 au lieu de répéter le message
+d'origine. Détail complet : voir item 22, section « CHANTIER ANALYSE
+CONTRAT ».
+
+**RESTE À FAIRE (un chantier identifié, non commencé — l'autre livré depuis) :**
 1. **Sous-étape 6 de la refonte top-down** : la génération réelle des tâches
    mensuelles positionnées. `/api/planning/generer` ne lit toujours QUE
    `frequence_type='hebdo'` — une tâche "mensuelle, 2e mardi du mois" est
@@ -140,8 +189,19 @@ supplémentaire stockée.
    identifié : calcul "Nième occurrence du jour dans le mois", insertion dans
    l'intervention du jour concerné, gestion du conflit si le jour calculé
    n'est pas un jour de passage de l'agent (même esprit que R4 containers).
-2. **Alertes actionnables** (nouveau chantier cadré avec Julien, audit +
-   conception livrés, code pas commencé) : aujourd'hui l'IA renvoie
+   **Toujours non commencé au 21/07/2026 soir** (reconfirmé par audit lors du
+   fix chips par jour, voir item 21 — cette route ne lit toujours que
+   `frequence_type='hebdo'`).
+2. ~~**Alertes actionnables** (nouveau chantier cadré avec Julien, audit +
+   conception livrés, code pas commencé)~~ → **LIVRÉ le 21/07/2026, en 7
+   commits** (5 de livraison + 2 fix de calibrage/affichage suite à test réel
+   GMCO) : voir items 19 et 20, section « CHANTIER ANALYSE CONTRAT ». Le
+   mécanisme décrit ci-dessous (boutons d'options + texte libre, application
+   en direct, informatives acquittables) est exactement ce qui a été livré,
+   vocabulaire d'effets fermé et ciblage par clé naturelle en plus — détail
+   dans les items 19/20. Texte original de cadrage conservé ci-dessous pour
+   la trace de raisonnement :
+   aujourd'hui l'IA renvoie
    `alertes[]` en texte libre — parfois de vraies questions ("à valider avec
    le manager", options explicites en prose) auxquelles rien ne permet de
    répondre dans le wizard (dialogue à sens unique, seul bouton = validation
@@ -180,7 +240,12 @@ X sur Y vendues/semaine — 100%" (`CompteurRepartition`, page Tâches) est une
 toujours 100% dès que chaque zone a ≥1 passage/semaine dans `taches_template`,
 quel que soit le dispatch réel. Ne pas s'y fier comme preuve que l'organisation
 tient dans l'enveloppe vendue. À clarifier ou retirer, hors périmètre traité
-à ce jour.
+à ce jour. → **Le 21/07/2026, ce même widget (`CompteurRepartition`) a été
+ré-audité et son sous-composant "chips par jour" corrigé (commit `2be7b99`,
+item 21 section « CHANTIER ANALYSE CONTRAT ») — mais explicitement PAS ce
+bandeau global "Réparti X sur Y" ni `computeProrataZones`, laissés inchangés
+par périmètre strict de ce fix. Cette dette reste donc entièrement ouverte,
+non résolue.**
 
 **NOUVELLE DETTE ARCHITECTURE (identifiée par audit, non traitée) :** 3
 mécanismes de création de contrat parallèles coexistent sur la fiche
@@ -210,10 +275,13 @@ pilote effectif.
 4. Lot 3 futur (non urgent) : mode « restructurer » un contrat existant écrit
    réellement (aujourd'hui lecture seule / dispatch-only).
 5. Clarifier/retirer le bandeau "Réparti 100%" trompeur (nouvelle dette
-   ci-dessus).
+   ci-dessus). **Toujours ouvert au 21/07/2026** — seules les chips par jour
+   du même widget ont été corrigées (item 21), pas ce bandeau.
 6. Décider de la consolidation des 3 chemins de création de contrat (nouvelle
    dette architecture ci-dessus) — rediriger les 2 chemins manuels vers le
    wizard IA, ou documenter/garder les 3 en connaissance de cause.
+7. Sous-étape 6 de la refonte top-down (génération réelle des tâches basse
+   fréquence, voir ci-dessus) — chantier lourd, toujours non commencé.
 
 Avant (19 juillet 2026, matin) : **CHANTIER "ANALYSE CONTRAT" COMPLET et
 fonctionnel** : wizard 4 étapes (Identité / Analyse / Répartition /
@@ -2964,7 +3032,12 @@ gestion du conflit si le jour calculé n'est PAS un jour de passage de l'agent
 (même esprit que R4 pour les containers — signaler plutôt qu'inventer un jour
 supplémentaire).
 
-**NOUVEAU CHANTIER CADRÉ, NON COMMENCÉ : alertes actionnables.** Constat de
+**NOUVEAU CHANTIER CADRÉ, NON COMMENCÉ : alertes actionnables.** → **LIVRÉ le
+21/07/2026, voir items 19 et 20 ci-dessous** — les questions ouvertes listées
+plus bas (schéma JSON, endpoint dédié, persistance, rétrocompatibilité) ont
+toutes été tranchées lors de l'audit de reprise (item 19). Texte de cadrage
+original conservé intégralement ci-dessous pour la trace de raisonnement.
+Constat de
 Julien après usage réel sur GMCO : l'IA produit des alertes en texte libre qui
 posent parfois de vraies questions ("à valider avec le manager", options
 explicites en prose) — mais rien ne permet d'y répondre dans le wizard,
@@ -2987,6 +3060,221 @@ des décisions si le manager quitte le wizard, rétrocompatibilité avec des
 analyses déjà générées au format prose. **Prochaine session : reprendre
 l'audit là où il s'est arrêté avant tout code — Julien doit valider la
 maquette en premier.**
+
+### 19. CHANTIER "ALERTES ACTIONNABLES" — LIVRÉ COMPLET (21 juillet 2026, 5 commits)
+
+**Constat de départ (Julien, test réel GMCO) :** l'IA posait de vraies
+questions dans ses alertes ("à valider avec le manager") sans aucun moyen d'y
+répondre — le seul bouton du bloc "Décisions & remarques" était la validation
+globale, dialogue à sens unique. Audit + conception livrés en lecture seule
+d'abord (aucun code avant validation de la maquette par Julien), reprenant
+exactement le chantier cadré mais interrompu le 21/07 matin (voir paragraphe
+ci-dessus, conservé intégralement).
+
+**Décisions actées (validées par Julien avant tout code) :**
+- Chaque alerte-question devient une **carte de décision** : boutons de choix
+  rapides + un champ texte libre pour les cas complexes (renvoyé à l'IA qui
+  ajuste). Une décision prise s'applique **EN DIRECT** sur la structure —
+  jamais de "tout décider puis relancer une analyse globale".
+- Les alertes purement informatives restent de simples notes, acquittables
+  (✓ Lu), sans options.
+- Le compteur "N décisions en attente" est **informatif uniquement, jamais
+  bloquant** — le bouton de validation finale reste toujours actif.
+
+**Architecture retenue (les 4 questions ouvertes du cadrage initial,
+tranchées) :**
+- Schéma structuré `Alerte { type: "question"|"info", sujet, message,
+  options[] }` / `AlerteOption { libelle, effet, cible?, valeur? }` — remplace
+  l'ancien `alertes: string[]` en texte libre.
+- **VOCABULAIRE FERMÉ de 6 effets**, chacun mappé 1:1 sur un mutateur
+  **déjà existant** du wizard (`updateTache`/`deleteTache`/`goTo`, aucun
+  nouveau mécanisme) : `move_task_day`, `set_semaine_du_mois`,
+  `set_mois_de_annee`, `remove_task`, `add_creneau_hint` (→ `goTo(1)`, les
+  créneaux restent verrouillés à l'étape 1, jamais modifiables depuis une
+  alerte), `none`. **Principe retenu : un bouton ne peut promettre que ce que
+  le code sait exécuter — jamais de prose IA exécutée directement.**
+- **Ciblage par CLÉ NATURELLE** (`{batiment, zone, libelle}`, résolue côté
+  client par recherche dans l'arbre local) plutôt qu'un `id` — l'IA ne connaît
+  pas les id locaux au moment de la génération. Si la cible est introuvable au
+  clic (tâche renommée/supprimée entre-temps) : message propre sur la carte
+  ("Cette tâche a été modifiée — décision non applicable") au lieu d'un clic
+  silencieux sans effet (ajout demandé par Julien pendant le cadrage).
+- **Texte libre → endpoint DÉDIÉ** `POST /api/ia/analyse-contrat/ajuster`
+  (prompt court et étroit : structure actuelle + question posée + réponse du
+  manager + planning → structure ajustée, re-sanitisée) plutôt qu'une
+  réanalyse complète — plus rapide, moins cher, plus prévisible. Sanitisation
+  (`sanitiserBatiments`/`sanitiserAnalyse`) **extraite en lib partagée**
+  `lib/analyseContratShared.ts`, importée par les deux routes IA (`analyse-contrat`
+  et `ajuster`) — ce cas précis justifie l'extraction (contrairement au
+  précédent `lib/dispatchDuree.ts` qui duplique intentionnellement, cf Key
+  learnings) car les deux routes valident **exactement la même forme** de
+  données et ne doivent jamais diverger.
+- **Pas de persistance en v1** : état des décisions en state React de
+  session, cohérent avec le reste du wizard (rien ne survit à la fermeture).
+- **Pas de rétrocompatibilité nécessaire** : les alertes du wizard ne sont
+  **jamais persistées en base** — la table `alertes` existante en base est
+  un mécanisme de notifications agent totalement différent, sans rapport.
+
+**Les 5 commits (un par sous-étape, build avant chaque commit, testable entre
+chaque) :**
+1. **`ab5eb6a` — Schéma + prompt + sanitisation.** `Alerte`/`AlerteOption`
+   dans `analyse-contrat/route.ts`, consigne de prompt pour formuler les
+   questions avec options structurées quand pertinent. **Bug de cible croisée
+   entre alertes trouvé au test réel sur GMCO** : le modèle recopiait parfois
+   la `cible` d'une alerte dans l'option d'une AUTRE alerte (schéma-valide,
+   sémantiquement faux — le sanitiseur ne peut pas détecter ce cas, il vérifie
+   seulement que la cible existe QUELQUE PART dans l'arbre, pas qu'elle
+   appartient à la bonne alerte). Corrigé par une consigne de prompt explicite
+   ("CHAQUE option d'une alerte donnée ne référence QUE la tâche dont CETTE
+   alerte parle — ne réutilise JAMAIS la cible d'une autre alerte"),
+   re-vérifié par script réel : résolu.
+2. **`15418ca`** — Types propagés (`AnalyseIA.alertes: Alerte[]`) + UI bloc
+   "Décisions & remarques" en lecture seule (cartes amber "question" / bleu
+   "info", boutons pas encore actifs).
+3. **`d24a038`** — Les 5 effets déterministes branchés sur les mutateurs
+   existants, état "décidé" par carte (fond vert, badge du choix fait),
+   message si cible introuvable, `add_creneau_hint` → `goTo(1)` avec contexte
+   affiché.
+4. **`184b05c`** — Endpoint `POST /api/ia/analyse-contrat/ajuster` +
+   `lib/analyseContratShared.ts` (extraction). Champ "Autre réponse..." +
+   bouton "Envoyer" avec état de chargement. Vérifié par script réel (appel
+   Claude direct, pas mock) : une réponse libre simple ("Plutôt le vendredi,
+   3e semaine") ajuste UNIQUEMENT la tâche concernée, tout le reste de la
+   structure recopié à l'identique (4 tâches en entrée, 4 en sortie, 3
+   inchangées byte pour byte).
+5. **`87b724c`** — Compteur "N décisions en attente" remonté de l'étape 3 à
+   l'étape 4 (`onContinue` étendu avec un 3e paramètre), badge non bloquant
+   près du bouton "Créer le contrat complet".
+
+**Vérifié à chaque étape UI par lecture de code + build strict** (jamais de
+login manager réel, règle absolue de la session) ; les sous-étapes 1 et 4
+vérifiées en plus par script réel appelant l'API Anthropic directement sur un
+descriptif GMCO reconstitué (scripts temporaires, supprimés après usage,
+jamais committés).
+
+### 20. FIX CALIBRAGE question/info des alertes (commit `c596375`, 21 juillet 2026)
+
+**Test réel Julien sur GMCO (le jour même, après livraison de l'item 19) :**
+le mécanisme de décision fonctionnait ("✓ Lu" opérationnel), mais les deux
+alertes produites par l'IA sur ce cas réel étaient TOUTES LES DEUX classées
+`type: "info"` (sans boutons) alors que leur contenu posait des questions
+explicites ("le manager peut ajuster la semaine du mois si nécessaire",
+"si un passage lundi doit être ajouté, cela relève d'une modification du
+planning") — le mécanisme complet restait inutilisé faute de bonnes
+alertes-questions.
+
+**Fix :**
+- Règle de classification durcie dans le prompt (`analyse-contrat/route.ts`) :
+  toute invitation à décider/ajuster/valider/choisir — même implicite
+  ("peut ajuster", "si nécessaire", "à confirmer", "positionné par défaut")
+  → **OBLIGATOIREMENT** `type: "question"` avec des options couvrant les
+  choix évoqués, toujours une option "garder tel quel" (`effet: "none"`).
+  `type: "info"` réservé aux constats **sans aucune décision possible**. En
+  cas de doute : toujours "question" (mieux vaut une option inutile qu'une
+  décision cachée).
+- 2 exemples few-shot ajoutés au prompt, ancrant précisément les deux cas
+  ratés sur GMCO (semaine du mois positionnée par défaut, jour hors planning
+  évoqué dans le texte).
+- **Filet de sécurité côté client** : le texte libre ("Répondre...", lien
+  discret) est maintenant aussi disponible sur les cartes `info` — une future
+  erreur de classification IA reste toujours adressable par le manager,
+  jamais un cul-de-sac.
+- Vérifié par script réel (nouveau descriptif GMCO reconstitué, mêmes deux
+  cas) : les deux questions reviennent bien en `type: "question"` avec
+  options et cibles correctes ; un cas info authentique (mention du binôme,
+  aucune décision possible) reste classé `info` — pas de sur-classification
+  en sens inverse.
+
+### 21. FIX CHIPS PAR JOUR page Tâches (commit `2be7b99`, 21 juillet 2026)
+
+**Constat Julien sur GMCO (même journée) :** la page `/manager/residences/
+[id]/taches` affichait des chips par jour (Mar 2h18, Ven 2h41) qui ne
+respectaient pas les créneaux réels (attendu : Mar 2h00/Ven 3h00, ressource
+binôme, proportion 40/60 imposée par les créneaux) alors que le total hebdo
+(299≈300) semblait correct.
+
+**Audit demandé et livré en lecture seule avant tout code.** A identifié un
+**troisième mécanisme de calcul**, encore plus ancien que le modèle bottom-up
+déjà abandonné à l'item 18 : les chips venaient de `CompteurRepartition`/
+`repartiParJour` (`TachesClient.tsx`), lui-même basé sur `computeProrataZones`
+(`lib/prorata.ts`) — un prorata **purement financier** (`montant_mensuel ÷
+taux_horaire_facturation`, réparti entre zones au prorata de `coef_duree`),
+sans AUCUN lien avec les créneaux réels ni le binôme. Ce mécanisme est un
+vestige antérieur même au top-down : le code documente lui-même (commentaire
+`/api/planning/generer` §8b-3) qu'il a été introduit comme correctif à un
+problème encore plus ancien (`taches_template.duree_minutes` toujours à 0,
+car le wizard top-down ne calcule plus aucune durée — confirmé : les 37
+tâches GMCO ont bien `duree_minutes=0`, `buildStructure()` côté client
+n'envoie même plus ce champ). Ce prorata financier n'a simplement jamais été
+migré quand l'étape 3 du wizard est passée top-down (item 18).
+
+**Résultat rassurant de l'audit, à retenir :** la divergence était **isolée à
+cet affichage**. La génération réelle du planning (`/api/planning/generer`,
+mode `dispatch_semaine` actif — cas de tous les contrats créés via le wizard
+top-down, dont GMCO) utilise déjà un calcul créneau-based, corrigé lors du fix
+binôme du même jour (item 17, "correctif durée dispatch"). La simulation
+"Simuler au taux rentable" (`lib/dispatchDuree.ts::recalculerDureesDispatch`)
+également. `computeProrataZones` n'intervient plus que dans la branche
+"mode historique" de `generer/route.ts` (contrats **sans** `dispatch_semaine`,
+donc jamais un contrat top-down).
+
+**Fix, périmètre STRICT (validé par Julien avant code) :** les chips par jour
+dérivent maintenant directement de `contrat.creneaux_acceptes` ×
+`facteurRessource` (binôme ×2, résolu côté serveur via `profiles.binome_agent_id`
+de l'agent du contrat, même source que `AnalyseContratWizard.tsx`) — réutilise
+la formule déjà validée de `vueParJour` (`AnalyseContratEtape3.tsx`), pas de
+nouvelle variante. Repli automatique sur l'ancien calcul (`repartiParJour`) si
+le contrat n'a pas de `creneaux_acceptes` structurés (contrats legacy) — pour
+ne rien casser. **Le bandeau global "Réparti X sur Y vendues/semaine" et
+`computeProrataZones` ne sont PAS touchés** (encore utiles aux contrats legacy
+à durées saisies à la main) — la dette déjà notée plus haut sur ce bandeau
+("tautologie mathématique") reste donc entièrement ouverte, ce fix ne la
+résout pas.
+
+**Vérifié sur données réelles (lecture seule, SQL, jamais de login manager) :**
+GMCO — créneaux réels mardi 18h30-19h30 (60 min) / vendredi 18h30-20h00
+(90 min), agent avec `binome_agent_id` non nul en base → nouveau calcul donne
+bien 2h00/3h00. Contrats legacy à `creneaux_acceptes: []` (plusieurs trouvés
+en base) → condition de repli déclenchée, `repartiParJour` inchangé, aucune
+régression d'affichage.
+
+### 22. FIX étape 4 ignorait l'état des décisions (commit `ac1492e`, 21 juillet 2026)
+
+**Constat Julien, nouveau test réel sur GMCO (résidence nettoyée — contrat,
+zones, tâches et 316 interventions de test supprimés via `delete_contrat_
+cascade` pour retester le wizard de bout en bout à blanc) :** à
+l'étape 3, les 3 cartes de décision étaient bien passées à l'état "décidé"
+(carte verte ✓ — Aspiration Archives → "Garder 1re semaine", Ranger le local →
+"2e semaine", Entretien matériel → "Garder mardi et vendredi"). Mais à l'étape
+4, le bloc "Décisions & remarques" ré-affichait les 3 alertes en prose brute
+⚠, comme si aucune décision n'avait été prise — pour "Ranger le local", le
+message répétait encore "positionnée par défaut en 1re semaine" alors que "2e
+semaine" venait d'être choisi. Le récap final contredisait les décisions
+juste avant la création du contrat.
+
+**Vérification du FOND demandée en premier (avant tout code), résultat
+rassurant :** un script réel (analyse fraîche via l'API + application du même
+algorithme EXACT que le composant — `updateTache`/`appliquerOption`/
+`buildStructure`, copié tel quel depuis `AnalyseContratEtape3.tsx`, pas
+réimplémenté) a confirmé que la décision "2e semaine" mute bien
+`semaine_du_mois` de `[1]` à `[2]` **dans la `StructureSoumission` transmise à
+la RPC** — la structure envoyée à la création du contrat était donc déjà
+correcte. **Ce n'était PAS un bug de fond.**
+
+**Le vrai bug : `onContinue` (étape 3 → Wizard → étape 4) ne transmettait
+JAMAIS l'état `decisions`** (state local à l'étape 3, jamais remonté) —
+l'étape 4 se contentait de ré-afficher `analyse.alertes` brutes, sans aucune
+visibilité sur ce qui avait été décidé. Fix : nouveau type exporté
+`DecisionAlerte` (`AnalyseContratEtape3.tsx`), `onContinue` étendu avec un 4e
+paramètre `decisionsAlertes`, remonté jusqu'à `AnalyseContratEtape4.tsx` qui
+réutilise maintenant **exactement les mêmes styles visuels que l'étape 3**
+(carte verte + badge `→ {choix} ✓` pour une alerte décidée, ⚠ amber/ℹ slate
+avec le message d'origine pour une alerte non décidée) au lieu de ré-afficher
+le message d'origine comme si rien ne s'était passé.
+
+**Vérifié sur le flux GMCO complet** (analyse fraîche + les 3 mêmes décisions
+que le test réel de Julien, script réel puis supprimé) : badge final correct
+pour les 3 alertes, cohérent avec la structure envoyée à la RPC.
 
 ## Ordre de configuration (session Ana)
 
@@ -3301,6 +3589,34 @@ connexion) + **Item 6** (masqué de la liste agents). Suffisant — pas de suppr
   après coup confirmant zéro ligne persistée. Complète le pattern déjà
   établi (script service-role en lecture seule) pour les cas où l'écriture
   elle-même doit être testée, pas seulement la lecture.
+
+### Chantier alertes actionnables + fixes suite à test réel (21 juillet 2026)
+
+- **Ne jamais faire exécuter de la prose par une IA : vocabulaire fermé
+  d'effets structurés, mappés sur du code déjà existant, avec la cible
+  résolue côté client.** Le mécanisme de décision des alertes (item 19) ne
+  laisse l'IA choisir QUE parmi 6 effets (`move_task_day`,
+  `set_semaine_du_mois`, `set_mois_de_annee`, `remove_task`,
+  `add_creneau_hint`, `none`), chacun mappé 1:1 sur un mutateur du wizard déjà
+  testé — jamais une action arbitraire décrite en texte puis "interprétée".
+  Un bouton ne peut promettre que ce que le code sait exécuter.
+- **Une IA classifie mal ses propres sorties (question vs info) : durcir le
+  prompt avec des exemples ET prévoir un filet UX, pas l'un sans l'autre.**
+  Le fix de prompt seul (item 20) aurait pu suffire dans ce cas précis, mais
+  rien ne garantit qu'un futur cas non anticipé échappe encore à la règle
+  durcie — le texte libre a donc été rendu accessible aussi sur les cartes
+  "info" (lien discret), pour qu'une erreur de classification future reste
+  toujours adressable par le manager plutôt que de bloquer silencieusement.
+- **Après un changement de philosophie (ex. top-down), chercher les VESTIGES
+  du modèle précédent dans les écrans de CONSULTATION aval, pas seulement
+  dans le flux principal refondu.** La refonte top-down de l'étape 3 (item 18)
+  n'a touché que le wizard de création. Un troisième mécanisme de calcul,
+  encore plus ancien (`computeProrataZones`, purement financier), survivait
+  intact sur la page de consultation `/taches` (item 21) — jamais visité par
+  la refonte, découvert seulement au test réel suivant sur le même contrat.
+  Réflexe à généraliser : après toute refonte de flux, grep les écrans de
+  consultation/rapport en aval pour les mêmes concepts, ils ne sont pas migrés
+  automatiquement juste parce que la source l'est.
 
 ## À faire Phase 3
 

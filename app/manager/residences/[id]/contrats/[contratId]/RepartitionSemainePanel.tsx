@@ -125,6 +125,8 @@ export default function RepartitionSemainePanel({
     }
   }, [dureesRef])
 
+  // duree_totale_estimee_minutes PERSISTÉ (buildDispatch, champ informatif du
+  // dispatch_semaine sauvegardé) — inchangé par ce fix, laissé tel quel.
   function dureeJour(jour: string): number {
     const nbBat = assignations.filter(a => a.jour === jour).length
     const nbTour = tournees.filter(t => t.jour === jour).length
@@ -137,6 +139,19 @@ export default function RepartitionSemainePanel({
     const [h1, m1] = c.heure_debut.split(':').map(Number)
     const [h2, m2] = c.heure_fin.split(':').map(Number)
     return (h2 * 60 + m2) - (h1 * 60 + m1)
+  }
+  // Durée AFFICHÉE dans le récap (fix 21/07, audit GMCO) : lecture directe du
+  // créneau du jour plutôt que la moyenne lissée ci-dessus (dureeJour), qui
+  // provient d'une estimation IA jamais recalée sur les créneaux réels et
+  // faussée par un lissage inter-jours (ex. GMCO : 148/78 min affichés au
+  // lieu de 60/90). Changement d'affichage pur — dureeJour (persisté via
+  // buildDispatch) n'est pas modifiée.
+  function dureeAfficheeJour(jour: string): number {
+    const nbBat = assignations.filter(a => a.jour === jour).length
+    const nbTour = tournees.filter(t => t.jour === jour).length
+    const hasContainers = !!containersParJour[jour]
+    if (nbBat === 0 && nbTour === 0 && !hasContainers) return 0
+    return creneauMaxMinutes(jour) ?? 0
   }
 
   const nomsUniques = useMemo(() => [...new Set(assignations.map(a => a.nom))], [assignations])
@@ -413,7 +428,7 @@ export default function RepartitionSemainePanel({
                   const bats = assignations.filter(a => a.jour === j).map(a => a.nom)
                   const tours = tournees.filter(t => t.jour === j)
                   const cont = containersParJour[j]
-                  const duree = dureeJour(j)
+                  const duree = dureeAfficheeJour(j)
                   const max = creneauMaxMinutes(j)
                   const overflow = max !== null && duree > max
                   return (

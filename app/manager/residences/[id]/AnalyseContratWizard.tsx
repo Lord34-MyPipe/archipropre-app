@@ -36,11 +36,15 @@ export interface Agent {
   binome_agent_id: string | null
 }
 
+// Refonte top-down (21/07) : plus de durée estimée par tâche. Les tâches basse
+// fréquence restent dans l'arbre, positionnées (semaine_du_mois / mois_de_annee),
+// alignées sur les colonnes déjà existantes de taches_template.
 export interface AnalyseTacheIA {
   libelle: string
-  frequence: 'hebdo' | 'mensuel' | 'trimestriel' | 'semestriel' | 'annuel'
-  jours_proposes: string[]
-  duree_minutes_estimee: number
+  frequence_type: 'hebdo' | 'mensuel' | 'trimestriel' | 'semestriel' | 'annuel'
+  jours_semaine: string[]           // hebdo : 1+ jours. Basse fréquence : exactement 1 jour positionné.
+  semaine_du_mois: number[] | null  // mensuel uniquement : [1..5] (5 = dernière semaine)
+  mois_de_annee: number[] | null    // trimestriel/semestriel/annuel uniquement : mois 1-12
 }
 export interface AnalyseZoneIA {
   nom: string
@@ -55,12 +59,6 @@ export interface CreneauProposeIA {
   heure_debut: string
   heure_fin: string
 }
-export interface RepartitionJourIA {
-  jour: string
-  duree_totale_minutes: number
-  batiments: string[]
-  resume: string
-}
 export interface HorsPlanningIA {
   libelle: string
   frequence: string
@@ -70,8 +68,6 @@ export interface AnalyseIA {
   batiments: AnalyseBatimentIA[]
   creneaux_proposes: CreneauProposeIA[]
   jours_interdits_detectes: string[]
-  repartition_hebdo: RepartitionJourIA[]
-  totaux: { minutes_hebdo_estimees: number; minutes_hebdo_vendues: number; verdict: 'ok' | 'depassement' | 'marge_confortable' }
   hors_planning_hebdo: HorsPlanningIA[]
   alertes: string[]
   dispatch_semaine: DispatchJour[]
@@ -146,7 +142,6 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
   const [texteContrat, setTexteContrat]           = useState('')
   const [contraintesLibres, setContraintesLibres] = useState('')
   const [analyse, setAnalyse]                     = useState<AnalyseIA | null>(null)
-  const [volumeHebdoMin, setVolumeHebdoMin]       = useState(0)
   const [analyseVersion, setAnalyseVersion]       = useState(0) // remonte l'étape 3 à neuf à chaque nouvelle analyse
   const [structureFinale, setStructureFinale]     = useState<StructureSoumission | null>(null)
   const [dispatchFinal, setDispatchFinal]         = useState<DispatchJour[]>([])
@@ -208,9 +203,8 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
     setMaxStepReached(m => (n > m ? n : m))
   }
 
-  function handleAnalyseSuccess(result: AnalyseIA, volume: number) {
+  function handleAnalyseSuccess(result: AnalyseIA) {
     setAnalyse(result)
-    setVolumeHebdoMin(volume)
     setAnalyseVersion(v => v + 1)
     advance(3)
   }
@@ -533,7 +527,6 @@ export default function AnalyseContratWizard({ residenceId, contratId, onClose }
           <AnalyseContratEtape3
             key={analyseVersion}
             analyse={analyse}
-            volumeHebdoMin={volumeHebdoMin}
             joursOrganisationActuelle={[...new Set(creneaux.flatMap(c => c.jours))]}
             creneaux={creneaux}
             joursRamassageContainers={joursRamassageContainers}

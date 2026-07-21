@@ -12,7 +12,7 @@ interface Props {
   onTexteChange: (v: string) => void
   contraintesLibres: string
   onContraintesChange: (v: string) => void
-  onSuccess: (analyse: AnalyseIA, volumeHebdoMin: number, tauxEffectif: number) => void
+  onSuccess: (analyse: AnalyseIA) => void
 }
 
 export default function AnalyseContratEtape2({
@@ -54,7 +54,7 @@ export default function AnalyseContratEtape2({
       })
       const json = await res.json()
       if (!res.ok) { setError(json.error ?? 'Erreur inconnue.'); setLoading(false); return }
-      onSuccess(json.analyse as AnalyseIA, json.volumeHebdoMin as number, json.tauxEffectif as number)
+      onSuccess(json.analyse as AnalyseIA)
     } catch {
       setError('Impossible de contacter le serveur.')
     } finally {

@@ -6,15 +6,18 @@ import { ORDRE_JOURS, type DispatchJour } from '@/lib/dispatchSemaine'
 
 // ── Structure soumise à /api/residences/[id]/contrats/creer-complet (item 3) ──
 // Même forme que p_structure de la RPC creer_contrat_complet (migration 031) :
-// bâtiments → zones → tâches. Ne contient QUE des tâches hebdo (comme
-// AnalyseIA côté serveur) : en mode détaillé, les tâches non-hebdo de l'arbre
-// sont exclues à la construction, pas envoyées.
+// bâtiments → zones → tâches. Refonte top-down (21/07) : plus de durée, les
+// tâches basse fréquence transportent désormais leur positionnement
+// (semaine_du_mois / mois_de_annee), alignées sur taches_template.
 export interface StructureSoumission {
   batiments: {
     nom: string
     zones: {
       nom: string
-      taches: { libelle: string; frequence_type: string; jours_semaine: string[]; duree_minutes: number }[]
+      taches: {
+        libelle: string; frequence_type: string; jours_semaine: string[]
+        semaine_du_mois: number[] | null; mois_de_annee: number[] | null
+      }[]
     }[]
   }[]
 }
@@ -24,9 +27,10 @@ export interface StructureSoumission {
 interface TacheLocale {
   id: string
   libelle: string
-  frequence: AnalyseTacheIA['frequence']
+  frequence: AnalyseTacheIA['frequence_type']
   jours: string[]
-  duree: number
+  semaineDuMois: number[] | null
+  moisDeAnnee: number[] | null
 }
 interface ZoneLocale {
   id: string
@@ -65,7 +69,7 @@ const JOURS: { value: string; label: string }[] = [
   { value: 'dimanche', label: 'Dim' },
 ]
 
-const FREQ_OPTIONS: { value: AnalyseTacheIA['frequence']; label: string }[] = [
+const FREQ_OPTIONS: { value: AnalyseTacheIA['frequence_type']; label: string }[] = [
   { value: 'hebdo',       label: 'Hebdomadaire' },
   { value: 'mensuel',     label: 'Mensuelle' },
   { value: 'trimestriel', label: 'Trimestrielle' },
@@ -75,7 +79,6 @@ const FREQ_OPTIONS: { value: AnalyseTacheIA['frequence']; label: string }[] = [
 
 interface Props {
   analyse: AnalyseIA
-  volumeHebdoMin: number
   joursOrganisationActuelle: string[]  // jours de l'organisation actuelle (étape 1) — défaut des jours en mode simplifié
   creneaux: Creneau[]                  // pour la borne créneau par jour (R5)
   joursRamassageContainers: string[]
@@ -88,7 +91,7 @@ interface Props {
 }
 
 export default function AnalyseContratEtape3({
-  analyse, volumeHebdoMin, joursOrganisationActuelle, creneaux, joursRamassageContainers,
+  analyse, joursOrganisationActuelle, creneaux, joursRamassageContainers,
   minutesHebdoReelles, plafondRentable, ecartRentable, tauxCible,
   onBack, onContinue,
 }: Props) {
@@ -107,8 +110,8 @@ export default function AnalyseContratEtape3({
         id: nextId(),
         nom: z.nom,
         taches: z.taches.map(t => ({
-          id: nextId(), libelle: t.libelle, frequence: t.frequence,
-          jours: [...t.jours_proposes], duree: t.duree_minutes_estimee,
+          id: nextId(), libelle: t.libelle, frequence: t.frequence_type,
+          jours: [...t.jours_semaine], semaineDuMois: t.semaine_du_mois, moisDeAnnee: t.mois_de_annee,
         })),
       })),
     })),
@@ -116,23 +119,6 @@ export default function AnalyseContratEtape3({
   const [expanded, setExpanded] = useState<Set<string>>(
     () => new Set(analyse.batiments.map((_, i) => `b${i}`)), // tout ouvert par défaut — clés recalculées via index, cf toggleBatiment
   )
-
-  // ── Récap live mode détaillé — recalculé à chaque édition ──
-  const totalMinutesHebdo = useMemo(() => {
-    let total = 0
-    for (const b of batiments) {
-      for (const z of b.zones) {
-        for (const t of z.taches) {
-          if (t.frequence === 'hebdo' && t.jours.length > 0) total += t.duree * t.jours.length
-        }
-      }
-    }
-    return total
-  }, [batiments])
-
-  const pct = volumeHebdoMin > 0 ? (totalMinutesHebdo / volumeHebdoMin) * 100 : null
-  const depassement = pct !== null && pct > 100
-  const barPct = pct === null ? 0 : Math.min(pct, 100)
 
   // ── Mutations mode détaillé (immutables, indexées par id local) ──
 
@@ -168,7 +154,7 @@ export default function AnalyseContratEtape3({
       ...b,
       zones: b.zones.map(z => z.id !== zId ? z : {
         ...z,
-        taches: [...z.taches, { id: nextId(), libelle: '', frequence: 'hebdo', jours: [], duree: 5 }],
+        taches: [...z.taches, { id: nextId(), libelle: '', frequence: 'hebdo', jours: [], semaineDuMois: null, moisDeAnnee: null }],
       }),
     }))
   }
@@ -400,8 +386,11 @@ export default function AnalyseContratEtape3({
           zones: b.zones.map(z => ({
             nom: z.nom,
             taches: z.taches
-              .filter(t => t.frequence === 'hebdo' && t.jours.length > 0)
-              .map(t => ({ libelle: t.libelle, frequence_type: 'hebdo', jours_semaine: t.jours, duree_minutes: t.duree })),
+              .filter(t => t.jours.length > 0)
+              .map(t => ({
+                libelle: t.libelle, frequence_type: t.frequence, jours_semaine: t.jours,
+                semaine_du_mois: t.semaineDuMois, mois_de_annee: t.moisDeAnnee,
+              })),
           })),
         })),
       }
@@ -412,7 +401,7 @@ export default function AnalyseContratEtape3({
         zones: b.zones.map(z => ({
           nom: z.nom,
           taches: z.jours.length > 0
-            ? [{ libelle: z.libelle.trim() || 'Nettoyage complet', frequence_type: 'hebdo', jours_semaine: z.jours, duree_minutes: 0 }]
+            ? [{ libelle: z.libelle.trim() || 'Nettoyage complet', frequence_type: 'hebdo', jours_semaine: z.jours, semaine_du_mois: null, mois_de_annee: null }]
             : [],
         })),
       })),
@@ -424,36 +413,16 @@ export default function AnalyseContratEtape3({
   return (
     <div className="pb-8">
 
-      {/* ── Bandeau récap sticky ── */}
+      {/* ── Bandeau récap sticky — top-down (21/07) : plus de % bottom-up, un seul
+          indicateur "Actuel/Plafond rentable", identique quel que soit le mode.
+          Refonte visuelle complète (vue par jour de passage) : sous-étape 3. ── */}
       <div className="sticky top-0 z-10 bg-white border-b border-slate-100 px-4 md:px-8 py-3">
         <div className="max-w-3xl mx-auto">
-          {modeDetaille ? (
-            <>
-              <div className="flex items-center justify-between text-sm mb-1.5">
-                <span className="font-semibold text-slate-700">
-                  {Math.round(totalMinutesHebdo)} min/semaine estimées
-                  {volumeHebdoMin > 0 && <span className="text-slate-400 font-normal"> / {Math.round(volumeHebdoMin)} vendues</span>}
-                </span>
-                {pct !== null && (
-                  <span className={`font-semibold ${depassement ? 'text-red-600' : 'text-green-600'}`}>
-                    {pct.toFixed(0)} %{depassement && ` — dépassement de ${Math.round(totalMinutesHebdo - volumeHebdoMin)} min`}
-                  </span>
-                )}
-              </div>
-              <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all ${depassement ? 'bg-red-500' : 'bg-green-500'}`}
-                  style={{ width: `${barPct}%` }}
-                />
-              </div>
-            </>
-          ) : (
-            <div className={`text-sm font-medium ${ecartRentableOk ? 'text-green-700' : 'text-amber-700'}`}>
-              Actuel <span className="font-bold">{Math.round(minutesHebdoReelles)} min/sem</span>
-              {' '}— Plafond rentable ({tauxCible} €/h) <span className="font-bold">{Math.round(plafondRentable)} min/sem</span>
-              {' '}— Écart {ecartRentable >= 0 ? '+' : ''}{Math.round(ecartRentable)} min
-            </div>
-          )}
+          <div className={`text-sm font-medium ${ecartRentableOk ? 'text-green-700' : 'text-amber-700'}`}>
+            Actuel <span className="font-bold">{Math.round(minutesHebdoReelles)} min/sem</span>
+            {' '}— Plafond rentable ({tauxCible} €/h) <span className="font-bold">{Math.round(plafondRentable)} min/sem</span>
+            {' '}— Écart {ecartRentable >= 0 ? '+' : ''}{Math.round(ecartRentable)} min
+          </div>
         </div>
       </div>
 
@@ -535,12 +504,6 @@ export default function AnalyseContratEtape3({
                                   >
                                     {FREQ_OPTIONS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
                                   </select>
-                                  <input
-                                    type="number" min={1} value={t.duree}
-                                    onChange={e => updateTache(b.id, z.id, t.id, { duree: Math.max(0, parseInt(e.target.value) || 0) })}
-                                    className="w-16 px-2 py-1.5 border border-slate-200 rounded-lg text-xs text-center focus:outline-none focus:ring-1 focus:ring-[#0BBFBF]/40"
-                                  />
-                                  <span className="text-xs text-slate-400 shrink-0">min</span>
                                   <button type="button" onClick={() => deleteTache(b.id, z.id, t.id)}
                                     className="shrink-0 p-1 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors" aria-label="Supprimer la tâche">
                                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -560,8 +523,12 @@ export default function AnalyseContratEtape3({
                                     ))}
                                   </div>
                                 ) : (
+                                  // Positionnement (semaine du mois / mois de l'année) éditable en détail
+                                  // à la sous-étape 4 — ici, résumé en lecture seule du positionnement proposé.
                                   <p className="text-[11px] text-slate-400 italic">
-                                    Fréquence non hebdomadaire — ne compte pas dans le planning hebdo ni dans le récap ci-dessus.
+                                    Basse fréquence — positionnée {t.jours[0] ? `le ${JOURS.find(j => j.value === t.jours[0])?.label ?? t.jours[0]}` : '(jour non déterminé)'}
+                                    {t.semaineDuMois ? ` (semaine ${t.semaineDuMois[0]})` : ''}
+                                    {t.moisDeAnnee ? ` (mois ${t.moisDeAnnee.join(', ')})` : ''} — détail modifiable à une prochaine étape.
                                   </p>
                                 )}
                               </div>

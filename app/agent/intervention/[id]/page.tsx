@@ -37,6 +37,13 @@ export default function InterventionPage() {
   // Panneau "?" — détail consultatif des tâches d'UNE zone (étape 9f, §7.3).
   // null = fermé. Purement UI : la validation reste au niveau zone.
   const [detailZone,     setDetailZone]     = useState<string | null>(null)
+  // Toast d'erreur temporaire (remplace les alert() natifs)
+  const [toast,          setToast]          = useState<string | null>(null)
+
+  function showToast(msg: string) {
+    setToast(msg)
+    setTimeout(() => setToast(null), 4000)
+  }
 
   // ── Chargement ────────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -100,22 +107,29 @@ export default function InterventionPage() {
     }, { onConflict: 'intervention_id,zone_nom' })
   }
 
-  // ── Changer statut d'une tâche (optimiste) ────────────────────────────────────
+  // ── Changer statut d'une tâche (optimiste + rollback si échec) ─────────────
   async function setStatutTache(
     tache: TacheIntervention,
     nouveau: 'realisee' | 'non_realisee' | 'a_faire'
   ) {
     const supabase = createClient()
     const now = nouveau !== 'a_faire' ? new Date().toISOString() : null
+    const previousTaches = taches
 
     const newTaches = taches.map(t =>
       t.id === tache.id ? { ...t, statut_tache: nouveau, heure_validation: now } : t
     )
     setTaches(newTaches)
 
-    await supabase.from('taches_intervention')
+    const { error } = await supabase.from('taches_intervention')
       .update({ statut_tache: nouveau, heure_validation: now })
       .eq('id', tache.id)
+
+    if (error) {
+      setTaches(previousTaches)
+      showToast('Échec de la mise à jour — vérifiez votre connexion')
+      return
+    }
 
     // Clôturer la zone si elle devient complète
     const zone = tache.zone_nom ?? 'Général'
@@ -126,10 +140,11 @@ export default function InterventionPage() {
     }
   }
 
-  // ── Valider toute une zone d'un coup (→ 'realisee') ──────────────────────────
+  // ── Valider toute une zone d'un coup (→ 'realisee') — rollback si échec ─────
   async function validerZone(zone: string) {
     const supabase = createClient()
     const now = new Date().toISOString()
+    const previousTaches = taches
 
     const newTaches = taches.map(t =>
       (t.zone_nom ?? 'Général') === zone && t.statut_tache === 'a_faire'
@@ -138,15 +153,22 @@ export default function InterventionPage() {
     )
     setTaches(newTaches)
 
-    const query = supabase.from('taches_intervention')
+    let query = supabase.from('taches_intervention')
       .update({ statut_tache: 'realisee', heure_validation: now })
       .eq('intervention_id', params.id)
       .eq('statut_tache', 'a_faire')
 
     if (zone === 'Général') {
-      await query.is('zone_nom', null)
+      query = query.is('zone_nom', null)
     } else {
-      await query.eq('zone_nom', zone)
+      query = query.eq('zone_nom', zone)
+    }
+    const { error } = await query
+
+    if (error) {
+      setTaches(previousTaches)
+      showToast('Échec de la validation — vérifiez votre connexion')
+      return
     }
 
     const allTreated = newTaches
@@ -188,7 +210,7 @@ export default function InterventionPage() {
       .upload(path, file, { upsert: false })
 
     if (upErr) {
-      alert('Erreur upload : ' + upErr.message)
+      showToast('Échec de l\'envoi photo — réessayez')
       setUploadingZone(null)
       return
     }
@@ -621,6 +643,13 @@ export default function InterventionPage() {
             <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"/>
             Finalisation…
           </div>
+        </div>
+      )}
+
+      {/* Toast erreur réseau */}
+      {toast && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 bg-red-600 text-white rounded-2xl shadow-lg text-sm font-semibold animate-pulse max-w-xs text-center">
+          {toast}
         </div>
       )}
 

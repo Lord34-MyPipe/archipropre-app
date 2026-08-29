@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { FEATURES } from '@/lib/features'
+import { compressImage } from '@/lib/compress-image'
 
 interface Produit {
   id: string
@@ -83,35 +84,38 @@ export default function ControleFinaPage() {
     ))
   }
 
-  // ── Photo chariot ─────────────────────────────────────────────────────────────
+  // ── Photo chariot (compressée) ────────────────────────────────────────────────
   async function handleChariotPhoto(file: File) {
     setChariotFile(file)
     setChariotUrl(URL.createObjectURL(file))
     setChariotUploading(true)
+    const compressed = await compressImage(file)
     const fd = new FormData()
-    fd.append('file', file)
+    fd.append('file', compressed)
     await fetch(`/api/interventions/${params.id}/chariot`, { method: 'POST', body: fd })
     setChariotUploading(false)
   }
 
-  // ── Ajout ampoule depuis drawer ───────────────────────────────────────────────
+  // ── Ajout ampoule depuis drawer (photos compressées) ────────────────────────
   async function confirmerAmpoule() {
     if (!drawerAvant) {
       setError('La photo avant est requise pour une ampoule.')
       return
     }
     setError(null)
-    // Upload photo avant
+    // Upload photo avant (compressée)
+    const compressedAvant = await compressImage(drawerAvant)
     const fdAvant = new FormData()
-    fdAvant.append('file', drawerAvant)
+    fdAvant.append('file', compressedAvant)
     fdAvant.append('side', 'avant')
     const rAvant = await fetch(`/api/interventions/${params.id}/chariot-ampoule`, { method: 'POST', body: fdAvant })
     const { storage_path: pathAvant } = await rAvant.json()
 
     let pathApres: string | null = null
     if (drawerApres) {
+      const compressedApres = await compressImage(drawerApres)
       const fdApres = new FormData()
-      fdApres.append('file', drawerApres)
+      fdApres.append('file', compressedApres)
       fdApres.append('side', 'apres')
       const rApres = await fetch(`/api/interventions/${params.id}/chariot-ampoule`, { method: 'POST', body: fdApres })
       const { storage_path } = await rApres.json()

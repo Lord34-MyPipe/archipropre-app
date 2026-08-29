@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import type { TacheIntervention, Intervention, Residence } from '@/lib/types'
 import { Building2, Camera, X, TriangleAlert, Check, Circle } from 'lucide-react'
+import { compressImage } from '@/lib/compress-image'
 
 type FullIntervention = Intervention & {
   residences: Residence
@@ -196,18 +197,19 @@ export default function InterventionPage() {
     await saveCommentaire(tache.id, texte)
   }
 
-  // ── Upload photo pour une zone ─────────────────────────────────────────────────
+  // ── Upload photo pour une zone (compressée côté client) ─────────────────────
   async function handlePhotoZone(zoneNom: string, file: File) {
     setUploadingZone(zoneNom)
-    const supabase = createClient()
-    const ts       = Date.now()
-    const ext      = file.name.split('.').pop() ?? 'jpg'
-    const safeName = zoneNom.replace(/[^a-zA-Z0-9_-]/g, '_')
-    const path     = `${params.id}/${safeName}/${ts}.${ext}`
+    const compressed = await compressImage(file)
+    const supabase   = createClient()
+    const ts         = Date.now()
+    const ext        = compressed.name.split('.').pop() ?? 'jpg'
+    const safeName   = zoneNom.replace(/[^a-zA-Z0-9_-]/g, '_')
+    const path       = `${params.id}/${safeName}/${ts}.${ext}`
 
     const { error: upErr } = await supabase.storage
       .from('photos-interventions')
-      .upload(path, file, { upsert: false })
+      .upload(path, compressed, { upsert: false })
 
     if (upErr) {
       showToast('Échec de l\'envoi photo — réessayez')

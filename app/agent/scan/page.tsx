@@ -24,11 +24,22 @@ function ScanPageInner() {
   const [message, setMessage]         = useState('')
 
   // ── Traitement d'un token scanné / saisi ──────────────────────────────────
+  // Enveloppé en try/catch global : une micro-coupure réseau à n'importe quel
+  // point des 8+ appels Supabase montre un message clair avec bouton Réessayer,
+  // au lieu d'un spinner infini.
   const processToken = useCallback(async (token: string) => {
     if (status === 'processing') return
     setStatus('processing')
     setMessage('Localisation en cours…')
 
+    try { return await _processTokenInner(token) } catch {
+      setStatus('error')
+      setMessage('Problème réseau — vérifiez votre connexion et réessayez.')
+    }
+  }, [status, router])
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const _processTokenInner = useCallback(async (token: string) => {
     const supabase = createClient()
 
     // 1. Token → contrat (contrats_residences.qr_code_token)
@@ -435,7 +446,7 @@ function ScanPageInner() {
     } else {
       router.push(`/agent/intervention/${inter.id}`)
     }
-  }, [status, router])
+  }, [router, params])
 
   // ── Lecture automatique du token depuis l'URL (?token=xxx) ────────────────
   useEffect(() => {

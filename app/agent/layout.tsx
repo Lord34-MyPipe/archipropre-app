@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
 import AgentNav from '@/components/agent/AgentNav'
+import OfflineBanner from '@/components/agent/OfflineBanner'
 
 export default async function AgentLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -19,6 +20,7 @@ export default async function AgentLayout({ children }: { children: React.ReactN
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
+      <OfflineBanner />
       <main className="flex-1 pb-20 max-w-lg mx-auto w-full">{children}</main>
       <AgentNav />
     </div>

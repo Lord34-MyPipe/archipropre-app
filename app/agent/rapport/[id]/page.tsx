@@ -17,6 +17,7 @@ export default function RapportPage() {
   const [comment,  setComment]  = useState('')
   const [sending,  setSending]  = useState(false)
   const [done,     setDone]     = useState(false)
+  const [error,    setError]    = useState<string | null>(null)
 
   useEffect(() => {
     const supabase = createClient()
@@ -46,38 +47,47 @@ export default function RapportPage() {
   async function handleEnvoyer() {
     if (!inter) return
     setSending(true)
-    const supabase = createClient()
+    setError(null)
 
-    // 1. S'assurer que l'intervention est bien terminée (défensif)
-    if (inter.statut !== 'terminee') {
-      const now = new Date().toISOString()
-      const disponible = inter.heure_fin_prevue
-        ? new Date(now) < new Date(`${inter.date_prevue}T${inter.heure_fin_prevue}`)
-        : false
-      await supabase.from('interventions').update({
-        statut:               'terminee',
-        heure_fin:            now,
-        disponible_apres_fin: disponible,
-      }).eq('id', params.id)
+    try {
+      const supabase = createClient()
+
+      // 1. S'assurer que l'intervention est bien terminée (défensif)
+      if (inter.statut !== 'terminee') {
+        const now = new Date().toISOString()
+        const disponible = inter.heure_fin_prevue
+          ? new Date(now) < new Date(`${inter.date_prevue}T${inter.heure_fin_prevue}`)
+          : false
+        const { error: updateErr } = await supabase.from('interventions').update({
+          statut:               'terminee',
+          heure_fin:            now,
+          disponible_apres_fin: disponible,
+        }).eq('id', params.id)
+        if (updateErr) throw updateErr
+      }
+
+      // 2. Alerte manager — destinataire depuis profiles.manager_id de l'agent
+      const managerId = agentProfile?.manager_id ?? inter.residences?.manager_id
+      if (managerId) {
+        const nomAgent = agentProfile ? `${agentProfile.prenom} ${agentProfile.nom}` : 'un agent'
+        const nomResidence = inter.residences?.nom ?? 'une résidence'
+        const { error: alertErr } = await supabase.from('alertes').insert({
+          intervention_id: params.id,
+          type:            'rapport_soumis',
+          message:         `Rapport soumis par ${nomAgent} — ${nomResidence}${comment ? ' : ' + comment : ''}`,
+          destinataire_id: managerId,
+          lue:             false,
+        })
+        if (alertErr) throw alertErr
+      }
+
+      setSending(false)
+      setDone(true)
+      setTimeout(() => router.push('/agent/dashboard'), 2000)
+    } catch {
+      setSending(false)
+      setError('Envoi échoué — vérifiez votre connexion et réessayez.')
     }
-
-    // 2. Alerte manager — destinataire depuis profiles.manager_id de l'agent
-    const managerId = agentProfile?.manager_id ?? inter.residences?.manager_id
-    if (managerId) {
-      const nomAgent = agentProfile ? `${agentProfile.prenom} ${agentProfile.nom}` : 'un agent'
-      const nomResidence = inter.residences?.nom ?? 'une résidence'
-      await supabase.from('alertes').insert({
-        intervention_id: params.id,
-        type:            'rapport_soumis',
-        message:         `Rapport soumis par ${nomAgent} — ${nomResidence}${comment ? ' : ' + comment : ''}`,
-        destinataire_id: managerId,
-        lue:             false,
-      })
-    }
-
-    setSending(false)
-    setDone(true)
-    setTimeout(() => router.push('/agent/dashboard'), 2000)
   }
 
   if (!inter) return (
@@ -199,6 +209,13 @@ export default function RapportPage() {
           />
         </div>
 
+        {/* Erreur d'envoi */}
+        {error && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm text-center">
+            {error}
+          </div>
+        )}
+
         {/* Bouton envoyer */}
         <button
           onClick={handleEnvoyer}
@@ -211,7 +228,7 @@ export default function RapportPage() {
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"/>
               Envoi en cours…
             </span>
-          ) : '📤 Envoyer au manager'}
+          ) : error ? '🔄 Réessayer' : '📤 Envoyer au manager'}
         </button>
 
         <div className="h-4"/>

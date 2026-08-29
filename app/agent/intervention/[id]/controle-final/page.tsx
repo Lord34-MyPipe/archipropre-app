@@ -139,6 +139,9 @@ export default function ControleFinaPage() {
   }
 
   // ── Envoi final ───────────────────────────────────────────────────────────────
+  // Retry + timeout pour ne JAMAIS dire « envoyé » si le serveur n'a rien reçu.
+  // Le fetch a un timeout (12 s) pour éviter un spinner infini sur réseau dégradé
+  // (leçon CONTEXT.md 28/06 — pas de await bloquant sans échappatoire).
   async function handleEnvoyer() {
     if (submitting) return
     setSubmitting(true)
@@ -169,14 +172,41 @@ export default function ControleFinaPage() {
       }
     }
 
-    // 2. Envoyer le rapport au manager (alerte rapport_soumis)
-    await fetch(`/api/interventions/${params.id}/rapport`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ commentaire: '' }),
-    })
+    // 2. Envoyer le rapport au manager — 3 tentatives avec backoff, timeout 12 s
+    const MAX_RETRIES = 3
+    let rapportOk = false
+    let lastError = ''
 
-    // 3. Retour au tableau de bord
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 12_000)
+        const r = await fetch(`/api/interventions/${params.id}/rapport`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ commentaire: '' }),
+          signal: controller.signal,
+        })
+        clearTimeout(timeout)
+        if (r.ok) { rapportOk = true; break }
+        lastError = `Erreur serveur (${r.status})`
+      } catch (err) {
+        lastError = err instanceof DOMException && err.name === 'AbortError'
+          ? 'Délai dépassé — réseau trop lent'
+          : 'Pas de connexion réseau'
+      }
+      if (attempt < MAX_RETRIES) {
+        await new Promise(resolve => setTimeout(resolve, 2000 * attempt))
+      }
+    }
+
+    if (!rapportOk) {
+      setError(`Envoi échoué : ${lastError}. Appuyez pour réessayer.`)
+      setSubmitting(false)
+      return
+    }
+
+    // 3. Retour au tableau de bord — UNIQUEMENT si le serveur a confirmé
     router.push('/agent/dashboard')
   }
 
